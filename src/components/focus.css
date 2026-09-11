@@ -83,10 +83,10 @@
   );
 }
 
-.morph-anim {
-  transition: transform 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+/* 容器级 FLIP：整条书芯一起缩放（transform 加在 track 上） */
+.zfocus__track.morph-anim {
+  transition: transform 0.34s cubic-bezier(0.22, 0.61, 0.36, 1);
   will-change: transform;
-  z-index: 3;
 }
 
 .zfocus__counter {

@@ -24,8 +24,44 @@ const FocusView = forwardRef(function FocusView(
 
   const activeWrap = () => trackRef.current?.children[index] ?? null
   const enteredRef = useRef(false)
+  const morphingRef = useRef(false)
 
-  // 入场：定位到当前页，然后从书中被点页面的矩形放大过来。
+  // 容器级 FLIP：transform 作用于整条 track（书芯）。
+  // 被点页对准书中矩形后，整个开页（双页 + 中缝 + 露边）作为一个连续对象缩放，
+  // 所有页面共享同一个 transform——数学上不可能出现「先放大左边再放大右边」。
+  // toTransform 为 null 时表示入场（起点 = 书中矩形，终点 = 焦点布局）。
+  const applyTrackFlip = (targetRect, toTransform) => {
+    const track = trackRef.current
+    const wrap = activeWrap()
+    const pageEl = wrap?.querySelector('.album-page')
+    if (!track || !pageEl || !targetRect) return false
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false
+
+    const pageRect = pageEl.getBoundingClientRect()
+    const trackRect = track.getBoundingClientRect()
+    const s = targetRect.width / pageRect.width
+    const dx = targetRect.left + targetRect.width / 2 - (pageRect.left + pageRect.width / 2)
+    const dy = targetRect.top + targetRect.height / 2 - (pageRect.top + pageRect.height / 2)
+
+    track.style.transformOrigin = `${pageRect.left + pageRect.width / 2 - trackRect.left}px ${
+      pageRect.top + pageRect.height / 2 - trackRect.top
+    }px`
+    track.classList.add('morph-anim')
+    void track.offsetWidth
+    track.style.transform = toTransform ?? `translate(${dx}px, ${dy}px) scale(${s})`
+    return true
+  }
+
+  const clearTrackFlip = () => {
+    const track = trackRef.current
+    if (!track) return
+    track.classList.remove('morph-anim')
+    track.style.transform = ''
+    track.style.transformOrigin = ''
+    morphingRef.current = false
+  }
+
+  // 入场：定位到当前页，然后整条书芯从书中被点页面的矩形连续放大。
   // 必须用 useLayoutEffect：初始 transform 要在浏览器绘制第一帧之前就位，
   // 否则会先闪现一帧「最终布局」再跳回起点——看起来就是「分段展开」。
   useLayoutEffect(() => {
@@ -38,62 +74,67 @@ const FocusView = forwardRef(function FocusView(
 
     const pageEl = wrap.querySelector('.album-page')
     if (!pageEl || !sourceRect) return
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
-    const last = pageEl.getBoundingClientRect()
-    const dx = sourceRect.left + sourceRect.width / 2 - (last.left + last.width / 2)
-    const dy = sourceRect.top + sourceRect.height / 2 - (last.top + last.height / 2)
-    const sx = sourceRect.width / last.width
-    const sy = sourceRect.height / last.height
-
-    pageEl.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`
-    void pageEl.offsetWidth // 先呈现起始状态，再加过渡类
-    pageEl.classList.add('morph-anim')
-    pageEl.style.transform = ''
-    const done = (e) => {
-      if (e.target !== pageEl) return
-      pageEl.classList.remove('morph-anim')
-      pageEl.removeEventListener('transitionend', done)
+    morphingRef.current = true
+    const started = applyTrackFlip(sourceRect, null)
+    if (!started) {
+      morphingRef.current = false
+      return
     }
-    pageEl.addEventListener('transitionend', done)
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      clearTrackFlip()
+    }
+    track.addEventListener('transitionend', (e) => {
+      if (e.target === track && e.propertyName === 'transform') finish()
+    })
+    setTimeout(finish, 500) // 节流/丢事件兜底
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useImperativeHandle(ref, () => ({
-    // 退出：把当前页缩回到书中目标矩形；动画结束由外层卸载 Focus
+    // 退出：整条书芯缩回到书中目标矩形；动画结束由外层卸载 Focus
     playClose(targetRect) {
       if (closingRef.current) return
       closingRef.current = true
       const wrap = activeWrap()
       const pageEl = wrap?.querySelector('.album-page')
-      if (!pageEl || !targetRect || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (!pageEl || !targetRect) {
         onClosed()
         return
       }
+      morphingRef.current = true
       const first = pageEl.getBoundingClientRect()
       const dx = targetRect.left + targetRect.width / 2 - (first.left + first.width / 2)
       const dy = targetRect.top + targetRect.height / 2 - (first.top + first.height / 2)
-      const sx = targetRect.width / first.width
-      const sy = targetRect.height / first.height
+      const s = targetRect.width / first.width
+      const toTransform = `translate(${dx}px, ${dy}px) scale(${s})`
 
-      pageEl.classList.add('morph-anim')
-      void pageEl.offsetWidth
-      pageEl.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`
+      const started = applyTrackFlip(targetRect, toTransform)
+      if (!started) {
+        onClosed()
+        return
+      }
+      const track = trackRef.current
       let finished = false
       const finish = () => {
         if (finished) return
         finished = true
+        clearTrackFlip()
         onClosed()
       }
       // animationend 在页面被节流等情况下可能不触发，超时兜底
-      pageEl.addEventListener('transitionend', (e) => {
-        if (e.target === pageEl) finish()
+      track.addEventListener('transitionend', (e) => {
+        if (e.target === track && e.propertyName === 'transform') finish()
       })
       setTimeout(finish, 500)
     },
   }))
 
   const handleScroll = () => {
+    if (morphingRef.current) return // 变形中的矩形不代表真实布局，会误判当前页
     const track = trackRef.current
     const vw = track.clientWidth
     const left = track.scrollLeft
