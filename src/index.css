@@ -1,0 +1,26 @@
+:root {
+  --ink: #1a1a18;
+  --ink-soft: #6b6a66;
+  --paper: #faf9f6;
+  --line: #e2e0da;
+  --accent: #1a1a18;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
