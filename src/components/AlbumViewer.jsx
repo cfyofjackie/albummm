@@ -16,7 +16,7 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
   const [uiVisible, setUiVisible] = useState(true)
   const bookRef = useRef(null)
   const focusRef = useRef(null)
-  const sourceRectRef = useRef(null)
+  const sourceSpreadRef = useRef([])
   const closingRef = useRef(false)
   const leaves = useMemo(() => buildLeaves(album.pages), [album])
 
@@ -36,8 +36,8 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
     return () => window.removeEventListener('keydown', onKey)
   }, [focusIndex])
 
-  const openFocus = (flat, sourceRect) => {
-    sourceRectRef.current = sourceRect
+  const openFocus = (flat, sourceSpread) => {
+    sourceSpreadRef.current = sourceSpread
     setFocusIndex(flat)
   }
 
@@ -49,8 +49,8 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
     const f = focusIndex
     setLeafIndex(leafOfFlat(f, leaves, album.pages.length))
     requestAnimationFrame(() => {
-      const targetRect = bookRef.current?.getPageRect(f)
-      focusRef.current?.playClose(targetRect)
+      const targetSpread = bookRef.current?.getSpreadRects() ?? []
+      focusRef.current?.playClose(targetSpread)
       closingRef.current = false
     })
   }
@@ -72,7 +72,7 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
           onIndexChange={setFocusIndex}
           onCloseRequest={requestCloseFocus}
           onClosed={() => setFocusIndex(null)}
-          sourceRect={sourceRectRef.current}
+          sourceSpread={sourceSpreadRef.current}
         />
       )}
 

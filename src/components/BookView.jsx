@@ -5,7 +5,7 @@ import './book.css'
 
 // 书本视图：整本 8:5 spread + 绕书脊的刚性 3D 翻页。
 // 受控组件：leafIndex 由外层持有（Focus View 退出后恢复位置），
-// go() / getPageRect() 通过 ref 暴露给控制栏 / 键盘 / Focus 动画。
+// go() / getSpreadRects() 通过 ref 暴露给控制栏 / 键盘 / Focus 动画。
 const BookView = forwardRef(function BookView(
   { album, leafIndex, onLeafChange, onPageOpen },
   ref,
@@ -42,18 +42,19 @@ const BookView = forwardRef(function BookView(
     animTimerRef.current = setTimeout(() => commitAnim(to), 800)
   }
 
-  // 扁平页码 → 当前 spread 中对应 .album-page 的屏幕矩形（Focus FLIP 动画用）
-  const getPageRect = (flat) => {
-    const total = album.pages.length
-    const isBack = flat >= total - 1
-    const isRecto = flat === 0 || (!isBack && flat % 2 === 0)
-    const half = rootRef.current?.querySelector(
-      isRecto ? '.book__half--right' : '.book__half--left',
+  // Focus 进出场需要同时对齐当前 spread 的两页。只传被点页的矩形时，
+  // 另一页只能靠遮罩交接，视觉上会像晚加载。
+  const getSpreadRects = () => ['left', 'right'].flatMap((side) => {
+    const flat = flatIndexOf(leaves, leafIndex, side, album.pages.length)
+    if (flat == null) return []
+    const pageEl = rootRef.current?.querySelector(
+      `.book__half--${side} .album-page`,
     )
-    return half?.querySelector('.album-page')?.getBoundingClientRect() ?? null
-  }
+    const rect = pageEl?.getBoundingClientRect()
+    return rect ? [{ flat, rect }] : []
+  })
 
-  useImperativeHandle(ref, () => ({ go, getPageRect }))
+  useImperativeHandle(ref, () => ({ go, getSpreadRects }))
 
   const cur = displaySpread(leafIndex)
   const target = anim ? displaySpread(anim.to) : null
@@ -75,8 +76,7 @@ const BookView = forwardRef(function BookView(
     if (e.target.closest('.imgbox')) {
       const flat = flatIndexOf(leaves, leafIndex, side, album.pages.length)
       if (flat != null) {
-        const sourceRect = e.target.closest('.album-page')?.getBoundingClientRect() ?? null
-        onPageOpen(flat, sourceRect)
+        onPageOpen(flat, getSpreadRects())
         return
       }
     }

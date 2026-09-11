@@ -6,7 +6,7 @@ import './focus.css'
 // - 右页（recto）靠左放，书脊在其左侧，同 spread 的左页从左侧露出一小条
 // - 左页（verso）镜像：靠右放，书脊在其右侧，右页从右侧露出
 // - 页面沿书的连续书芯横向滑动，底层纸色与 Book View 完全一致
-// 进出场为容器级 FLIP：整条书芯从被点页面在书中的实际位置放大/缩回。
+// 进出场为双页独立 FLIP：当前 spread 的两页都从书中的实际位置放大/缩回。
 // 分层要点：缩放只作用于 track（页面全程不透明），纸色底与控件单独淡入淡出——
 // 入场时书还在，页面像是从书里被拎出来；退场时书在页面落回原位后才露面。
 //
@@ -15,7 +15,7 @@ import './focus.css'
 const SWIPE_THRESHOLD = 48 // px，横向位移超过才算一次有效翻页手势
 
 const FocusView = forwardRef(function FocusView(
-  { album, index, onIndexChange, onCloseRequest, onClosed, sourceRect },
+  { album, index, onIndexChange, onCloseRequest, onClosed, sourceSpread },
   ref,
 ) {
   const rootRef = useRef(null)
@@ -61,39 +61,42 @@ const FocusView = forwardRef(function FocusView(
     positionAt(next, 'smooth')
   }
 
-  // 容器级 FLIP：让被点页在 track 坐标系里对准 targetRect（书中矩形）
-  const computeTrackFlip = (targetRect) => {
+  // 每页独立 FLIP：当前页和同 spread 的另一页都从书中真实矩形出发。
+  // 单一的 track transform 只能约束当前页，无法同时对齐另一页。
+  const computePageFlip = (flat, targetRect) => {
     const track = trackRef.current
-    const wrap = activeWrap()
+    const wrap = track?.children[flat]
     const pageEl = wrap?.querySelector('.album-page')
     if (!track || !pageEl || !targetRect) return null
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return null
 
     const pageRect = pageEl.getBoundingClientRect()
-    const trackRect = track.getBoundingClientRect()
     const s = targetRect.width / pageRect.width
     const dx = targetRect.left + targetRect.width / 2 - (pageRect.left + pageRect.width / 2)
     const dy = targetRect.top + targetRect.height / 2 - (pageRect.top + pageRect.height / 2)
     return {
-      origin: `${pageRect.left + pageRect.width / 2 - trackRect.left}px ${
-        pageRect.top + pageRect.height / 2 - trackRect.top
-      }px`,
+      wrap,
       transform: `translate(${dx}px, ${dy}px) scale(${s})`,
     }
   }
 
-  const clearTrackFlip = (keepTransform) => {
+  const clearPageFlips = (keepTransform) => {
     const track = trackRef.current
     if (!track) return
-    track.classList.remove('morph-anim', 'morph-prep')
-    // 退场结束时保留 transform（已是书中位置），否则卸载前会闪回放大态
-    if (!keepTransform) {
-      track.style.transform = ''
-      track.style.transformOrigin = ''
-    }
+    Array.from(track.children).forEach((wrap) => {
+      wrap.classList.remove('morph-prep', 'morph-anim')
+      if (!keepTransform) {
+        wrap.classList.remove(
+          'morph-page',
+          'morph-active',
+          'morph-hidden',
+        )
+        wrap.style.transform = ''
+      }
+    })
   }
 
-  // 入场：定位到当前页，然后整条书芯从书中被点页面的矩形连续放大。
+  // 入场：定位到当前页，然后当前 spread 的两页从书中真实位置连续展开。
   // 必须用 useLayoutEffect：初始 transform 要在浏览器绘制第一帧之前就位。
   useLayoutEffect(() => {
     const track = trackRef.current
@@ -103,18 +106,28 @@ const FocusView = forwardRef(function FocusView(
     if (enteredRef.current) return // StrictMode 下 effect 会跑两遍，防重入
     enteredRef.current = true
 
-    const pageEl = wrap.querySelector('.album-page')
-    if (!pageEl || !sourceRect) return
+    const flips = (sourceSpread ?? [])
+      .map(({ flat, rect }) => computePageFlip(flat, rect))
+      .filter(Boolean)
+    if (flips.length === 0) {
+      rootRef.current?.classList.add('is-open')
+      return
+    }
 
-    const flip = computeTrackFlip(sourceRect)
-    if (!flip) return
-
-    track.classList.add('morph-prep') // 先提升合成层，过渡首帧不掉回主线程
-    track.style.transformOrigin = flip.origin
-    track.style.transform = flip.transform // 起始态（书中位置），此时还没有过渡类
-    void track.offsetWidth // 强制回流，固化起始态
-    track.classList.add('morph-anim') // 开过渡
-    track.style.transform = '' // 连续放大到焦点布局
+    const visibleWraps = new Set(flips.map(({ wrap: item }) => item))
+    Array.from(track.children).forEach((item) => {
+      if (!visibleWraps.has(item)) item.classList.add('morph-hidden')
+    })
+    flips.forEach(({ wrap: item, transform }) => {
+      item.classList.add('morph-page', 'morph-prep')
+      item.style.transform = transform
+    })
+    wrap.classList.add('morph-active')
+    void track.offsetWidth // 强制回流，固化两页各自的书中起始态
+    flips.forEach(({ wrap: item }) => {
+      item.classList.add('morph-anim')
+      item.style.transform = ''
+    })
 
     // 纸色底淡入盖住底下的书、控件显形（没有这一步，书会透过所有缝隙露出来）
     const root = rootRef.current
@@ -127,10 +140,10 @@ const FocusView = forwardRef(function FocusView(
     const finish = () => {
       if (finished) return
       finished = true
-      clearTrackFlip(false)
+      clearPageFlips(false)
     }
-    track.addEventListener('transitionend', (e) => {
-      if (e.target === track && e.propertyName === 'transform') finish()
+    wrap.addEventListener('transitionend', (e) => {
+      if (e.target === wrap && e.propertyName === 'transform') finish()
     })
     setTimeout(finish, 650) // 节流/丢事件兜底
 
@@ -143,18 +156,20 @@ const FocusView = forwardRef(function FocusView(
   }, [])
 
   useImperativeHandle(ref, () => ({
-    // 退出：整条书芯缩回到书中目标矩形；动画结束由外层卸载 Focus
-    playClose(targetRect) {
+    // 退出：当前 spread 的两页分别缩回书中目标矩形；动画结束由外层卸载 Focus
+    playClose(targetSpread) {
       if (closingRef.current) return
       closingRef.current = true
       const wrap = activeWrap()
       const pageEl = wrap?.querySelector('.album-page')
-      if (!pageEl || !targetRect) {
+      if (!pageEl) {
         onClosed()
         return
       }
-      const flip = computeTrackFlip(targetRect)
-      if (!flip) {
+      const flips = (targetSpread ?? [])
+        .map(({ flat, rect }) => computePageFlip(flat, rect))
+        .filter(Boolean)
+      if (flips.length === 0) {
         onClosed()
         return
       }
@@ -163,23 +178,29 @@ const FocusView = forwardRef(function FocusView(
       // 底与控件先退，页面在缩回途中保持不透明：底下的书只在页面快落回原位时才透出
       root?.classList.remove('is-open')
       root?.classList.add('is-closing')
-      track.classList.add('morph-prep')
-      track.style.transformOrigin = flip.origin
+      const visibleWraps = new Set(flips.map(({ wrap: item }) => item))
+      Array.from(track.children).forEach((item) => {
+        if (!visibleWraps.has(item)) item.classList.add('morph-hidden')
+      })
+      flips.forEach(({ wrap: item }) => item.classList.add('morph-page', 'morph-prep'))
+      wrap.classList.add('morph-active')
       void track.offsetWidth
-      track.classList.add('morph-anim')
-      track.style.transform = flip.transform // 从 identity 连续缩回书中位置
+      flips.forEach(({ wrap: item, transform }) => {
+        item.classList.add('morph-anim')
+        item.style.transform = transform
+      })
 
       let finished = false
       const finish = () => {
         if (finished) return
         finished = true
         // 保留终态 transform（已是书中位置），等卸载，避免闪回
-        clearTrackFlip(true)
+        clearPageFlips(true)
         onClosed()
       }
       // transitionend 在页面被节流等情况下可能不触发，超时兜底
-      track.addEventListener('transitionend', (e) => {
-        if (e.target === track && e.propertyName === 'transform') finish()
+      wrap.addEventListener('transitionend', (e) => {
+        if (e.target === wrap && e.propertyName === 'transform') finish()
       })
       setTimeout(finish, 650)
     },

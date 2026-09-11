@@ -54,12 +54,14 @@
   position: relative;
   flex: 0 0 var(--zpage-w);
   box-sizing: border-box;
+  --focus-shadow-x-near: 0px;
+  --focus-shadow-x-far: 0px;
 }
 
 .zfocus__page-wrap .album-page {
   box-shadow:
-    0 1px 3px rgba(26, 26, 24, 0.16),
-    0 10px 26px rgba(26, 26, 24, 0.12);
+    var(--focus-shadow-x-near) 2px 6px rgba(26, 26, 24, 0.12),
+    var(--focus-shadow-x-far) 16px 34px rgba(26, 26, 24, 0.11);
 }
 
 /* 书脊加权构图：放大页的书脊侧露出邻页一条（中缝语境），
@@ -70,11 +72,15 @@
    scroll-margin 不再用于原生 snap（分页由自管手势接管），但保留作为
    JS 定位函数读取的「外缘留白」单一来源。 */
 .zfocus__page-wrap.is-recto {
+  --focus-shadow-x-near: 4px;
+  --focus-shadow-x-far: 10px;
   scroll-margin-left: var(--zedge);
   border-left: 1px solid rgba(26, 26, 24, 0.14);
 }
 
 .zfocus__page-wrap.is-verso {
+  --focus-shadow-x-near: -4px;
+  --focus-shadow-x-far: -10px;
   scroll-margin-right: var(--zedge);
   border-right: 1px solid rgba(26, 26, 24, 0.14);
   margin-left: calc(100vw - var(--zedge) - var(--zpage-w));
@@ -112,15 +118,64 @@
   );
 }
 
-/* 容器级 FLIP：整条书芯一起缩放（transform 加在 track 上）。
-   morph-prep 先给 will-change，让图层在过渡开始前就提升（否则首帧掉在主线程上）。 */
-.zfocus__track.morph-prep {
+/* 双页独立 FLIP：只提升当前 spread 的两页，不再把整条可滚动书芯做成超宽合成层。
+   两页首帧分别覆盖 Book View 中的真实位置，再连续走向 Focus 布局。 */
+.zfocus__page-wrap.morph-page {
+  z-index: 3;
+  transform-origin: center center;
+}
+
+.zfocus__page-wrap.morph-active {
+  z-index: 4;
+}
+
+.zfocus__page-wrap.morph-prep {
   will-change: transform;
 }
 
-.zfocus__track.morph-anim {
+.zfocus__page-wrap.morph-anim {
   transition: transform var(--morph-ms) var(--morph-ease);
   will-change: transform;
+}
+
+/* 阴影交接：入场先让底层整书承担投影，scrim 盖稳后页阴影才出现；
+   退场则立即收掉页阴影，再在末段露出底层整书，避免两套阴影叠成黑圈。 */
+.zfocus__page-wrap.morph-page .album-page {
+  animation: focus-shadow-in var(--morph-ms) linear both;
+}
+
+.zfocus.is-closing .zfocus__page-wrap.morph-page .album-page {
+  animation-name: focus-shadow-out;
+}
+
+@keyframes focus-shadow-in {
+  0%, 34% {
+    box-shadow:
+      0 0 0 rgba(26, 26, 24, 0),
+      0 0 0 rgba(26, 26, 24, 0);
+  }
+  78%, 100% {
+    box-shadow:
+      var(--focus-shadow-x-near) 2px 6px rgba(26, 26, 24, 0.12),
+      var(--focus-shadow-x-far) 16px 34px rgba(26, 26, 24, 0.11);
+  }
+}
+
+@keyframes focus-shadow-out {
+  0% {
+    box-shadow:
+      var(--focus-shadow-x-near) 2px 6px rgba(26, 26, 24, 0.12),
+      var(--focus-shadow-x-far) 16px 34px rgba(26, 26, 24, 0.11);
+  }
+  45%, 100% {
+    box-shadow:
+    0 0 0 rgba(26, 26, 24, 0),
+    0 0 0 rgba(26, 26, 24, 0);
+  }
+}
+
+.zfocus__page-wrap.morph-hidden {
+  visibility: hidden;
 }
 
 /* 控件：入场略晚于缩放出现，退场立刻淡出，不再忽然弹出/消失 */
@@ -162,6 +217,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .morph-anim,
+  .morph-page .album-page,
   .zfocus__scrim,
   .zfocus__counter,
   .zfocus__close {
