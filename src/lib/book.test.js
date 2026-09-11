@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { BLANK_PAGE, buildLeaves, flatIndexOf } from './book.js'
+import { BLANK_PAGE, buildLeaves, flatIndexOf, leafOfFlat } from './book.js'
 
 const page = (type, id) => ({ type, layoutId: type, imageIds: [], id })
 
@@ -58,5 +58,18 @@ describe('flatIndexOf 扁平索引映射', () => {
     expect(flatIndexOf(leaves, 1, 'left', pages.length)).toBe(1)
     expect(flatIndexOf(leaves, 1, 'right', pages.length)).toBe(2)
     expect(flatIndexOf(leaves, 2, 'left', pages.length)).toBe(3) // 空白页所在侧无索引需求
+  })
+})
+
+describe('leafOfFlat 扁平页码 → leaf', () => {
+  const pages = [page('cover'), page('single', 'a'), page('double', 'b'), page('single', 'c'), page('back')]
+  const leaves = buildLeaves(pages)
+
+  it('与 flatIndexOf 互逆', () => {
+    expect(leafOfFlat(0, leaves, pages.length)).toBe(0)
+    expect(leafOfFlat(1, leaves, pages.length)).toBe(1)
+    expect(leafOfFlat(2, leaves, pages.length)).toBe(1)
+    expect(leafOfFlat(3, leaves, pages.length)).toBe(2)
+    expect(leafOfFlat(4, leaves, pages.length)).toBe(3)
   })
 })

@@ -28,3 +28,10 @@ export function flatIndexOf(leaves, leafIndex, side, totalPages) {
   const base = 1 + (leafIndex - 1) * 2
   return side === 'left' ? base : base + 1
 }
+
+// 反向映射：扁平页码 → 所在 spread 的 leaf 索引（Focus 退出后书同步摊开到该页）。
+export function leafOfFlat(flatIndex, leaves, totalPages) {
+  if (flatIndex <= 0) return 0
+  if (flatIndex >= totalPages - 1) return leaves.length - 1
+  return 1 + Math.floor((flatIndex - 1) / 2)
+}

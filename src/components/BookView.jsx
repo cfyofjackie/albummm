@@ -5,13 +5,14 @@ import './book.css'
 
 // 书本视图：整本 8:5 spread + 绕书脊的刚性 3D 翻页。
 // 受控组件：leafIndex 由外层持有（Focus View 退出后恢复位置），
-// go() 通过 ref 暴露给控制栏 / 键盘。
+// go() / getPageRect() 通过 ref 暴露给控制栏 / 键盘 / Focus 动画。
 const BookView = forwardRef(function BookView(
   { album, leafIndex, onLeafChange, onPageOpen },
   ref,
 ) {
   const leaves = useMemo(() => buildLeaves(album.pages), [album])
   const [anim, setAnim] = useState(null) // { dir: 'next' | 'prev', to }
+  const rootRef = useRef(null)
   const touchStart = useRef(null)
   const swiped = useRef(false)
 
@@ -30,7 +31,18 @@ const BookView = forwardRef(function BookView(
     setAnim({ dir: dir > 0 ? 'next' : 'prev', to })
   }
 
-  useImperativeHandle(ref, () => ({ go }))
+  // 扁平页码 → 当前 spread 中对应 .album-page 的屏幕矩形（Focus FLIP 动画用）
+  const getPageRect = (flat) => {
+    const total = album.pages.length
+    const isBack = flat >= total - 1
+    const isRecto = flat === 0 || (!isBack && flat % 2 === 0)
+    const half = rootRef.current?.querySelector(
+      isRecto ? '.book__half--right' : '.book__half--left',
+    )
+    return half?.querySelector('.album-page')?.getBoundingClientRect() ?? null
+  }
+
+  useImperativeHandle(ref, () => ({ go, getPageRect }))
 
   const cur = displaySpread(leafIndex)
   const target = anim ? displaySpread(anim.to) : null
@@ -48,11 +60,12 @@ const BookView = forwardRef(function BookView(
 
   const handleHalfClick = (side, e) => {
     if (swiped.current) return
-    // 点页面本体 → Focus View；点留白/书页边缘 → 翻页
+    // 点页面本体 → 带着该页的屏幕矩形进入 Focus View；点留白/书页边缘 → 翻页
     if (e.target.closest('.imgbox')) {
       const flat = flatIndexOf(leaves, leafIndex, side, album.pages.length)
       if (flat != null) {
-        onPageOpen(flat)
+        const sourceRect = e.target.closest('.album-page')?.getBoundingClientRect() ?? null
+        onPageOpen(flat, sourceRect)
         return
       }
     }
@@ -79,6 +92,7 @@ const BookView = forwardRef(function BookView(
 
   return (
     <div
+      ref={rootRef}
       className="book-stage"
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {

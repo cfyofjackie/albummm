@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import BookView from './BookView.jsx'
 import FocusView from './FocusView.jsx'
-import { buildLeaves } from '../lib/book.js'
+import { buildLeaves, leafOfFlat } from '../lib/book.js'
 import './reader.css'
 
 const STYLE_OPTIONS = [
@@ -15,6 +15,9 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
   const [focusIndex, setFocusIndex] = useState(null)
   const [uiVisible, setUiVisible] = useState(true)
   const bookRef = useRef(null)
+  const focusRef = useRef(null)
+  const sourceRectRef = useRef(null)
+  const closingRef = useRef(false)
   const leaves = useMemo(() => buildLeaves(album.pages), [album])
 
   // 换书（重生成 / 切风格）回到封面，退出 Focus
@@ -33,22 +36,43 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
     return () => window.removeEventListener('keydown', onKey)
   }, [focusIndex])
 
+  const openFocus = (flat, sourceRect) => {
+    sourceRectRef.current = sourceRect
+    setFocusIndex(flat)
+  }
+
+  // 退出 Focus：先把书摊开到当前页所在 spread（Focus 覆盖着，用户看不到跳变），
+  // 再把 Focus 的当前页 FLIP 缩回到书中位置，动画结束后卸载。
+  const requestCloseFocus = () => {
+    if (focusIndex == null || closingRef.current) return
+    closingRef.current = true
+    const f = focusIndex
+    setLeafIndex(leafOfFlat(f, leaves, album.pages.length))
+    requestAnimationFrame(() => {
+      const targetRect = bookRef.current?.getPageRect(f)
+      focusRef.current?.playClose(targetRect)
+      closingRef.current = false
+    })
+  }
+
   return (
     <div className="reader" onClick={() => setUiVisible((v) => !v)}>
-      {focusIndex == null ? (
-        <BookView
-          ref={bookRef}
-          album={album}
-          leafIndex={leafIndex}
-          onLeafChange={setLeafIndex}
-          onPageOpen={setFocusIndex}
-        />
-      ) : (
+      <BookView
+        ref={bookRef}
+        album={album}
+        leafIndex={leafIndex}
+        onLeafChange={setLeafIndex}
+        onPageOpen={openFocus}
+      />
+      {focusIndex != null && (
         <FocusView
+          ref={focusRef}
           album={album}
           index={focusIndex}
           onIndexChange={setFocusIndex}
-          onClose={() => setFocusIndex(null)}
+          onCloseRequest={requestCloseFocus}
+          onClosed={() => setFocusIndex(null)}
+          sourceRect={sourceRectRef.current}
         />
       )}
 
