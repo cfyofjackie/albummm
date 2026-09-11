@@ -209,7 +209,9 @@ const FocusView = forwardRef(function FocusView(
         {album.pages.map((p, i) => (
           <div
             key={i}
-            className={`zfocus__page-wrap ${sideOf(i) === 'right' ? 'is-recto' : 'is-verso'}`}
+            className={`zfocus__page-wrap ${sideOf(i) === 'right' ? 'is-recto' : 'is-verso'}${
+              i === 1 ? ' flush-left' : i === total - 2 ? ' flush-right' : ''
+            }`}
             onClick={(e) => handleWrapClick(e, i)}
           >
             <AlbumPage page={p} album={album} />

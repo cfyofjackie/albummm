@@ -57,6 +57,16 @@
   border-right: 1px solid rgba(26, 26, 24, 0.14);
 }
 
+/* 书端页不参与露边：第一张内容页贴左缘（封面藏出屏外），
+   最后一张内容页贴右缘（封底同理）——翻开的书不该看到封面「正面」。 */
+.zfocus__page-wrap.flush-left {
+  scroll-margin-left: 0;
+}
+
+.zfocus__page-wrap.flush-right {
+  scroll-margin-right: 0;
+}
+
 /* 中缝阴影：画在每页的书脊侧内缘，渐变值与 BookView 的 gutter 一致 */
 .zfocus__page-wrap.is-verso::after,
 .zfocus__page-wrap.is-recto::before {
