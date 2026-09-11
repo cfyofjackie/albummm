@@ -66,7 +66,7 @@ const FocusView = forwardRef(function FocusView(
     const track = trackRef.current
     const wrap = track?.children[index]
     if (!wrap) return
-    wrap.scrollIntoView({ inline: sideOf(index) === 'right' ? 'end' : 'start', block: 'nearest' })
+    wrap.scrollIntoView({ inline: sideOf(index) === 'right' ? 'start' : 'end', block: 'nearest' })
     if (enteredRef.current) return // StrictMode 下 effect 会跑两遍，防重入
     enteredRef.current = true
 
@@ -186,7 +186,7 @@ const FocusView = forwardRef(function FocusView(
     } else {
       // 点露出的邻页 → 滑过去看它
       trackRef.current.children[i].scrollIntoView({
-        inline: sideOf(i) === 'right' ? 'end' : 'start',
+        inline: sideOf(i) === 'right' ? 'start' : 'end',
         block: 'nearest',
         behavior: 'smooth',
       })
@@ -209,9 +209,7 @@ const FocusView = forwardRef(function FocusView(
         {album.pages.map((p, i) => (
           <div
             key={i}
-            className={`zfocus__page-wrap ${sideOf(i) === 'right' ? 'is-recto' : 'is-verso'}${
-              i === 1 ? ' flush-left' : i === total - 2 ? ' flush-right' : ''
-            }`}
+            className={`zfocus__page-wrap ${sideOf(i) === 'right' ? 'is-recto' : 'is-verso'}`}
             onClick={(e) => handleWrapClick(e, i)}
           >
             <AlbumPage page={p} album={album} />

@@ -43,28 +43,22 @@
     0 10px 26px rgba(26, 26, 24, 0.12);
 }
 
-/* 右页：贴右缘 snap，书脊在左；左页镜像。
-   页面彼此贴住（与书景一致），书脊线用 1px 边框画在书脊侧。 */
+/* 书脊加权构图：放大页的书脊侧露出邻页一条（中缝语境），
+   外缘一侧完全留空（纸色背景，无邻页白边）。
+   实现：recto 贴左缘 snap（左露 verso 条），verso 贴右缘 snap（右露 recto 条）；
+   verso 的左margin在书口（fore-edge）处撑出空隙，把外缘邻页推出屏外——
+   封面/封底也因此自动藏在屏外。 */
 .zfocus__page-wrap.is-recto {
-  scroll-snap-align: end;
-  scroll-margin-right: var(--zedge);
+  scroll-snap-align: start;
+  scroll-margin-left: var(--zedge);
   border-left: 1px solid rgba(26, 26, 24, 0.14);
 }
 
 .zfocus__page-wrap.is-verso {
-  scroll-snap-align: start;
-  scroll-margin-left: var(--zedge);
+  scroll-snap-align: end;
+  scroll-margin-right: var(--zedge);
   border-right: 1px solid rgba(26, 26, 24, 0.14);
-}
-
-/* 书端页不参与露边：第一张内容页贴左缘（封面藏出屏外），
-   最后一张内容页贴右缘（封底同理）——翻开的书不该看到封面「正面」。 */
-.zfocus__page-wrap.flush-left {
-  scroll-margin-left: 0;
-}
-
-.zfocus__page-wrap.flush-right {
-  scroll-margin-right: 0;
+  margin-left: calc(100vw - var(--zedge) - var(--zpage-w));
 }
 
 /* 中缝阴影：画在每页的书脊侧内缘，渐变值与 BookView 的 gutter 一致 */
