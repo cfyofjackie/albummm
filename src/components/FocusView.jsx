@@ -116,6 +116,13 @@ const FocusView = forwardRef(function FocusView(
     track.classList.add('morph-anim') // 开过渡
     track.style.transform = '' // 连续放大到焦点布局
 
+    // 纸色底淡入盖住底下的书、控件显形（没有这一步，书会透过所有缝隙露出来）
+    const root = rootRef.current
+    if (root) {
+      void root.offsetWidth
+      root.classList.add('is-open')
+    }
+
     let finished = false
     const finish = () => {
       if (finished) return
@@ -152,8 +159,10 @@ const FocusView = forwardRef(function FocusView(
         return
       }
       const track = trackRef.current
+      const root = rootRef.current
       // 底与控件先退，页面在缩回途中保持不透明：底下的书只在页面快落回原位时才透出
-      track.closest('.zfocus').classList.add('is-closing')
+      root?.classList.remove('is-open')
+      root?.classList.add('is-closing')
       track.classList.add('morph-prep')
       track.style.transformOrigin = flip.origin
       void track.offsetWidth
