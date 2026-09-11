@@ -10,6 +10,12 @@
   background: var(--paper);
 }
 
+/* 退场末段：整层淡出，溶进底下的书本 */
+.zfocus.is-fading {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
 .zfocus__track {
   height: 100%;
   display: flex;

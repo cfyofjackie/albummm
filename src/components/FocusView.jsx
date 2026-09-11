@@ -123,8 +123,19 @@ const FocusView = forwardRef(function FocusView(
       const finish = () => {
         if (finished) return
         finished = true
-        clearTrackFlip(true) // 保留终态 transform，等卸载，避免闪回
-        onClosed()
+        // 缩到位后快速淡出覆盖层：书芯是连续的，会带出书中没有的邻页边和
+        // 不同的阴影质感，直接卸载会生硬跳变；淡出让它溶进底下已对齐的书里。
+        const overlay = track.closest('.zfocus')
+        if (overlay && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          overlay.classList.add('is-fading')
+          setTimeout(() => {
+            clearTrackFlip(true)
+            onClosed()
+          }, 150)
+        } else {
+          clearTrackFlip(true)
+          onClosed()
+        }
       }
       // transitionend 在页面被节流等情况下可能不触发，超时兜底
       track.addEventListener('transitionend', (e) => {
