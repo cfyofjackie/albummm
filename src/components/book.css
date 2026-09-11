@@ -1,0 +1,161 @@
+/* 书本视图：整本书是一个完整视觉对象（书影 + 书脊），内部页面仍为 4:5 固定坐标系 */
+
+.book-stage {
+  width: min(100%, calc((100dvh - 180px) * 1.6));
+  margin: 0 auto;
+  outline: none;
+}
+
+.book {
+  position: relative;
+  aspect-ratio: 8 / 5;
+  perspective: 2200px;
+  background: var(--paper);
+  box-shadow:
+    0 1px 2px rgba(26, 26, 24, 0.18),
+    0 14px 28px rgba(26, 26, 24, 0.12),
+    0 30px 70px rgba(26, 26, 24, 0.16);
+}
+
+.book__half {
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.book__half--left { left: 0; }
+.book__half--right { right: 0; }
+
+/* 书脊：中缝 1px + 两侧渐变阴影，克制 */
+.book__spine {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(26, 26, 24, 0.14);
+  z-index: 6;
+  pointer-events: none;
+}
+
+.book__gutter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12%;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.book__gutter--right-edge {
+  right: 0;
+  background: linear-gradient(
+    to right,
+    rgba(26, 26, 24, 0),
+    rgba(26, 26, 24, 0.07) 70%,
+    rgba(26, 26, 24, 0.13)
+  );
+}
+
+.book__gutter--left-edge {
+  left: 0;
+  background: linear-gradient(
+    to left,
+    rgba(26, 26, 24, 0),
+    rgba(26, 26, 24, 0.07) 70%,
+    rgba(26, 26, 24, 0.13)
+  );
+}
+
+/* 翻动的 leaf：正面 = 当前页，背面 = 目标 spread 的对页 */
+.book__leaf {
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  z-index: 10;
+  transform-style: preserve-3d;
+  will-change: transform;
+  --flip-ms: 650ms;
+}
+
+.book__leaf--next {
+  right: 0;
+  transform-origin: left center;
+  animation: book-flip-next var(--flip-ms) ease-in-out forwards;
+}
+
+.book__leaf--prev {
+  left: 0;
+  transform-origin: right center;
+  animation: book-flip-prev var(--flip-ms) ease-in-out forwards;
+}
+
+.book__face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  overflow: hidden;
+}
+
+.book__face--back {
+  transform: rotateY(180deg);
+}
+
+.book__face-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* 书脊侧阴影：翻起时渐显，落定后渐隐 */
+.book__leaf--next .book__face-shade--front,
+.book__leaf--next .book__face-shade--back {
+  background: linear-gradient(to right, rgba(26, 26, 24, 0.3), rgba(26, 26, 24, 0) 45%);
+}
+
+.book__leaf--prev .book__face-shade--front,
+.book__leaf--prev .book__face-shade--back {
+  background: linear-gradient(to left, rgba(26, 26, 24, 0.3), rgba(26, 26, 24, 0) 45%);
+}
+
+.book__face-shade--front {
+  animation: book-shade-in var(--flip-ms) linear forwards;
+}
+
+.book__face-shade--back {
+  animation: book-shade-out var(--flip-ms) linear forwards;
+}
+
+@keyframes book-flip-next {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(-180deg); }
+}
+
+@keyframes book-flip-prev {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(180deg); }
+}
+
+@keyframes book-shade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes book-shade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .book__leaf--next,
+  .book__leaf--prev,
+  .book__face-shade--front,
+  .book__face-shade--back {
+    animation-duration: 1ms;
+  }
+}

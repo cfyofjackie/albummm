@@ -94,14 +94,12 @@ export default function App() {
 
   if (album) {
     return (
-      <div className="page">
-        <AlbumViewer
-          album={album}
-          onBack={() => setAlbum(null)}
-          onRegenerate={() => generate(album.style)}
-          onStyleChange={(styleId) => generate(styleId, album.seed)}
-        />
-      </div>
+      <AlbumViewer
+        album={album}
+        onBack={() => setAlbum(null)}
+        onRegenerate={() => generate(album.style)}
+        onStyleChange={(styleId) => generate(styleId, album.seed)}
+      />
     )
   }
 

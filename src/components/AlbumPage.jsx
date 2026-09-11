@@ -14,6 +14,7 @@ function Cover({ album, back }) {
 }
 
 export default function AlbumPage({ page, album }) {
+  if (page.type === 'blank') return <div className="album-page album-page--blank" aria-hidden="true" />
   if (page.type === 'cover') return <Cover album={album} />
   if (page.type === 'back') return <Cover album={album} back />
 
