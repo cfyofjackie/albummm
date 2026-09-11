@@ -3,7 +3,7 @@
 
 .zfocus {
   --zedge: 5vw; /* 书页外缘留白 */
-  --zpage-w: min(78vw, calc((100dvh - 170px) * 0.8));
+  --zpage-w: min(88vw, calc((100dvh - 170px) * 0.8));
   position: fixed;
   inset: 0;
   z-index: 40;
