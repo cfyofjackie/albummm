@@ -93,6 +93,12 @@ const FocusView = forwardRef(function FocusView(
       if (e.target === track && e.propertyName === 'transform') finish()
     })
     setTimeout(finish, 500) // 节流/丢事件兜底
+
+    // 预解码条带上全部页面图：视口外的图片浏览器会推迟解码，
+    // 退出缩放时邻页会以空白页滑入、图片延迟上屏（用户看到的「右边加载慢」）
+    track.querySelectorAll('img').forEach((img) => {
+      img.decode?.().catch(() => {})
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
