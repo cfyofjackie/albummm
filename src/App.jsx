@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   MAX_PHOTOS,
   MIN_PHOTOS,
@@ -6,6 +6,9 @@ import {
   isAcceptedFile,
   loadPhoto,
 } from './lib/photo.js'
+import { planPages } from './lib/plan.js'
+import { pickCoverColor } from './lib/palette.js'
+import AlbumViewer from './components/AlbumViewer.jsx'
 import './App.css'
 
 const STYLES = [
@@ -21,6 +24,7 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [dragOver, setDragOver] = useState(false)
+  const [album, setAlbum] = useState(null)
   const inputRef = useRef(null)
 
   const addFiles = useCallback(
@@ -54,6 +58,52 @@ export default function App() {
   }
 
   const canGenerate = photos.length >= MIN_PHOTOS && !loading
+
+  const generate = (styleId = style, seed = Math.floor(Math.random() * 1e9), photoList = photos) => {
+    const pages = planPages(photoList, styleId, seed)
+    setAlbum({
+      title: title.trim() || 'Untitled Album',
+      style: styleId,
+      seed,
+      coverColor: pickCoverColor(seed),
+      photos: photoList,
+      photosById: Object.fromEntries(photoList.map((p) => [p.id, p])),
+      pages,
+    })
+  }
+
+  // 演示模式：/?demo=N&go 自动填充测试图并成书
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const demoCount = parseInt(params.get('demo'), 10)
+    if (!demoCount) return
+    const n = Math.max(MIN_PHOTOS, Math.min(MAX_PHOTOS, demoCount))
+    import('./lib/demo.js').then(({ makeDemoPhotos }) =>
+      makeDemoPhotos(n).then((demoPhotos) => {
+        setPhotos(demoPhotos)
+        if (params.get('go')) {
+          const seed = Math.floor(Math.random() * 1e9)
+          const styleId = params.get('style') || 'gallery'
+          setStyle(styleId)
+          generate(styleId, seed, demoPhotos)
+        }
+      }),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  if (album) {
+    return (
+      <div className="page">
+        <AlbumViewer
+          album={album}
+          onBack={() => setAlbum(null)}
+          onRegenerate={() => generate(album.style)}
+          onStyleChange={(styleId) => generate(styleId, album.seed)}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="page">
@@ -154,10 +204,7 @@ export default function App() {
           type="button"
           className="generate"
           disabled={!canGenerate}
-          onClick={() => {
-            /* V0.2 接入 planPages */
-            alert(`已就绪：${photos.length} 张图片，风格 ${style}`)
-          }}
+          onClick={() => generate()}
         >
           {loading
             ? '读取中…'

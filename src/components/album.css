@@ -1,0 +1,68 @@
+/* 相册页面：4:5 固定设计坐标系，内部只用百分比/相对单位（SLC.md 三） */
+
+.album-page {
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  background: var(--paper);
+  overflow: hidden;
+  container-type: inline-size;
+  padding: var(--pad);
+}
+
+/* 统一页面留白（相对页面宽度）；padding 百分比四边均以宽度为基准 */
+.style-gallery { --pad: 8%; }
+.style-rhythm  { --pad: 4.5%; }
+.style-frame   { --pad: 11%; }
+
+.page-area {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.imgbox {
+  position: absolute;
+  margin: 0;
+}
+
+.imgbox img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* frame 风格：装裱感——图片带白色卡纸和细边 */
+.style-frame .imgbox {
+  background: #fffdf8;
+  padding: 6%;
+  box-shadow: inset 0 0 0 1px rgba(26, 26, 24, 0.1);
+}
+
+/* 封面 / 封底 */
+.album-page--cover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12%;
+}
+
+.cover--dark .cover__title { color: #f2efe6; }
+.cover--light .cover__title { color: #2a2823; }
+
+.cover__title {
+  font-size: 8.5cqw;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-align: center;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.cover__title--small {
+  font-size: 3.2cqw;
+  letter-spacing: 0.22em;
+  opacity: 0.82;
+}
