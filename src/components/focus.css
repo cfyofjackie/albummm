@@ -42,7 +42,6 @@
   align-items: center;
   overflow-x: auto;
   overflow-y: hidden;
-  scroll-snap-type: x mandatory;
   padding-inline: var(--zedge);
   scrollbar-width: none;
 }
@@ -65,17 +64,17 @@
 
 /* 书脊加权构图：放大页的书脊侧露出邻页一条（中缝语境），
    外缘一侧完全留空（纸色背景，无邻页白边）。
-   实现：recto 贴左缘 snap（左露 verso 条），verso 贴右缘 snap（右露 recto 条）；
-   verso 的左margin在书口（fore-edge）处撑出空隙，把外缘邻页推出屏外——
-   封面/封底也因此自动藏在屏外。 */
+   实现：recto 阅读位在左缘留 edge（左露 verso 条），verso 镜像（右露 recto 条）；
+   verso 的左 margin 在书口（fore-edge）处撑出空隙，把外缘邻页推出屏外——
+   封面/封底也因此自动藏在屏外。
+   scroll-margin 不再用于原生 snap（分页由自管手势接管），但保留作为
+   JS 定位函数读取的「外缘留白」单一来源。 */
 .zfocus__page-wrap.is-recto {
-  scroll-snap-align: start;
   scroll-margin-left: var(--zedge);
   border-left: 1px solid rgba(26, 26, 24, 0.14);
 }
 
 .zfocus__page-wrap.is-verso {
-  scroll-snap-align: end;
   scroll-margin-right: var(--zedge);
   border-right: 1px solid rgba(26, 26, 24, 0.14);
   margin-left: calc(100vw - var(--zedge) - var(--zpage-w));
