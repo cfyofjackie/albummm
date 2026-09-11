@@ -1,22 +1,42 @@
-/* Focus View：放大阅读书的单页。背景与 Book View 一致（纸色），
-   页面按书中左右侧偏移摆放，中缝在书脊侧，邻页露出一小条。 */
+/* Focus View：放大阅读书的单页。页面按书中左右侧偏移摆放，中缝在书脊侧，邻页露出一小条。
+   分层：scrim（纸色底）与 track（书芯）分开 —— 缩放期间页面本身始终不透明，
+   只有底与控件做淡入淡出，避免退场时整层半透明造成的重影/溶图。 */
 
 .zfocus {
   --zedge: 8vw; /* 书脊侧邻页露出宽度 */
   --zpage-w: min(86vw, calc((100dvh - 170px) * 0.8));
+  --morph-ms: 360ms;
+  /* 入场：起步慢——缩放开头的几十毫秒里书芯还压在书中矩形上，纸色底趁机铺满，
+     等底铺满了再让页面滑到阅读位，途中不会露出底下的书（无重影） */
+  --morph-ease: cubic-bezier(0.45, 0.05, 0.25, 1);
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: var(--paper);
 }
 
-/* 退场：整层与缩放同步淡出，溶进底下的书本（掩盖缩回时新暴露区域的栅格化延迟） */
-.zfocus.is-fading {
+/* 退场用相反的手感：先利落缩回，末尾轻收，于是纸色底可以在页面几乎落位后再褪 */
+.zfocus.is-closing {
+  --morph-ease: cubic-bezier(0.25, 0.7, 0.3, 1);
+}
+
+/* 纸色底：入场淡入（让书在最初 200ms 里还看得见，页面像是从书里被拎出来），
+   退场延迟淡出（缩回到位前书不露面，避免缩小途中出现书的残影）。 */
+.zfocus__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--paper);
   opacity: 0;
-  transition: opacity 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  transition: opacity 120ms ease-in 220ms; /* 默认 = 退场时序：页面落回原位前不着色 */
+}
+
+.zfocus.is-open .zfocus__scrim {
+  opacity: 1;
+  transition: opacity 150ms ease-out;
 }
 
 .zfocus__track {
+  position: relative;
+  z-index: 1;
   height: 100%;
   display: flex;
   align-items: center;
@@ -93,10 +113,28 @@
   );
 }
 
-/* 容器级 FLIP：整条书芯一起缩放（transform 加在 track 上） */
-.zfocus__track.morph-anim {
-  transition: transform 0.34s cubic-bezier(0.22, 0.61, 0.36, 1);
+/* 容器级 FLIP：整条书芯一起缩放（transform 加在 track 上）。
+   morph-prep 先给 will-change，让图层在过渡开始前就提升（否则首帧掉在主线程上）。 */
+.zfocus__track.morph-prep {
   will-change: transform;
+}
+
+.zfocus__track.morph-anim {
+  transition: transform var(--morph-ms) var(--morph-ease);
+  will-change: transform;
+}
+
+/* 控件：入场略晚于缩放出现，退场立刻淡出，不再忽然弹出/消失 */
+.zfocus__counter,
+.zfocus__close {
+  opacity: 0;
+  transition: opacity 120ms ease-in;
+}
+
+.zfocus.is-open .zfocus__counter,
+.zfocus.is-open .zfocus__close {
+  opacity: 1;
+  transition: opacity 200ms ease-out 120ms;
 }
 
 .zfocus__counter {
@@ -124,11 +162,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .morph-anim {
+  .morph-anim,
+  .zfocus__scrim,
+  .zfocus__counter,
+  .zfocus__close {
     transition-duration: 1ms;
-  }
-
-  .zfocus.is-fading {
-    transition-duration: 1ms;
+    transition-delay: 0ms;
   }
 }

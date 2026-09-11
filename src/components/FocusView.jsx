@@ -5,12 +5,15 @@ import './focus.css'
 // Focus View：放大阅读书的单页。物理正确的书页几何：
 // - 右页（recto）靠右放，书脊在其左侧，同 spread 的左页从左侧露出一小条
 // - 左页（verso）镜像：靠左放，书脊在右，右页从右侧露出
-// - 页面沿书的连续书芯横向滑动（scroll-snap），背景与 Book View 完全一致（纸色）
-// 进出场为 FLIP 缩放：从被点页面在书中的实际位置放大/缩回，无界面切换感。
+// - 页面沿书的连续书芯横向滑动（scroll-snap），底层纸色与 Book View 完全一致
+// 进出场为容器级 FLIP：整条书芯从被点页面在书中的实际位置放大/缩回。
+// 分层要点：缩放只作用于 track（页面全程不透明），纸色底与控件单独淡入淡出——
+// 入场时书还在，页面像是从书里被拎出来；退场时书在页面落回原位后才露面。
 const FocusView = forwardRef(function FocusView(
   { album, index, onIndexChange, onCloseRequest, onClosed, sourceRect },
   ref,
 ) {
+  const rootRef = useRef(null)
   const trackRef = useRef(null)
   const touchStart = useRef(null)
   const closingRef = useRef(false)
@@ -49,7 +52,7 @@ const FocusView = forwardRef(function FocusView(
   const clearTrackFlip = (keepTransform) => {
     const track = trackRef.current
     if (!track) return
-    track.classList.remove('morph-anim')
+    track.classList.remove('morph-anim', 'morph-prep')
     // 退场结束时必须保留 transform（已是书中位置），否则卸载前会闪回放大态
     if (!keepTransform) {
       track.style.transform = ''
@@ -64,6 +67,7 @@ const FocusView = forwardRef(function FocusView(
   // 必须用 useLayoutEffect：初始态要在浏览器绘制第一帧之前就位。
   useLayoutEffect(() => {
     const track = trackRef.current
+    const root = rootRef.current
     const wrap = track?.children[index]
     if (!wrap) return
     wrap.scrollIntoView({ inline: sideOf(index) === 'right' ? 'start' : 'end', block: 'nearest' })
@@ -71,34 +75,40 @@ const FocusView = forwardRef(function FocusView(
     enteredRef.current = true
 
     const pageEl = wrap.querySelector('.album-page')
-    if (!pageEl || !sourceRect) return
+    const flip = pageEl && sourceRect ? computeTrackFlip(sourceRect) : null
 
-    const flip = computeTrackFlip(sourceRect)
-    if (!flip) return
+    if (flip) {
+      morphingRef.current = true
+      track.classList.add('morph-prep') // 先提升合成层，首帧才不掉回主线程
+      track.style.transformOrigin = flip.origin
+      track.style.transform = flip.transform // 起始态（书中位置），此时还没有过渡类
+      void track.offsetWidth // 强制回流，固化起始态
+      track.classList.add('morph-anim') // 开过渡
+      track.style.transform = '' // 连续放大到焦点布局
 
-    morphingRef.current = true
-    track.style.transformOrigin = flip.origin
-    track.style.transform = flip.transform // 起始态（书中位置），此时还没有过渡类
-    void track.offsetWidth // 强制回流，固化起始态
-    track.classList.add('morph-anim') // 开过渡
-    track.style.transform = '' // 连续放大到焦点布局
+      let finished = false
+      const finish = () => {
+        if (finished) return
+        finished = true
+        clearTrackFlip(false)
+      }
+      track.addEventListener('transitionend', (e) => {
+        if (e.target === track && e.propertyName === 'transform') finish()
+      })
+      setTimeout(finish, 650) // 节流/丢事件兜底
 
-    let finished = false
-    const finish = () => {
-      if (finished) return
-      finished = true
-      clearTrackFlip(false)
+      // 预解码条带上全部页面图：视口外的图片浏览器会推迟解码，
+      // 退出缩放时邻页会以空白页滑入、图片延迟上屏（用户看到的「右边加载慢」）
+      track.querySelectorAll('img').forEach((img) => {
+        img.decode?.().catch(() => {})
+      })
     }
-    track.addEventListener('transitionend', (e) => {
-      if (e.target === track && e.propertyName === 'transform') finish()
-    })
-    setTimeout(finish, 500) // 节流/丢事件兜底
 
-    // 预解码条带上全部页面图：视口外的图片浏览器会推迟解码，
-    // 退出缩放时邻页会以空白页滑入、图片延迟上屏（用户看到的「右边加载慢」）
-    track.querySelectorAll('img').forEach((img) => {
-      img.decode?.().catch(() => {})
-    })
+    // 纸色底与控件随缩放一起淡入（在回流之后加类，过渡才有起点）
+    if (root) {
+      void root.offsetWidth
+      root.classList.add('is-open')
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -107,27 +117,24 @@ const FocusView = forwardRef(function FocusView(
     playClose(targetRect) {
       if (closingRef.current) return
       closingRef.current = true
+      const track = trackRef.current
+      const root = rootRef.current
       const wrap = activeWrap()
       const pageEl = wrap?.querySelector('.album-page')
-      if (!pageEl || !targetRect) {
-        onClosed()
-        return
-      }
-      const flip = computeTrackFlip(targetRect)
+      const flip = pageEl ? computeTrackFlip(targetRect) : null
       if (!flip) {
         onClosed()
         return
       }
+      // 底与控件先退，页面在缩回途中保持不透明：底下的书只在页面快落回原位时才透出来
+      root?.classList.remove('is-open')
+      root?.classList.add('is-closing')
       morphingRef.current = true
-      const track = trackRef.current
+      track.classList.add('morph-prep')
       track.style.transformOrigin = flip.origin
-      track.classList.add('morph-anim')
       void track.offsetWidth
+      track.classList.add('morph-anim')
       track.style.transform = flip.transform // 从 identity 连续缩回书中位置
-
-      // 淡出与缩回同步：缩回时新进入视野的区域栅格化有延迟，
-      // 右侧会先露白底再补内容；交叉溶解让底下的书逐渐透出，掩盖这个瞬间
-      track.closest('.zfocus').classList.add('is-fading')
 
       let finished = false
       const finish = () => {
@@ -141,7 +148,7 @@ const FocusView = forwardRef(function FocusView(
       track.addEventListener('transitionend', (e) => {
         if (e.target === track && e.propertyName === 'transform') finish()
       })
-      setTimeout(finish, 500)
+      setTimeout(finish, 650)
     },
   }))
 
@@ -194,7 +201,8 @@ const FocusView = forwardRef(function FocusView(
   }
 
   return (
-    <div className="zfocus">
+    <div className="zfocus" ref={rootRef}>
+      <div className="zfocus__scrim" />
       <div
         className="zfocus__track"
         ref={trackRef}
