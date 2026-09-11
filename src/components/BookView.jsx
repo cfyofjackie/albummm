@@ -13,6 +13,7 @@ const BookView = forwardRef(function BookView(
   const leaves = useMemo(() => buildLeaves(album.pages), [album])
   const [anim, setAnim] = useState(null) // { dir: 'next' | 'prev', to }
   const rootRef = useRef(null)
+  const animTimerRef = useRef(null)
   const touchStart = useRef(null)
   const swiped = useRef(false)
 
@@ -24,11 +25,21 @@ const BookView = forwardRef(function BookView(
     return { left: l[0], right: l[1] ?? BLANK_PAGE }
   }
 
+  const commitAnim = (to) => {
+    clearTimeout(animTimerRef.current)
+    animTimerRef.current = null
+    onLeafChange(to)
+    setAnim(null)
+  }
+
   const go = (dir) => {
     if (anim) return
     const to = leafIndex + dir
     if (to < 0 || to >= leaves.length) return
     setAnim({ dir: dir > 0 ? 'next' : 'prev', to })
+    // 页面被节流时 animationend 可能不触发，超时兜底防止卡在合成帧
+    clearTimeout(animTimerRef.current)
+    animTimerRef.current = setTimeout(() => commitAnim(to), 800)
   }
 
   // 扁平页码 → 当前 spread 中对应 .album-page 的屏幕矩形（Focus FLIP 动画用）
@@ -122,9 +133,9 @@ const BookView = forwardRef(function BookView(
         {anim && (
           <div
             className={`book__leaf book__leaf--${anim.dir}`}
-            onAnimationEnd={() => {
-              onLeafChange(anim.to)
-              setAnim(null)
+            onAnimationEnd={(e) => {
+              // face-shade 的动画事件也会冒泡上来，只认 leaf 自身的 transform 动画
+              if (e.target === e.currentTarget && anim) commitAnim(anim.to)
             }}
           >
             <div className="book__face book__face--front">

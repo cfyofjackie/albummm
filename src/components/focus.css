@@ -3,7 +3,6 @@
 
 .zfocus {
   --zedge: 5vw; /* 书页外缘留白 */
-  --zgutter: 6vw; /* 书脊间隙 */
   --zpage-w: min(78vw, calc((100dvh - 170px) * 0.8));
   position: fixed;
   inset: 0;
@@ -29,7 +28,7 @@
 .zfocus__page-wrap {
   position: relative;
   flex: 0 0 var(--zpage-w);
-  transition: opacity 0.3s ease;
+  box-sizing: border-box;
 }
 
 .zfocus__page-wrap .album-page {
@@ -38,19 +37,21 @@
     0 10px 26px rgba(26, 26, 24, 0.12);
 }
 
-/* 右页：贴右缘 snap，书脊在左；左页镜像 */
+/* 右页：贴右缘 snap，书脊在左；左页镜像。
+   页面彼此贴住（与书景一致），书脊线用 1px 边框画在书脊侧。 */
 .zfocus__page-wrap.is-recto {
   scroll-snap-align: end;
   scroll-margin-right: var(--zedge);
+  border-left: 1px solid rgba(26, 26, 24, 0.14);
 }
 
 .zfocus__page-wrap.is-verso {
   scroll-snap-align: start;
   scroll-margin-left: var(--zedge);
-  margin-right: var(--zgutter); /* verso|recto 之间是书脊 */
+  border-right: 1px solid rgba(26, 26, 24, 0.14);
 }
 
-/* 中缝阴影：画在每页的书脊侧内缘 */
+/* 中缝阴影：画在每页的书脊侧内缘，渐变值与 BookView 的 gutter 一致 */
 .zfocus__page-wrap.is-verso::after,
 .zfocus__page-wrap.is-recto::before {
   content: '';
@@ -80,11 +81,6 @@
     rgba(26, 26, 24, 0.07) 70%,
     rgba(26, 26, 24, 0.13)
   );
-}
-
-/* FLIP 进出场：只动当前页，其余页淡入淡出 */
-.zfocus__track.is-entering .zfocus__page-wrap:not(.is-morphing) {
-  opacity: 0;
 }
 
 .morph-anim {
@@ -120,9 +116,5 @@
 @media (prefers-reduced-motion: reduce) {
   .morph-anim {
     transition-duration: 1ms;
-  }
-
-  .zfocus__page-wrap {
-    transition: none;
   }
 }

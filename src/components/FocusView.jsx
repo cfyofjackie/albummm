@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import { forwardRef, useImperativeHandle, useLayoutEffect, useRef } from 'react'
 import AlbumPage from './AlbumPage.jsx'
 import './focus.css'
 
@@ -23,13 +23,19 @@ const FocusView = forwardRef(function FocusView(
   }
 
   const activeWrap = () => trackRef.current?.children[index] ?? null
+  const enteredRef = useRef(false)
 
-  // 入场：定位到当前页，然后从书中被点页面的矩形放大过来
-  useEffect(() => {
+  // 入场：定位到当前页，然后从书中被点页面的矩形放大过来。
+  // 必须用 useLayoutEffect：初始 transform 要在浏览器绘制第一帧之前就位，
+  // 否则会先闪现一帧「最终布局」再跳回起点——看起来就是「分段展开」。
+  useLayoutEffect(() => {
     const track = trackRef.current
-    const wrap = track.children[index]
+    const wrap = track?.children[index]
     if (!wrap) return
     wrap.scrollIntoView({ inline: sideOf(index) === 'right' ? 'end' : 'start', block: 'nearest' })
+    if (enteredRef.current) return // StrictMode 下 effect 会跑两遍，防重入
+    enteredRef.current = true
+
     const pageEl = wrap.querySelector('.album-page')
     if (!pageEl || !sourceRect) return
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
@@ -40,22 +46,16 @@ const FocusView = forwardRef(function FocusView(
     const sx = sourceRect.width / last.width
     const sy = sourceRect.height / last.height
 
-    track.classList.add('is-entering')
-    wrap.classList.add('is-morphing')
     pageEl.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`
     void pageEl.offsetWidth // 先呈现起始状态，再加过渡类
     pageEl.classList.add('morph-anim')
     pageEl.style.transform = ''
-    pageEl.addEventListener(
-      'transitionend',
-      (e) => {
-        if (e.target !== pageEl) return
-        pageEl.classList.remove('morph-anim')
-        wrap.classList.remove('is-morphing')
-        track.classList.remove('is-entering')
-      },
-      { once: true },
-    )
+    const done = (e) => {
+      if (e.target !== pageEl) return
+      pageEl.classList.remove('morph-anim')
+      pageEl.removeEventListener('transitionend', done)
+    }
+    pageEl.addEventListener('transitionend', done)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -70,26 +70,26 @@ const FocusView = forwardRef(function FocusView(
         onClosed()
         return
       }
-      const track = trackRef.current
       const first = pageEl.getBoundingClientRect()
       const dx = targetRect.left + targetRect.width / 2 - (first.left + first.width / 2)
       const dy = targetRect.top + targetRect.height / 2 - (first.top + first.height / 2)
       const sx = targetRect.width / first.width
       const sy = targetRect.height / first.height
 
-      track.classList.add('is-entering')
-      wrap.classList.add('is-morphing')
       pageEl.classList.add('morph-anim')
       void pageEl.offsetWidth
       pageEl.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`
-      pageEl.addEventListener(
-        'transitionend',
-        (e) => {
-          if (e.target !== pageEl) return
-          onClosed()
-        },
-        { once: true },
-      )
+      let finished = false
+      const finish = () => {
+        if (finished) return
+        finished = true
+        onClosed()
+      }
+      // animationend 在页面被节流等情况下可能不触发，超时兜底
+      pageEl.addEventListener('transitionend', (e) => {
+        if (e.target === pageEl) finish()
+      })
+      setTimeout(finish, 500)
     },
   }))
 
