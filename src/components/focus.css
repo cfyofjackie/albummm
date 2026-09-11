@@ -2,8 +2,8 @@
    页面按书中左右侧偏移摆放，中缝在书脊侧，邻页露出一小条。 */
 
 .zfocus {
-  --zedge: 5vw; /* 书页外缘留白 */
-  --zpage-w: min(88vw, calc((100dvh - 170px) * 0.8));
+  --zedge: 8vw; /* 书脊侧邻页露出宽度 */
+  --zpage-w: min(86vw, calc((100dvh - 170px) * 0.8));
   position: fixed;
   inset: 0;
   z-index: 40;
