@@ -10,10 +10,10 @@
   background: var(--paper);
 }
 
-/* 退场末段：整层淡出，溶进底下的书本 */
+/* 退场：整层与缩放同步淡出，溶进底下的书本（掩盖缩回时新暴露区域的栅格化延迟） */
 .zfocus.is-fading {
   opacity: 0;
-  transition: opacity 150ms ease;
+  transition: opacity 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .zfocus__track {
@@ -125,6 +125,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .morph-anim {
+    transition-duration: 1ms;
+  }
+
+  .zfocus.is-fading {
     transition-duration: 1ms;
   }
 }

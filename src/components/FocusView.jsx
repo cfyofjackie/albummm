@@ -125,23 +125,17 @@ const FocusView = forwardRef(function FocusView(
       void track.offsetWidth
       track.style.transform = flip.transform // 从 identity 连续缩回书中位置
 
+      // 淡出与缩回同步：缩回时新进入视野的区域栅格化有延迟，
+      // 右侧会先露白底再补内容；交叉溶解让底下的书逐渐透出，掩盖这个瞬间
+      track.closest('.zfocus').classList.add('is-fading')
+
       let finished = false
       const finish = () => {
         if (finished) return
         finished = true
-        // 缩到位后快速淡出覆盖层：书芯是连续的，会带出书中没有的邻页边和
-        // 不同的阴影质感，直接卸载会生硬跳变；淡出让它溶进底下已对齐的书里。
-        const overlay = track.closest('.zfocus')
-        if (overlay && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-          overlay.classList.add('is-fading')
-          setTimeout(() => {
-            clearTrackFlip(true)
-            onClosed()
-          }, 150)
-        } else {
-          clearTrackFlip(true)
-          onClosed()
-        }
+        // 保留终态 transform（已是书中位置），等卸载，避免闪回
+        clearTrackFlip(true)
+        onClosed()
       }
       // transitionend 在页面被节流等情况下可能不触发，超时兜底
       track.addEventListener('transitionend', (e) => {
