@@ -105,30 +105,57 @@
   transform: rotateY(180deg);
 }
 
-.book__face-shade {
+/* 翻动页的书脊阴影：与静止时的 gutter 完全同款、常驻不消失（阴影属于页面本身）。
+   方向按页面手性：next 的 front / prev 的 back 是右半页（书脊在左），
+   next 的 back / prev 的 front 是左半页（书脊在右）。 */
+.book__leaf .book__face::after {
+  content: '';
   position: absolute;
-  inset: 0;
+  top: 0;
+  bottom: 0;
+  width: 12%;
   pointer-events: none;
-  opacity: 0;
+  z-index: 2;
 }
 
-/* 书脊侧阴影：翻起时渐显，落定后渐隐 */
-.book__leaf--next .book__face-shade--front,
-.book__leaf--next .book__face-shade--back {
-  background: linear-gradient(to right, rgba(26, 26, 24, 0.3), rgba(26, 26, 24, 0) 45%);
+.book__leaf--next .book__face--front::after {
+  left: 0;
+  background: linear-gradient(
+    to left,
+    rgba(26, 26, 24, 0),
+    rgba(26, 26, 24, 0.07) 70%,
+    rgba(26, 26, 24, 0.13)
+  );
 }
 
-.book__leaf--prev .book__face-shade--front,
-.book__leaf--prev .book__face-shade--back {
-  background: linear-gradient(to left, rgba(26, 26, 24, 0.3), rgba(26, 26, 24, 0) 45%);
+.book__leaf--next .book__face--back::after {
+  right: 0;
+  background: linear-gradient(
+    to right,
+    rgba(26, 26, 24, 0),
+    rgba(26, 26, 24, 0.07) 70%,
+    rgba(26, 26, 24, 0.13)
+  );
 }
 
-.book__face-shade--front {
-  animation: book-shade-in var(--flip-ms) linear forwards;
+.book__leaf--prev .book__face--front::after {
+  right: 0;
+  background: linear-gradient(
+    to right,
+    rgba(26, 26, 24, 0),
+    rgba(26, 26, 24, 0.07) 70%,
+    rgba(26, 26, 24, 0.13)
+  );
 }
 
-.book__face-shade--back {
-  animation: book-shade-out var(--flip-ms) linear forwards;
+.book__leaf--prev .book__face--back::after {
+  left: 0;
+  background: linear-gradient(
+    to left,
+    rgba(26, 26, 24, 0),
+    rgba(26, 26, 24, 0.07) 70%,
+    rgba(26, 26, 24, 0.13)
+  );
 }
 
 @keyframes book-flip-next {
@@ -141,21 +168,9 @@
   to { transform: rotateY(180deg); }
 }
 
-@keyframes book-shade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes book-shade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .book__leaf--next,
-  .book__leaf--prev,
-  .book__face-shade--front,
-  .book__face-shade--back {
+  .book__leaf--prev {
     animation-duration: 1ms;
   }
 }

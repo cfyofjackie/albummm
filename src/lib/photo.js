@@ -38,6 +38,11 @@ export async function loadPhoto(file) {
 
   const previewSrc = canvas.toDataURL('image/jpeg', 0.85)
 
+  // 预解码：翻页/放大揭示这张图时不需要临时解码（避免空白页或延迟上屏）
+  const im = new Image()
+  im.src = previewSrc
+  im.decode?.().catch(() => {})
+
   return {
     id: `p${++nextId}`,
     name: file.name,

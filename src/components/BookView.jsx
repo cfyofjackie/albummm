@@ -134,17 +134,15 @@ const BookView = forwardRef(function BookView(
           <div
             className={`book__leaf book__leaf--${anim.dir}`}
             onAnimationEnd={(e) => {
-              // face-shade 的动画事件也会冒泡上来，只认 leaf 自身的 transform 动画
+              // 只认 leaf 自身的 transform 动画结束（防其他动画事件冒泡误触发）
               if (e.target === e.currentTarget && anim) commitAnim(anim.to)
             }}
           >
             <div className="book__face book__face--front">
               <AlbumPage page={leafFace.front} album={album} />
-              <div className="book__face-shade book__face-shade--front" />
             </div>
             <div className="book__face book__face--back">
               <AlbumPage page={leafFace.back} album={album} />
-              <div className="book__face-shade book__face-shade--back" />
             </div>
           </div>
         )}
