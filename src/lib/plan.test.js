@@ -99,7 +99,7 @@ describe('数量分档策略', () => {
 
   it('13–20 张：rhythm 增加双图页，但仍保留单图页', () => {
     const photos = makePhotos(
-      Array.from({ length: 16 }, (_, i) => [LANDSCAPE, PORTRAIT, SQUARE, ULTRA_TALL][i % 4]),
+      Array.from({ length: 16 }, (_, i) => [LANDSCAPE, PORTRAIT, SQUARE, ULTRA_WIDE][i % 4]),
     )
     const counts = countByType(planPages(photos, 'rhythm', 's'))
     expect(counts.double).toBeGreaterThanOrEqual(2)
@@ -170,12 +170,43 @@ describe('方向驱动排版', () => {
     expect(placed).toBe(true)
   })
 
-  it('全竖图的 double 页用左右双图，全横图用上下双图', () => {
+  it('全竖图不产生双图页（竖图优先单独成页），全横图的 double 页用上下排', () => {
     const portraitPages = planPages(makePhotos(Array(10).fill(PORTRAIT)), 'rhythm', 's')
-    expect(portraitPages.filter((p) => p.type === 'double').every((p) => p.layoutId === 'double-side')).toBe(true)
+    expect(portraitPages.filter((p) => p.type === 'double')).toHaveLength(0)
 
     const landscapePages = planPages(makePhotos(Array(10).fill(LANDSCAPE)), 'rhythm', 's')
-    expect(landscapePages.filter((p) => p.type === 'double').every((p) => p.layoutId === 'double-stack')).toBe(true)
+    const landscapeDoubles = landscapePages.filter((p) => p.type === 'double')
+    expect(landscapeDoubles.length).toBeGreaterThan(0)
+    expect(landscapeDoubles.every((p) => p.layoutId === 'double-stack')).toBe(true)
+  })
+
+  it('任何 double 页都不含竖图（V0.5：双图页只由横图/方图对构成）', () => {
+    const fixtures = [
+      makePhotos(Array.from({ length: 12 }, (_, i) => [LANDSCAPE, PORTRAIT, SQUARE, PORTRAIT][i % 4])),
+      makePhotos(Array.from({ length: 16 }, (_, i) => [PORTRAIT, PORTRAIT, LANDSCAPE, ULTRA_WIDE][i % 4])),
+    ]
+    for (const photos of fixtures) {
+      for (const style of ['gallery', 'rhythm', 'frame']) {
+        for (let seed = 1; seed <= 3; seed++) {
+          for (const page of planPages(photos, style, seed)) {
+            if (page.type !== 'double') continue
+            const members = page.imageIds.map((id) => photos.find((p) => p.id === id))
+            expect(members.every(isWideish)).toBe(true)
+          }
+        }
+      }
+    }
+  })
+
+  it('竖图相册出现上顶/下顶单图页（留白节奏）', () => {
+    const photos = makePhotos(Array.from({ length: 10 }, () => PORTRAIT))
+    const layouts = new Set()
+    for (let seed = 1; seed <= 8; seed++) {
+      for (const page of planPages(photos, 'gallery', seed)) {
+        if (page.type === 'single') layouts.add(page.layoutId)
+      }
+    }
+    expect(layouts.has('single-top') || layouts.has('single-bottom')).toBe(true)
   })
 })
 

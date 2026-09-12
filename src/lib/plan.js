@@ -38,21 +38,42 @@ export function hashSeed(str) {
 
 const STYLE_PARAMS = {
   gallery: {
-    singles: { 'single-center': 3, 'single-small': 2, 'single-offset': 3, 'single-full': 1 },
+    singles: {
+      'single-center': 3,
+      'single-top': 2,
+      'single-bottom': 2,
+      'single-small': 1,
+      'single-offset': 2,
+      'single-full': 1,
+    },
     opener: 'single-center',
     doublesByTier: { small: [1, 1], mid: [1, 2], large: [2, 3] },
     triplesByTier: { small: 0, mid: 0, large: 1 },
     gap: [2, 3], // 每隔 2–3 个单图页安排一个多图页
   },
   rhythm: {
-    singles: { 'single-center': 2, 'single-small': 1, 'single-offset': 2, 'single-full': 3 },
+    singles: {
+      'single-center': 2,
+      'single-top': 2,
+      'single-bottom': 2,
+      'single-small': 1,
+      'single-offset': 1,
+      'single-full': 3,
+    },
     opener: 'single-full',
     doublesByTier: { small: [1, 1], mid: [1, 3], large: [3, 5] },
     triplesByTier: { small: 0, mid: 1, large: 2 },
     gap: [1, 2],
   },
   frame: {
-    singles: { 'single-center': 3, 'single-small': 2, 'single-offset': 2, 'single-full': 0 },
+    singles: {
+      'single-center': 3,
+      'single-top': 2,
+      'single-bottom': 2,
+      'single-small': 2,
+      'single-offset': 1,
+      'single-full': 0,
+    },
     opener: 'single-center',
     doublesByTier: { small: [1, 1], mid: [1, 2], large: [2, 4] },
     triplesByTier: { small: 0, mid: 1, large: 1 },
@@ -61,11 +82,12 @@ const STYLE_PARAMS = {
 }
 
 // 各方向可用的单图页版式。超长/超宽图只在能完整展示的版式中出现。
+// 竖图的节奏主力是 上顶/下顶/居中（V0.5 排版语言：竖图优先单独成页）。
 const SINGLE_LAYOUTS_BY_ORIENTATION = {
-  landscape: ['single-center', 'single-small', 'single-offset', 'single-full'],
-  square: ['single-center', 'single-small', 'single-offset', 'single-full'],
-  portrait: ['single-center', 'single-small', 'single-offset', 'single-full'],
-  'ultra-tall': ['single-center', 'single-offset'],
+  landscape: ['single-center', 'single-small', 'single-offset', 'single-full', 'single-top', 'single-bottom'],
+  square: ['single-center', 'single-small', 'single-offset', 'single-full', 'single-top', 'single-bottom'],
+  portrait: ['single-center', 'single-small', 'single-offset', 'single-full', 'single-top', 'single-bottom'],
+  'ultra-tall': ['single-center', 'single-offset', 'single-top', 'single-bottom'],
   'ultra-wide': ['single-center'],
 }
 
@@ -130,47 +152,25 @@ function makeTriples(pool, count) {
 
 // ---------- 双图页 ----------
 
+// V0.5 排版语言：双图页只由横图/方图对构成（上下排，double-stack）。
+// 竖图优先单独成页（上顶/下顶/居中），不再两张竖图并排拼双图页；
+// 混合对（一横一竖）也拆回单图页，保持规则简单可预期。
 function makeDoubles(pool, count) {
   const pages = []
   const rest = [...pool]
   while (pages.length < count && rest.length >= 2) {
-    let a = -1
-    let b = -1
-    let layoutId
-    const pi = rest.findIndex(isPortraitish)
-    if (pi >= 0) {
-      const pj = rest.findIndex((p, j) => j !== pi && isPortraitish(p))
-      if (pj >= 0) {
-        a = pi
-        b = pj
-        layoutId = 'double-side' // 左右双图，适合竖图
-      }
-    }
-    if (a < 0) {
-      const wi = rest.findIndex(isWideish)
-      if (wi >= 0) {
-        const wj = rest.findIndex((p, j) => j !== wi && isWideish(p))
-        if (wj >= 0) {
-          a = wi
-          b = wj
-          layoutId = 'double-stack' // 上下双图，适合横图
-        }
-      }
-    }
-    if (a < 0) {
-      a = 0
-      b = 1
-      layoutId = 'double-dominant' // 一大一小，兜底
-    }
-    const [hi, lo] = a < b ? [b, a] : [a, b]
-    const y = rest.splice(hi, 1)[0]
-    const x = rest.splice(lo, 1)[0]
-    const pair = [x, y].sort((p, q) => p._i - q._i)
-    if (layoutId === 'double-dominant') {
-      const big = area(x) >= area(y) ? x : y
-      pair.sort((p) => (p === big ? -1 : 1))
-    }
-    pages.push({ type: 'double', layoutId, imageIds: pair.map((p) => p.id) })
+    const wides = rest.filter(isWideish)
+    if (wides.length < 2) break // 只剩竖图（或不足一对横图）：竖图留给单图页
+    const pair = wides
+      .slice(0, 2)
+      .sort((p, q) => p._i - q._i)
+    rest.splice(rest.indexOf(pair[0]), 1)
+    rest.splice(rest.indexOf(pair[1]), 1)
+    pages.push({
+      type: 'double',
+      layoutId: 'double-stack', // 两张横图上下排
+      imageIds: pair.map((p) => p.id),
+    })
   }
   return { pages, rest }
 }
