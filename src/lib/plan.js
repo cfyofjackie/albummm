@@ -204,6 +204,18 @@ function triptychBoxes(photos, formatId) {
   })
 }
 
+// 把一个单页 spread（两张或三张）和落单的一张合并成三张一跨：
+// 挑一张当单页（优先竖图/超长竖），另外两张上下拼在另一页。
+// 合不了（尺寸准入不过）就返回 null，交给调用方兜底。
+function mergeIntoSpread(members, formatId) {
+  const single = members.find(isPortraitish) ?? members[0]
+  const flats = members.filter((photo) => photo !== single)
+  if (flats.length !== 2) return null
+  const stacked = stack2Boxes(flats, formatId, 'right')
+  if (!stacked) return null
+  return [singleBox(single, formatId, 'left'), ...stacked]
+}
+
 function planStudioPages(photos, seed, formatId) {
   const rng = mulberry32(hashSeed(`studio-${seed}`))
   const pool = photos.map((photo, index) => ({ ...photo, _i: index }))
@@ -230,17 +242,22 @@ function planStudioPages(photos, seed, formatId) {
   }
 
   // 21:9 等超宽图也横跨书脊，但用全宽完整展示，绝不为了铺满高度切掉两端。
+  // 每张横幅只吃一张图；若吃完只剩一张，就把最后一张留给单页模块——单页模块按
+  // 2/3 张成组，剩 1 张既凑不成跨页、也必然出现空半页或题名页。
   const panoramas = pool
     .filter((photo) => photo.orientation === 'ultra-wide')
     .sort((a, b) => a._i - b._i)
-  for (const panorama of panoramas) {
+  const holdLastPanorama = pool.length - panoramas.length === 1
+  panoramas.forEach((panorama, index) => {
+    if (holdLastPanorama && index === panoramas.length - 1) return
     pool.splice(pool.indexOf(panorama), 1)
     append('studio-panorama', [panorama], { boxes: [fullCanvasBox(panorama, 'contain')] })
-  }
+  })
 
   // 三联跨页只使用同一组竖图；中间画面允许经过书脊，适合没有关键脸部/文字落在正中的照片。
+  // 同理：若拿走三张后只剩一张，就不做三联，让这几张去单页模块里两两成组。
   const portraitPool = pool.filter((photo) => photo.orientation === 'portrait')
-  if (portraitPool.length >= 3) {
+  if (portraitPool.length >= 3 && pool.length - 3 !== 1) {
     const members = portraitPool.slice(0, 3).sort((a, b) => a._i - b._i)
     members.forEach((photo) => pool.splice(pool.indexOf(photo), 1))
     append('studio-triptych', members, {
@@ -248,31 +265,56 @@ function planStudioPages(photos, seed, formatId) {
     })
   }
 
-  // 剩下的照片按「一个 spread = 两个单页模块」组装：
-  // 优先凑三张一跨——一页放一张（挑竖图/超长竖，它们不适合上下拼），
-  // 另一页放上下两张（挑横图/方图）。凑不出三张时再退回两人一组。
+  // 剩下的照片按「一个 spread = 两个单页模块」组装，并且**刻意不留单张**：
+  // 数量上只用 2（左右各一张）和 3（一张 + 上下两张）两种组合，
+  // 4 张拆成 2+2、5 张拆成 3+2、6 张拆成 3+3…… 任何 ≥2 的张数都不会剩 1 张。
   const takeOut = (list) => list.forEach((photo) => pool.splice(pool.indexOf(photo), 1))
-  while (pool.length >= 3) {
+  while (pool.length >= 2) {
+    const wantThree = pool.length === 3 || pool.length >= 5
     const single = pool.find(isPortraitish) ?? pool[0]
     const flats = pool.filter((photo) => photo !== single && !isPortraitish(photo))
-    const stacked = flats.length >= 2 ? stack2Boxes(flats.slice(0, 2), formatId, 'right') : null
-    if (!stacked) break
-    const members = [single, ...flats.slice(0, 2)].sort((a, b) => a._i - b._i)
-    takeOut([single, ...flats.slice(0, 2)])
-    append('studio-mixed', members, {
-      boxes: [
-        singleBox(single, formatId, 'left'),
-        ...stacked,
-      ],
-    })
-  }
-  while (pool.length >= 2) {
+    const stacked = wantThree && flats.length >= 2
+      ? stack2Boxes(flats.slice(0, 2), formatId, 'right')
+      : null
+    if (stacked) {
+      const members = [single, ...flats.slice(0, 2)].sort((a, b) => a._i - b._i)
+      takeOut([single, ...flats.slice(0, 2)])
+      append('studio-mixed', members, { boxes: [singleBox(single, formatId, 'left'), ...stacked] })
+      continue
+    }
     const members = pool.splice(0, 2)
     append('studio-pair', members, {
       boxes: [singleBox(members[0], formatId, 'left'), singleBox(members[1], formatId, 'right')],
     })
   }
-  if (pool.length === 1) append('studio-title-photo', pool.splice(0, 1))
+  // 兜底：万一还剩一张（跨页模块的数量刚好凑成这样），并进上一个单页 spread 变成三张一跨，
+  // 而不是留一张图去配题名页、也不是让某一页空着。
+  if (pool.length === 1) {
+    const byId = new Map(pool.map((photo) => [photo.id, photo]))
+    photos.forEach((photo) => byId.set(photo.id, { ...photo, _i: photos.indexOf(photo) }))
+    let at = -1
+    for (let i = pages.length - 1; i >= 0; i--) {
+      const page = pages[i]
+      if (page.type === 'studio' && page.studio.side === 'left'
+        && (page.layoutId === 'studio-pair' || page.layoutId === 'studio-mixed')) {
+        at = i
+        break
+      }
+    }
+    const lone = pool[0]
+    const mergeable = at >= 0 ? pages[at] : null
+    const members = mergeable
+      ? [...mergeable.studio.imageIds, lone.id].map((id) => byId.get(id)).filter(Boolean)
+      : null
+    const boxes = members ? mergeIntoSpread(members, formatId) : null
+    if (boxes && members) {
+      const sorted = [...members].sort((a, b) => a._i - b._i)
+      pages.splice(at, 2, ...makeStudioSpread('studio-mixed', sorted, mergeable.studio.spreadId, { boxes }))
+      pool.length = 0
+    } else {
+      append('studio-title-photo', pool.splice(0, 1))
+    }
+  }
 
   void rng // 种子暂时不用：随机排版是下一步（准入 + 分组 + 洗牌 + 节奏）
 

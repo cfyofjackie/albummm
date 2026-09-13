@@ -306,6 +306,28 @@ describe('Studio 摄影书模式', () => {
     expect(onRight[1].y).toBeGreaterThan(onRight[0].y)
   })
 
+  // 自适应收尾：不管上传多少张，都不留"单张一张图"或"空半页"。
+  it('5–20 张任何数量都不留单张：每个 spread 两页都有内容', () => {
+    const pool = [LANDSCAPE, PORTRAIT, SQUARE, ULTRA_WIDE, PORTRAIT, [1800, 1200], SQUARE]
+    for (let n = 5; n <= 20; n++) {
+      const specs = Array.from({ length: n }, (_, i) => pool[i % pool.length])
+      const pages = planPages(makePhotos(specs), 'studio', `count-${n}`, 'portrait')
+      const spreads = new Map()
+      for (const page of pages) {
+        if (page.type !== 'studio') continue
+        const key = page.studio.spreadId
+        if (!spreads.has(key)) spreads.set(key, page)
+      }
+      for (const [key, page] of spreads) {
+        if (page.layoutId === 'studio-title-photo') continue // 题名页是设计出来的版式，不算空半页
+        const boxes = page.studio.boxes
+        const filled = (lo, hi) => boxes.some((box) => box.x < hi && box.x + box.w > lo)
+        expect(filled(0, 50), `n=${n} ${key} 左页有内容`).toBe(true)
+        expect(filled(50, 100), `n=${n} ${key} 右页有内容`).toBe(true)
+      }
+    }
+  })
+
   // T2：比例不够接近满版的横图不再被裁成跨页满版，也不再掉到单页，
   // 而是横跨两页、四周留等宽白边（宁可留白，不裁比例）。
   it('比例差得多的横图走「跨页留白」T2，而不是裁成满版', () => {
