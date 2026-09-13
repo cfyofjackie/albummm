@@ -95,22 +95,23 @@
 /* 中缝那 1px 线画在「页面内缘、图片之上」，和 BookView 的 .book__spine 同一手法。
    不能写成 wrap 的 border：border 会把页面内容挤开 1px，那 1px 露出的是纸色底，
    半透明深色 border 压上去反而变成一条亮线——跨中缝的照片上看着就像书被拉开了。
-   注意这里是两页各画一条、紧挨在一起，所以每条只取一半透明度：
-   合起来才等于 BookView 那一条 0.14 的线；否则会变成两倍深、两倍宽的「粗条」。 */
+   也必须在**一跨里只画一条**（画在右页左缘）：两页各画一条会变成 2px 双倍深的粗条，
+   而每条减半又会因为亚像素叠成一条模糊的软带——两种都不对。 */
 .zfocus__page-wrap.is-recto .album-page::after,
-.zfocus__page-wrap.is-verso .album-page::after {
+.zfocus__page-wrap.is-verso:last-child .album-page::after {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
   width: 1px;
-  background: rgba(26, 26, 24, 0.075);
+  background: rgba(26, 26, 24, 0.14);
   pointer-events: none;
   z-index: 3;
 }
 
 .zfocus__page-wrap.is-recto .album-page::after { left: 0; }
-.zfocus__page-wrap.is-verso .album-page::after { right: 0; }
+/* 封底是最后一页、右边没有右页，它的书脊在右侧，所以只有它画在右缘 */
+.zfocus__page-wrap.is-verso:last-child .album-page::after { right: 0; }
 
 /* 中缝阴影：画在每页的书脊侧内缘，渐变值与 BookView 的 gutter 一致 */
 .zfocus__page-wrap.is-verso::after,

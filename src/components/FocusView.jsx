@@ -77,7 +77,10 @@ const FocusView = forwardRef(function FocusView(
   const scrollTrack = (target, behavior = 'auto', pageIndex = indexRef.current) => {
     const track = trackRef.current
     if (!track) return
-    track.scrollTo({ left: Math.max(0, clampToSpread(target, pageIndex)), behavior })
+    // 取整到整像素：小数滚动位置会让页面、乃至中缝那条 1px 线落在半个像素上，
+    // 被抗锯齿摊成一条模糊的软带（书里之所以 sharp，就是因为它的位置是整数）。
+    const left = Math.round(Math.max(0, clampToSpread(target, pageIndex)))
+    track.scrollTo({ left, behavior })
   }
 
   // 第 i 页阅读位对应的 scrollLeft（positionAt / 换页位移都用它）
