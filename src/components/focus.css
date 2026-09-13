@@ -83,16 +83,32 @@
   --focus-shadow-x-near: 4px;
   --focus-shadow-x-far: 10px;
   scroll-margin-left: var(--zedge);
-  border-left: 1px solid rgba(26, 26, 24, 0.14);
 }
 
 .zfocus__page-wrap.is-verso {
   --focus-shadow-x-near: -4px;
   --focus-shadow-x-far: -10px;
   scroll-margin-right: var(--zedge);
-  border-right: 1px solid rgba(26, 26, 24, 0.14);
   margin-left: calc(100vw - var(--zedge) - var(--zpage-w));
 }
+
+/* 中缝那 1px 线画在「页面内缘、图片之上」，和 BookView 的 .book__spine 同一手法。
+   不能写成 wrap 的 border：border 会把页面内容挤开 1px，那 1px 露出的是纸色底，
+   半透明深色 border 压上去反而变成一条亮线——跨中缝的照片上看着就像书被拉开了。 */
+.zfocus__page-wrap.is-recto .album-page::after,
+.zfocus__page-wrap.is-verso .album-page::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(26, 26, 24, 0.14);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.zfocus__page-wrap.is-recto .album-page::after { left: 0; }
+.zfocus__page-wrap.is-verso .album-page::after { right: 0; }
 
 /* 中缝阴影：画在每页的书脊侧内缘，渐变值与 BookView 的 gutter 一致 */
 .zfocus__page-wrap.is-verso::after,
