@@ -270,14 +270,51 @@ describe('Studio 摄影书模式', () => {
   it('生成跨页主图、三联跨页与左右各一张', () => {
     const pages = planPages(studioPhotos, 'studio', 'studio-seed', 'portrait')
     const leftPages = pages.filter((page) => page.type === 'studio' && page.studio.side === 'left')
-    // 剩下的正好两张，凑不出三张一跨，走「左右各一张」
-    expect(leftPages.map((page) => page.layoutId)).toEqual([
+    // 顺序现在是随机的，所以只断言"用了哪些模块"，不断言先后
+    expect([...leftPages.map((page) => page.layoutId)].sort()).toEqual([
       'studio-hero',
-      'studio-triptych',
       'studio-pair',
+      'studio-triptych',
     ])
-    expect(leftPages[1].studio.boxes).toHaveLength(3)
-    expect(leftPages[2].studio.boxes).toHaveLength(2)
+    const triptych = leftPages.find((page) => page.layoutId === 'studio-triptych')
+    const pair = leftPages.find((page) => page.layoutId === 'studio-pair')
+    expect(triptych.studio.boxes).toHaveLength(3)
+    expect(pair.studio.boxes).toHaveLength(2)
+  })
+
+  // 随机排版：同一批图、不同种子 → 模块顺序不同（这是这次改动的核心诉求）。
+  it('同一批图换种子，排版顺序会变', () => {
+    const photos = makePhotos([
+      [3000, 2000], PORTRAIT, PORTRAIT, PORTRAIT, PORTRAIT, LANDSCAPE, LANDSCAPE, SQUARE, SQUARE, ULTRA_WIDE,
+    ])
+    const sequences = new Set()
+    for (const seed of ['a', 'b', 'c', 'd', 'e', 'f']) {
+      const pages = planPages(photos, 'studio', seed, 'portrait')
+      sequences.add(pages
+        .filter((page) => page.type === 'studio' && page.studio.side === 'left')
+        .map((page) => page.layoutId)
+        .join('>'))
+    }
+    expect(sequences.size).toBeGreaterThan(1)
+  })
+
+  // 节奏约束：任何种子下都不许把书排成"前几页全是跨页"。
+  it('任何种子下都不会连续三个跨页模块', () => {
+    const cross = new Set(['studio-hero', 'studio-inset', 'studio-panorama', 'studio-triptych'])
+    const photos = makePhotos([
+      [3000, 2000], ULTRA_WIDE, ULTRA_WIDE, PORTRAIT, PORTRAIT, PORTRAIT, PORTRAIT, LANDSCAPE, LANDSCAPE, SQUARE,
+    ])
+    for (let seed = 1; seed <= 12; seed++) {
+      const pages = planPages(photos, 'studio', `rhythm-${seed}`, 'portrait')
+      const ids = pages
+        .filter((page) => page.type === 'studio' && page.studio.side === 'left')
+        .map((page) => page.layoutId)
+      let run = 0
+      for (const id of ids) {
+        run = cross.has(id) ? run + 1 : 0
+        expect(run, `seed=${seed} 连续跨页：${ids.join('>')}`).toBeLessThanOrEqual(2)
+      }
+    }
   })
 
   it('超宽图使用完整展示的跨页横幅，而不是被裁成跨页满版', () => {
