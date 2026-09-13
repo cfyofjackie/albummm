@@ -25,6 +25,7 @@ const FocusView = forwardRef(function FocusView(
   const touchRef = useRef(null)
   const closingRef = useRef(false)
   const enteredRef = useRef(false)
+  const slidingRef = useRef(false) // 换 spread 的滑入动画进行中，期间忽略拖拽
   const anchorRef = useRef(null) // 当前取景：{ photoId, kind: 'photo' | 'page' | 'spine', pageIndex }
   const indexRef = useRef(index)
   indexRef.current = index
@@ -41,18 +42,24 @@ const FocusView = forwardRef(function FocusView(
 
   const activeWrap = () => trackRef.current?.children[indexRef.current] ?? null
 
+  // 某一页所在 spread 的两页索引（leaf 成对；封面/封底只有一页）
+  const spreadFlatsOf = (pageIndex) => {
+    const leaf = leafOfFlat(pageIndex, leaves, total)
+    const left = flatIndexOf(leaves, leaf, 'left', total)
+    const right = flatIndexOf(leaves, leaf, 'right', total)
+    return [left, right].filter((i) => i != null)
+  }
+
   // 取景只允许落在「当前 spread 的两页 + 两侧纸边」之内。
   // 不然点到靠边的照片（比如三联最右那张 9）时，纯几何居中会把视口推过 spread 的边界，
   // 于是右边露出下一个 spread 的第一页——看起来就是多出来一条白边。
   const clampToSpread = (target, pageIndex) => {
     const track = trackRef.current
     if (!track) return target
-    const leaf = leafOfFlat(pageIndex, leaves, total)
-    const left = flatIndexOf(leaves, leaf, 'left', total)
-    const right = flatIndexOf(leaves, leaf, 'right', total)
-    const lo = left ?? right
-    const hi = right ?? left
-    if (lo == null || hi == null) return target
+    const flats = spreadFlatsOf(pageIndex)
+    if (!flats.length) return target
+    const lo = flats[0]
+    const hi = flats[flats.length - 1]
     const trackRect = track.getBoundingClientRect()
     let min = 0
     let max = Infinity
@@ -73,16 +80,21 @@ const FocusView = forwardRef(function FocusView(
     track.scrollTo({ left: Math.max(0, clampToSpread(target, pageIndex)), behavior })
   }
 
-  // 把第 i 页摆到它的阅读位（recto 贴左缘留 edge、verso 贴右缘留 edge，见 CSS scroll-margin）
-  const positionAt = (i, behavior = 'auto') => {
+  // 第 i 页阅读位对应的 scrollLeft（positionAt / 换页位移都用它）
+  const readingScrollOf = (i) => {
     const track = trackRef.current
     const wrap = track?.children[i]
-    if (!track || !wrap) return
+    if (!track || !wrap) return null
     const cs = getComputedStyle(wrap)
-    const target =
-      sideOf(i) === 'right'
-        ? wrap.offsetLeft - parseFloat(cs.scrollMarginLeft)
-        : wrap.offsetLeft + wrap.offsetWidth + parseFloat(cs.scrollMarginRight) - track.clientWidth
+    return sideOf(i) === 'right'
+      ? wrap.offsetLeft - parseFloat(cs.scrollMarginLeft)
+      : wrap.offsetLeft + wrap.offsetWidth + parseFloat(cs.scrollMarginRight) - track.clientWidth
+  }
+
+  // 把第 i 页摆到它的阅读位（recto 贴左缘留 edge、verso 贴右缘留 edge，见 CSS scroll-margin）
+  const positionAt = (i, behavior = 'auto') => {
+    const target = readingScrollOf(i)
+    if (target == null) return
     scrollTrack(target, behavior, i)
   }
 
@@ -147,16 +159,69 @@ const FocusView = forwardRef(function FocusView(
     return true
   }
 
-  // 换 spread：无论手势多用力，一次只走一个 spread（跨两页，左右手性不变）
+  // 换 spread：无论手势多用力，一次只走一个 spread（跨两页，左右手性不变）。
+  // 过渡不用横向滚动——滚动会把两跨之间的纸边从画面中间扫过去，看起来就像相册
+  // 在中间打开又合上。改成：旧一跨钉在原地不动，新一跨从相邻一侧滑进来盖住它，
+  // 两页相纸同步位移（同一个位移量），中途不会出现纸边，也不会互相错开。
   const go = (delta) => {
+    const track = trackRef.current
     const next = Math.max(0, Math.min(total - 1, indexRef.current + delta * PAGE_STEP))
     if (next === indexRef.current) {
       applyAnchor(anchorRef.current, 'smooth') // 已经是首/末，弹回原位
       return
     }
-    anchorRef.current = null // 换了 spread，取景重新落回整页
+    const prev = indexRef.current
+    const prevScroll = readingScrollOf(prev)
+    const nextScroll = readingScrollOf(next)
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (!track || prevScroll == null || nextScroll == null || reduce) {
+      anchorRef.current = null
+      onIndexChange(next)
+      positionAt(next, 'smooth')
+      return
+    }
+
+    const outWraps = spreadFlatsOf(prev).map((i) => track.children[i]).filter(Boolean)
+    const inWraps = spreadFlatsOf(next).map((i) => track.children[i]).filter(Boolean)
+    const zedge = parseFloat(getComputedStyle(track).getPropertyValue('--zedge')) || 0
+    const vw = track.clientWidth
+    const pitch = nextScroll - prevScroll // 两跨阅读位的距离
+
+    anchorRef.current = null
+    slidingRef.current = true
+    inWraps.forEach((w) => { w.style.zIndex = '3' }) // 新一跨盖在上面（往前翻时它本来在下面）
     onIndexChange(next)
-    positionAt(next, 'smooth')
+    positionAt(next) // 瞬时到位，只看得见补偿后的画面
+    // 旧一跨按原位钉住：瞬时滚到新阅读位后，它整体偏左了 pitch，补回来
+    outWraps.forEach((w) => {
+      w.style.transition = 'none'
+      w.style.transform = `translateX(${pitch}px)`
+    })
+    // 新一跨先摆到「正好贴住旧一跨外缘」的位置，再动画回到 0
+    const entry = delta > 0 ? vw - zedge : -(vw - zedge)
+    inWraps.forEach((w) => {
+      w.style.transition = 'none'
+      w.style.transform = `translateX(${entry}px)`
+    })
+    void track.offsetWidth // 固化起始态（两页同一个位移，刚性一体）
+    requestAnimationFrame(() => {
+      const ms = parseFloat(getComputedStyle(rootRef.current).getPropertyValue('--morph-ms')) || 360
+      inWraps.forEach((w) => {
+        w.style.transition = `transform ${ms}ms cubic-bezier(0.28, 0.74, 0.3, 1)`
+        w.style.transform = ''
+      })
+      setTimeout(() => {
+        outWraps.forEach((w) => {
+          w.style.transition = 'none'
+          w.style.transform = ''
+        })
+        inWraps.forEach((w) => {
+          w.style.transition = ''
+          w.style.zIndex = ''
+        })
+        slidingRef.current = false
+      }, ms + 40)
+    })
   }
 
   // 每页独立 FLIP：当前页和同 spread 的另一页都从书中真实矩形出发。
@@ -327,12 +392,13 @@ const FocusView = forwardRef(function FocusView(
     if (!track) return
 
     const onStart = (e) => {
+      if (slidingRef.current) return
       const t = e.touches[0]
       touchRef.current = { x: t.clientX, y: t.clientY, scroll: track.scrollLeft, mode: 'pending' }
     }
     const onMove = (e) => {
       const d = touchRef.current
-      if (!d) return
+      if (!d || slidingRef.current) return
       const t = e.touches[0]
       const dx = t.clientX - d.x
       const dy = t.clientY - d.y
