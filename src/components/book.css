@@ -57,6 +57,22 @@
 .book__nav-hit--prev { left: 0; }
 .book__nav-hit--next { right: 0; }
 
+/* 按下反馈（替代浏览器默认的蓝色高亮）：热区浮起一层极淡的墨色，
+   同时把本来就存在的那枚 ‹ / › 箭头推到全亮 —— 既确认"点到了翻页区"，
+   又不会像一块蓝色色块那样压在照片上。 */
+.book__nav-hit {
+  transition: background 140ms ease;
+}
+
+.book__nav-hit:not(:disabled):active {
+  background: rgba(26, 26, 24, 0.05);
+}
+
+.book__nav-hit:not(:disabled):active::after {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
 .book__nav-hit::after {
   position: absolute;
   top: 50%;

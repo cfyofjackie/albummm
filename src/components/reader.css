@@ -55,6 +55,12 @@
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
+  transition: background 120ms ease;
+}
+
+/* 去掉默认蓝色高亮之后，按下反馈由这里给 */
+.chip:not(:disabled):active {
+  background: #f1f0ec;
 }
 
 .chip--active {

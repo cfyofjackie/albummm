@@ -8,6 +8,9 @@
 
 * {
   box-sizing: border-box;
+  /* 去掉移动端浏览器默认的点击高亮（Android 上是一块半透明蓝，压在画面上很难看）。
+     按下反馈改由各自的 :active 规则给，见 book.css / reader.css。 */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
