@@ -1,0 +1,79 @@
+/* 封面墙：一页纸面上摊着若干本书，只看到封面。
+   网格原点固定在左上（不居中）——书多起来时排列规则始终一致。 */
+.shelf {
+  min-height: 100dvh;
+  padding: 9vh 8vw 6vh;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  gap: 5vh;
+}
+
+.shelf__grid {
+  display: grid;
+  grid-template-columns: repeat(var(--shelf-columns, 2), 1fr);
+  gap: 5vh 6vw;
+  align-content: start;
+  justify-items: start;
+}
+
+.shelf__cell {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.shelf__book {
+  position: relative;
+  display: block;
+  width: 100%;
+  /* 单本时放得大一些，但不超过一屏留白后的高度 */
+  max-width: calc((100dvh - 300px) * 0.75);
+  box-shadow: 0 10px 26px rgba(26, 26, 24, 0.18);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.shelf__cell:hover .shelf__book,
+.shelf__cell:focus-visible .shelf__book {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 32px rgba(26, 26, 24, 0.22);
+}
+
+.shelf__cell:focus-visible {
+  outline: none;
+}
+
+/* 新建：一格虚线框，和书的比例一致，摆在网格里不破坏节奏 */
+.shelf__cell--new {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  aspect-ratio: 3 / 4;
+  max-width: calc((100dvh - 300px) * 0.75);
+  border: 1px dashed rgba(26, 26, 24, 0.22);
+  color: var(--ink-soft);
+}
+
+.shelf__plus {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.shelf__new-label {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+}
+
+.shelf__hint {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+}

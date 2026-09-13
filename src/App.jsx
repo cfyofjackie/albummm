@@ -11,6 +11,7 @@ import { pickCoverColor } from './lib/palette.js'
 import { DEFAULT_PAGE_FORMAT, getPageFormat } from './lib/pageFormat.js'
 import AlbumViewer from './components/AlbumViewer.jsx'
 import ClosedBook from './components/ClosedBook.jsx'
+import Shelf from './components/Shelf.jsx'
 import './App.css'
 
 const STYLES = [
@@ -29,7 +30,11 @@ export default function App() {
   const [error, setError] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [album, setAlbum] = useState(null)
-  const [opened, setOpened] = useState(false) // false = 合着的书（刚生成完）；true = 翻开在读
+  // 书库：每本 = 书名 / 风格 / 开本 / 种子 / 图片。当前这本的 album 由它算出来。
+  const [books, setBooks] = useState([])
+  const [currentId, setCurrentId] = useState(null)
+  // 'editor' 上传编辑 · 'shelf' 封面墙 · 'closed' 合着的书 · 'reading' 翻开在读
+  const [screen, setScreen] = useState('editor')
   const inputRef = useRef(null)
 
   const addFiles = useCallback(
@@ -69,8 +74,25 @@ export default function App() {
     seed = Math.floor(Math.random() * 1e9),
     photoList = photos,
     formatId = format,
+    bookIdArg = currentId,
   ) => {
     const pages = planPages(photoList, styleId, seed, formatId)
+    // 生成即落成书库里的一本：'new' 或没有当前书＝新建，否则更新当前那本
+    const bookId = !bookIdArg || bookIdArg === 'new' ? `book-` : bookIdArg
+    const nextBook = {
+      id: bookId,
+      title: title.trim() || 'Untitled Album',
+      style: styleId,
+      formatId,
+      pageRatio: getPageFormat(formatId).pageRatio,
+      coverColor: pickCoverColor(seed),
+      seed,
+      photos: photoList,
+    }
+    setBooks((prev) => (prev.some((b) => b.id === bookId)
+      ? prev.map((b) => (b.id === bookId ? nextBook : b))
+      : [...prev, nextBook]))
+    setCurrentId(bookId)
     setAlbum({
       title: title.trim() || 'Untitled Album',
       style: styleId,
@@ -93,7 +115,11 @@ export default function App() {
       makeDemoPhotos(n).then((demoPhotos) => {
         setPhotos(demoPhotos)
         if (params.get('go')) {
-          setOpened(!params.get('closed'))
+          // 调试钩子：shelf=1 直接落在封面墙，closed=1 停在合着的书，默认直接翻开
+          setScreen(
+            params.get('shelf') ? 'shelf'
+              : params.get('closed') ? 'closed' : 'reading',
+          )
           const seed = Math.floor(Math.random() * 1e9)
           const styleId = params.get('style') || 'gallery'
           const formatId = params.get('format') || DEFAULT_PAGE_FORMAT
@@ -106,17 +132,44 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 合着的书：生成完成后的落点。点一下翻开，直接落在第一页内容（不再重复看封面）。
-  if (album && !opened) {
-    return <ClosedBook album={album} onOpen={() => setOpened(true)} />
+  // 封面墙（书库）：点一本 → 拿起来（合着的书）→ 翻开
+  if (screen === 'shelf') {
+    return (
+      <Shelf
+        books={books}
+        onOpen={(book) => {
+          setCurrentId(book.id)
+          setTitle(book.title)
+          setStyle(book.style)
+          setFormat(book.formatId)
+          setPhotos(book.photos)
+          generate(book.style, book.seed, book.photos, book.formatId, book.id)
+          setScreen('closed')
+        }}
+        onNew={() => {
+          setPhotos([])
+          setTitle('')
+          setCurrentId(null)
+          setScreen('editor')
+        }}
+      />
+    )
   }
 
-  if (album) {
+  // 合着的书：生成完成后的落点。点一下翻开，直接落在第一页内容（不再重复看封面）。
+  if (album && screen === 'closed') {
+    return <ClosedBook album={album} onOpen={() => setScreen('reading')} />
+  }
+
+  if (album && screen === 'reading') {
     return (
       <AlbumViewer
         initialLeaf={1}
         album={album}
-        onBack={() => setAlbum(null)}
+        onBack={() => {
+          setAlbum(null)
+          setScreen('shelf') // 合上书 → 回到封面墙
+        }}
         onRegenerate={() => generate(album.style, undefined, album.photos, album.format.id)}
         onStyleChange={(styleId) => {
           setStyle(styleId)
@@ -234,8 +287,8 @@ export default function App() {
           className="generate"
           disabled={!canGenerate}
           onClick={() => {
-            setOpened(false) // 从编辑器生成：先给一本合着的书，点一下才翻开
-            generate()
+            generate(style, undefined, photos, format, 'new')
+            setScreen('closed') // 从编辑器生成：先给一本合着的书，点一下才翻开
           }}
         >
           {loading
