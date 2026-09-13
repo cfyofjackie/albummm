@@ -8,7 +8,7 @@ import {
 } from './lib/photo.js'
 import { planPages } from './lib/plan.js'
 import { pickCoverColor } from './lib/palette.js'
-import { DEFAULT_PAGE_FORMAT, PAGE_FORMATS, getPageFormat } from './lib/pageFormat.js'
+import { DEFAULT_PAGE_FORMAT, getPageFormat } from './lib/pageFormat.js'
 import AlbumViewer from './components/AlbumViewer.jsx'
 import './App.css'
 
@@ -197,25 +197,9 @@ export default function App() {
           />
         </section>
 
-        <section className="field">
-          <span className="field__label">相册开本</span>
-          <div className="formats" role="radiogroup" aria-label="相册开本">
-            {PAGE_FORMATS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                role="radio"
-                aria-checked={format === item.id}
-                className={`format-card ${format === item.id ? 'format-card--active' : ''}`}
-                onClick={() => setFormat(item.id)}
-              >
-                <span className="format-card__ratio">{item.shortName}</span>
-                <span className="format-card__name">{item.name}</span>
-                <span className="format-card__desc">{item.desc}</span>
-              </button>
-            ))}
-          </div>
-        </section>
+        {/* 开本只做 3:4（手机竖屏上最舒服：跨页落在 3:2，接近一本实物书的观感；
+            4:3 那类开本在手机上会把书压成一条纸带）。PAGE_FORMATS / formatId 机制保留，
+            以后要放开别的开本，把这段渲染回来即可。 */}
 
         <section className="field">
           <span className="field__label">风格</span>
