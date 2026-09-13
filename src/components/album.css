@@ -64,56 +64,25 @@
   overflow: hidden;
 }
 
-.studio-box--hero {
-  inset: 0;
-}
-
-.studio-box--hero img {
-  object-fit: cover;
-}
-
-.studio-box--panorama {
-  inset: 0;
-  display: grid;
-  place-items: center;
-}
-
-/* 超宽图跨页只占满可用宽度，居中保留上下纸面，避免 21:9 被强行裁切。 */
-.studio-box--panorama img {
-  object-fit: contain;
-  object-position: center;
-}
-
-/* T2 跨页留白：框由排版引擎按「四边等宽内缩」算好（inline style 给位置尺寸），
-   这里只负责把图完整放进框里居中。
-   不能写成 inset/padding 内缩：图片是绝对定位子元素时 inset:0 按 padding box 解析，会把 padding 吃掉。
-   也不能用 display:grid + place-items:center：隐式行是 auto 行，行高会按图片固有高度撑开，
-   于是 height:100% 解析成「图片固有高」而不是框高，图比框高就被 overflow:hidden 竖着裁掉。 */
-.studio-box--inset img {
+/* studio 的盒子一律由排版引擎给位置尺寸（inline style），这里只管「图怎么放进盒子」。
+   两种 fit：cover＝满版裁切（仅在裁切可忽略时才用），contain＝完整不裁、居中留白。
+   plate＝照片下面垫一张白纸（作品集里"贴上去的照片"那种感觉）。 */
+.studio-box--contain img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   object-position: center;
 }
 
-/* 三联图统一高度、各自按比例给宽度；白色纸面和间距把它们收束为同一段落。 */
-.studio-box--triptych {
-  background: #fffdf8;
-}
-
-.studio-box--triptych img {
+.studio-box--cover img {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
+  object-position: center;
 }
 
-.studio-pair-photo {
-  position: absolute;
-  inset: 10% 8%;
-  margin: 0;
+.studio-box--plate {
   background: #fffdf8;
-}
-
-.studio-pair-photo img {
-  object-fit: contain;
 }
 
 .studio-title {

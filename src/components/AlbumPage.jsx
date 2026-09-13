@@ -14,64 +14,14 @@ function Cover({ album, back }) {
 }
 
 function StudioSpreadPage({ page, album, pageStyle }) {
-  const { layoutId, side, imageIds, boxes = [], flipPair } = page.studio
+  const { layoutId, side, imageIds, boxes = [] } = page.studio
   const photosById = album.photosById
   const canvasClass = `studio-canvas studio-canvas--${side}`
 
-  // 一张图横跨两页的三种做法：满版（仅在裁切可忽略时）、超宽横幅（完整不裁）、
-  // 跨页留白 T2（四周等宽白边）——比例不够接近满版时就走 T2，宁可留白也不裁图。
-  if (layoutId === 'studio-hero' || layoutId === 'studio-panorama' || layoutId === 'studio-inset') {
-    const photo = photosById[imageIds[0]]
-    const boxClass = layoutId === 'studio-hero'
-      ? 'hero'
-      : layoutId === 'studio-panorama' ? 'panorama' : 'inset'
-    // T2 的框由排版引擎算好（四边等宽内缩）；hero / panorama 铺满整张画布。
-    const box = boxes[0]
-    const boxStyle = box
-      ? {
-        left: `${box.x}%`,
-        top: `${box.y}%`,
-        width: `${box.w}%`,
-        height: `${box.h}%`,
-      }
-      : undefined
-    return (
-      <div
-        className={`album-page album-page--studio ${layoutId === 'studio-hero' ? 'album-page--bleed' : ''}`}
-        style={pageStyle}
-      >
-        <div className={canvasClass}>
-          <figure
-            className={`imgbox studio-box studio-box--${boxClass}`}
-            style={boxStyle}
-            data-photo-id={imageIds[0]}
-          >
-            <img src={photo.previewSrc} alt="" />
-          </figure>
-        </div>
-      </div>
-    )
-  }
-
-  if (layoutId === 'studio-triptych') {
-    return (
-      <div className="album-page album-page--studio" style={pageStyle}>
-        <div className={canvasClass}>
-          {boxes.map((box) => (
-            <figure
-              key={box.photoId}
-              className="imgbox studio-box studio-box--triptych"
-              data-photo-id={box.photoId}
-              style={{ left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }}
-            >
-              <img src={photosById[box.photoId].previewSrc} alt="" />
-            </figure>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
+  // 题名页要排文字，保留专属渲染；其余 studio 版式一律「画布 + 盒子列表」：
+  // 盒子由排版引擎算好（位置尺寸 + fit），这里只负责画。
+  // 这样新增模板只需要在 plan.js 里加一个盒子构造函数，渲染层不用改——
+  // 一页放一张 / 一页放两张 / 左右不同模块，都是同一套盒子。
   if (layoutId === 'studio-title-photo') {
     const photo = photosById[imageIds[0]]
     return (
@@ -90,13 +40,23 @@ function StudioSpreadPage({ page, album, pageStyle }) {
     )
   }
 
-  const photoIndex = flipPair ? (side === 'left' ? 1 : 0) : side === 'left' ? 0 : 1
-  const photo = photosById[imageIds[photoIndex]]
   return (
-    <div className="album-page album-page--studio" style={pageStyle}>
-      <figure className="imgbox studio-pair-photo" data-photo-id={photo.id}>
-        <img src={photo.previewSrc} alt="" />
-      </figure>
+    <div
+      className={`album-page album-page--studio ${layoutId === 'studio-hero' ? 'album-page--bleed' : ''}`}
+      style={pageStyle}
+    >
+      <div className={canvasClass}>
+        {boxes.map((box) => (
+          <figure
+            key={box.photoId}
+            className={`imgbox studio-box studio-box--${box.fit === 'cover' ? 'cover' : 'contain'}${box.plate ? ' studio-box--plate' : ''}`}
+            data-photo-id={box.photoId}
+            style={{ left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }}
+          >
+            <img src={photosById[box.photoId].previewSrc} alt="" />
+          </figure>
+        ))}
+      </div>
     </div>
   )
 }

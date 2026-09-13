@@ -111,6 +111,11 @@ function makeStudioSpread(layoutId, photos, spreadId, extra = {}) {
   ]
 }
 
+// 铺满整张跨页画布（满版用 cover 裁切，横幅用 contain 完整展示）。
+function fullCanvasBox(photo, fit) {
+  return { photoId: photo.id, x: 0, y: 0, w: 100, h: 100, fit }
+}
+
 // T2 跨页留白：把整张跨页画布四边各内缩 margin%（按宽度算，所以四边视觉等宽），
 // 得到的框交给 contain 居中放图——比例不匹配时多出来的空间落在其中一轴上，但不裁图。
 function insetBox(photo, formatId, margin = 6) {
@@ -121,7 +126,63 @@ function insetBox(photo, formatId, margin = 6) {
     y: margin * spreadAspect,
     w: 100 - margin * 2,
     h: 100 - margin * 2 * spreadAspect,
+    fit: 'contain',
   }
+}
+
+// ---------- 盒子：单页模块 ----------
+// 单页模块绑在某一页上（左半 / 右半），可以对页放别的模块或留白。
+// 边距沿用原来的双图白边：页宽的 8% / 页高的 10%（换算成画布百分比就是 4 / 10）。
+const PAGE_MARGIN_X = 4
+const PAGE_MARGIN_Y = 10
+
+function halfOrigin(side) {
+  return side === 'left' ? 0 : 50
+}
+
+// 一张图占一页：页内留白、尽量放大（contain，所以不裁切）。
+function singleBox(photo, formatId, side) {
+  const origin = halfOrigin(side)
+  return {
+    photoId: photo.id,
+    x: origin + PAGE_MARGIN_X,
+    y: PAGE_MARGIN_Y,
+    w: 50 - PAGE_MARGIN_X * 2,
+    h: 100 - PAGE_MARGIN_Y * 2,
+    fit: 'contain',
+    plate: true,
+  }
+}
+
+// 两张图占一页：统一高度、按各自比例定宽、共用中轴、等距。
+// 放不下就返回 null——准入由尺寸决定，不硬塞。
+function stack2Boxes(photos, formatId, side, gap = 4) {
+  const spreadAspect = getPageFormat(formatId).aspect * 2
+  const maxW = 50 - PAGE_MARGIN_X * 2
+  const maxTotalH = 100 - PAGE_MARGIN_Y * 2
+  const byHeight = (maxTotalH - gap) / 2
+  const height = Math.min(
+    byHeight,
+    ...photos.map((photo) => (maxW * spreadAspect) / (photo.width / photo.height)),
+  )
+  if (height < 24) return null // 两张都太小，不如各自占一页
+  const widths = photos.map((photo) => (height * (photo.width / photo.height)) / spreadAspect)
+  const origin = halfOrigin(side)
+  const total = height * 2 + gap
+  let y = (100 - total) / 2
+  return photos.map((photo, index) => {
+    const box = {
+      photoId: photo.id,
+      x: origin + (50 - widths[index]) / 2,
+      y,
+      w: widths[index],
+      h: height,
+      fit: 'contain',
+      plate: true,
+    }
+    y += height + gap
+    return box
+  })
 }
 
 function triptychBoxes(photos, formatId) {
@@ -162,7 +223,7 @@ function planStudioPages(photos, seed, formatId) {
     const hero = heroCandidates.reduce((best, photo) => (area(photo) > area(best) ? photo : best))
     pool.splice(pool.indexOf(hero), 1)
     if (isSpreadBleedCompatible(hero, formatId)) {
-      append('studio-hero', [hero])
+      append('studio-hero', [hero], { boxes: [fullCanvasBox(hero, 'cover')] })
     } else {
       append('studio-inset', [hero], { boxes: [insetBox(hero, formatId)] })
     }
@@ -174,7 +235,7 @@ function planStudioPages(photos, seed, formatId) {
     .sort((a, b) => a._i - b._i)
   for (const panorama of panoramas) {
     pool.splice(pool.indexOf(panorama), 1)
-    append('studio-panorama', [panorama])
+    append('studio-panorama', [panorama], { boxes: [fullCanvasBox(panorama, 'contain')] })
   }
 
   // 三联跨页只使用同一组竖图；中间画面允许经过书脊，适合没有关键脸部/文字落在正中的照片。
@@ -182,13 +243,24 @@ function planStudioPages(photos, seed, formatId) {
   if (portraitPool.length >= 3) {
     const members = portraitPool.slice(0, 3).sort((a, b) => a._i - b._i)
     members.forEach((photo) => pool.splice(pool.indexOf(photo), 1))
-    append('studio-triptych', members, { boxes: triptychBoxes(members, formatId) })
+    append('studio-triptych', members, {
+      boxes: triptychBoxes(members, formatId).map((box) => ({ ...box, fit: 'cover', plate: true })),
+    })
   }
 
-  // 其余照片成对装进统一白边的跨页；若只剩一张，则配一张题名页收尾。
+  // 其余照片两两成组：两张横图（或方图）走「两张图占一页」（上下拼在同一页），
+  // 其余走「左右各一张」；只剩一张时配一张题名页收尾。
   while (pool.length >= 2) {
     const members = pool.splice(0, 2)
-    append('studio-pair', members)
+    const bothFlat = members.every((photo) => !isPortraitish(photo))
+    const stacked = bothFlat ? stack2Boxes(members, formatId, 'right') : null
+    if (stacked) {
+      append('studio-stack2', members, { boxes: stacked })
+    } else {
+      append('studio-pair', members, {
+        boxes: [singleBox(members[0], formatId, 'left'), singleBox(members[1], formatId, 'right')],
+      })
+    }
   }
   if (pool.length === 1) append('studio-title-photo', pool.splice(0, 1))
 
