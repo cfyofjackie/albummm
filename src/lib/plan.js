@@ -1,4 +1,4 @@
-// 排版引擎：photos + style + seed → pages[]
+// 排版引擎：photos + style + seed + format → pages[]
 // 纯函数，无 DOM 依赖。
 //
 // 策略（见 SLC.md 五、六）：
@@ -8,6 +8,8 @@
 // - 数量分档：5–7 以单图为主（至多 1 个双图页）；8–12 单双混排（至多 1 个三图页）；
 //   13–20 增加双图页比例，仍保留单图页维持节奏
 // - 可 seed 伪随机：同 seed 结果一致，换 seed 重新生成
+
+import { getPageFormat, isFullBleedCompatible, isSpreadBleedCompatible } from './pageFormat.js'
 
 export const MIN_PHOTOS = 5
 export const MAX_PHOTOS = 20
@@ -79,6 +81,110 @@ const STYLE_PARAMS = {
     triplesByTier: { small: 0, mid: 1, large: 1 },
     gap: [2, 2],
   },
+}
+
+// ---------- 摄影书模式（跨页优先） ----------
+
+// 这一模式不把跨页当成两个碰巧相邻的单页，而是先把两页视作一个画布。
+// 每个 studio 单元稳定输出左右两页，确保装订后不会错位。
+function makeStudioSpread(layoutId, photos, spreadId, extra = {}) {
+  const imageIds = photos.map((photo) => photo.id)
+  const shared = {
+    layoutId,
+    spreadId,
+    imageIds,
+    ...extra,
+  }
+  return [
+    {
+      type: 'studio',
+      layoutId,
+      imageIds,
+      studio: { ...shared, side: 'left' },
+    },
+    {
+      type: 'studio',
+      layoutId,
+      imageIds: [], // 图片仅由左页计入排版消耗；两页共享 studio.imageIds。
+      studio: { ...shared, side: 'right' },
+    },
+  ]
+}
+
+function triptychBoxes(photos, formatId) {
+  const pageAspect = getPageFormat(formatId).aspect
+  const spreadAspect = pageAspect * 2
+  const gap = 2.4
+  const usableWidth = 88 - gap * (photos.length - 1)
+  const totalAspect = photos.reduce((sum, photo) => sum + photo.width / photo.height, 0)
+  // 统一照片高度，宽度按原始比例变化；控制上限以保留足够的上下白边。
+  const height = Math.min(66, (usableWidth * spreadAspect) / totalAspect)
+  const widths = photos.map((photo) => (height * (photo.width / photo.height)) / spreadAspect)
+  const used = widths.reduce((sum, width) => sum + width, 0) + gap * (photos.length - 1)
+  let x = (100 - used) / 2
+  const y = (100 - height) / 2
+  return photos.map((photo, index) => {
+    const box = { photoId: photo.id, x, y, w: widths[index], h: height }
+    x += widths[index] + gap
+    return box
+  })
+}
+
+function planStudioPages(photos, seed, formatId) {
+  const rng = mulberry32(hashSeed(`studio-${seed}`))
+  const pool = photos.map((photo, index) => ({ ...photo, _i: index }))
+  const pages = []
+  let spreadIndex = 0
+  const append = (layoutId, members, extra) => {
+    pages.push(...makeStudioSpread(layoutId, members, `studio-${spreadIndex++}`, extra))
+  }
+
+  // 开篇优先把一张比例匹配的横图做成跨页主视觉；不匹配时宁可保留白边。
+  const heroCandidates = pool.filter(
+    (photo) => isWideish(photo) && isSpreadBleedCompatible(photo, formatId),
+  )
+  if (heroCandidates.length > 0) {
+    const hero = heroCandidates.reduce((best, photo) => (area(photo) > area(best) ? photo : best))
+    pool.splice(pool.indexOf(hero), 1)
+    append('studio-hero', [hero])
+  }
+
+  // 21:9 等超宽图也横跨书脊，但用全宽完整展示，绝不为了铺满高度切掉两端。
+  const panoramas = pool
+    .filter((photo) => photo.orientation === 'ultra-wide')
+    .sort((a, b) => a._i - b._i)
+  for (const panorama of panoramas) {
+    pool.splice(pool.indexOf(panorama), 1)
+    append('studio-panorama', [panorama])
+  }
+
+  // 三联跨页只使用同一组竖图；中间画面允许经过书脊，适合没有关键脸部/文字落在正中的照片。
+  const portraitPool = pool.filter((photo) => photo.orientation === 'portrait')
+  if (portraitPool.length >= 3) {
+    const members = portraitPool.slice(0, 3).sort((a, b) => a._i - b._i)
+    members.forEach((photo) => pool.splice(pool.indexOf(photo), 1))
+    append('studio-triptych', members, { boxes: triptychBoxes(members, formatId) })
+  }
+
+  // 其余照片成对装进统一白边的跨页；若只剩一张，则配一张题名页收尾。
+  while (pool.length >= 2) {
+    const members = pool.splice(0, 2)
+    append('studio-pair', members)
+  }
+  if (pool.length === 1) append('studio-title-photo', pool.splice(0, 1))
+
+  // 播放 seed 仅用于将双图对偶尔镜像，保持同一张组图的顺序不被打乱。
+  if (rng() > 0.5) {
+    for (const page of pages) {
+      if (page.layoutId === 'studio-pair') page.studio.flipPair = true
+    }
+  }
+
+  return [
+    { type: 'cover', layoutId: 'cover', imageIds: [] },
+    ...pages,
+    { type: 'back', layoutId: 'back', imageIds: [] },
+  ]
 }
 
 // 各方向可用的单图页版式。超长/超宽图只在能完整展示的版式中出现。
@@ -177,7 +283,7 @@ function makeDoubles(pool, count) {
 
 // ---------- 单图页 ----------
 
-function makeSingles(pool, opener, params, rng) {
+function makeSingles(pool, opener, params, rng, formatId) {
   const rest = [...pool].sort((a, b) => a._i - b._i)
   const ordered = [opener, ...rest]
 
@@ -186,7 +292,9 @@ function makeSingles(pool, opener, params, rng) {
   let prevBase = null
 
   for (const photo of ordered) {
-    const allowed = SINGLE_LAYOUTS_BY_ORIENTATION[photo.orientation] ?? ['single-center']
+    const allowed = (SINGLE_LAYOUTS_BY_ORIENTATION[photo.orientation] ?? ['single-center']).filter(
+      (layoutId) => layoutId !== 'single-full' || isFullBleedCompatible(photo, formatId),
+    )
     let base
     if (photo === opener) {
       base = allowed.includes(params.opener) ? params.opener : 'single-center'
@@ -222,10 +330,11 @@ function interleave(singles, multis, gap, rng) {
 
 // ---------- 主入口 ----------
 
-export function planPages(photos, style = 'gallery', seed = 1) {
+export function planPages(photos, style = 'gallery', seed = 1, formatId = 'portrait') {
   if (!Array.isArray(photos) || photos.length < MIN_PHOTOS || photos.length > MAX_PHOTOS) {
     throw new Error(`planPages 需要 ${MIN_PHOTOS}–${MAX_PHOTOS} 张图片`)
   }
+  if (style === 'studio') return planStudioPages(photos, seed, formatId)
   const params = STYLE_PARAMS[style]
   if (!params) throw new Error(`未知风格：${style}`)
 
@@ -246,7 +355,7 @@ export function planPages(photos, style = 'gallery', seed = 1) {
   const pool = withIndex.filter((p) => p !== opener)
   const { pages: triples, rest: afterTriples } = makeTriples(pool, t)
   const { pages: doubles, rest: singlesPool } = makeDoubles(afterTriples, d)
-  const singles = makeSingles(singlesPool, opener, params, rng)
+  const singles = makeSingles(singlesPool, opener, params, rng, formatId)
 
   const content = interleave(singles, [...doubles, ...triples], params.gap, rng)
 

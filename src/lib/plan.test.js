@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { classify } from './photo.js'
 import { MIN_PHOTOS, MAX_PHOTOS, planPages } from './plan.js'
+import { isFullBleedCompatible } from './pageFormat.js'
 
 function makePhotos(specs) {
   // specs 为 [width, height] 对，id 按序号生成
@@ -127,9 +128,10 @@ describe('风格差异', () => {
     expect(firstSingle.imageIds).toEqual(['big'])
   })
 
-  it('rhythm 开篇优先接近满页，gallery 开篇居中', () => {
+  it('图片比例与开本接近时，rhythm 开篇优先满版，gallery 开篇居中', () => {
+    const landscapePhotos = makePhotos(Array(8).fill(LANDSCAPE))
     const firstSingle = (style) =>
-      planPages(photos, style, 's').find((p) => p.type === 'single').layoutId
+      planPages(landscapePhotos, style, 's', 'landscape').find((p) => p.type === 'single').layoutId
     expect(firstSingle('rhythm')).toBe('single-full')
     expect(firstSingle('gallery')).toBe('single-center')
   })
@@ -144,6 +146,19 @@ describe('方向驱动排版', () => {
           const photo = photos.find((p) => p.id === page.imageIds[0])
           expect(['ultra-wide', 'ultra-tall']).not.toContain(photo.orientation)
         }
+      }
+    }
+  })
+
+  it('自动满版只使用比例接近当前开本的照片', () => {
+    const photos = makePhotos(
+      Array.from({ length: 12 }, (_, i) => [LANDSCAPE, PORTRAIT, SQUARE][i % 3]),
+    )
+    for (const formatId of ['portrait', 'landscape', 'square', 'editorial']) {
+      for (const page of planPages(photos, 'rhythm', 's', formatId)) {
+        if (page.layoutId !== 'single-full') continue
+        const member = photos.find((photo) => photo.id === page.imageIds[0])
+        expect(isFullBleedCompatible(member, formatId)).toBe(true)
       }
     }
   })
@@ -226,6 +241,50 @@ describe('确定性', () => {
       [1, 2, 3, 4, 5].map((seed) => JSON.stringify(planPages(photos, 'rhythm', seed))),
     )
     expect(results.size).toBeGreaterThan(1)
+  })
+})
+
+describe('Studio 摄影书模式', () => {
+  const studioPhotos = makePhotos([
+    [3000, 2000], // 3:2 跨页主图
+    PORTRAIT,
+    PORTRAIT,
+    PORTRAIT,
+    LANDSCAPE,
+    LANDSCAPE,
+  ])
+
+  it('把跨页作为完整单元生成，图片仍只被消耗一次', () => {
+    const pages = planPages(studioPhotos, 'studio', 'studio-seed', 'portrait')
+    const content = pages.slice(1, -1)
+    expect(content).toHaveLength(6)
+    expect(content.every((page) => page.type === 'studio')).toBe(true)
+    expect(content.filter((page) => page.studio.side === 'left')).toHaveLength(3)
+    expect(content.filter((page) => page.studio.side === 'right')).toHaveLength(3)
+
+    const used = pages.flatMap((page) => page.imageIds)
+    expect(used).toHaveLength(studioPhotos.length)
+    expect(new Set(used).size).toBe(studioPhotos.length)
+  })
+
+  it('生成跨页主图、三联跨页与双图白边跨页', () => {
+    const pages = planPages(studioPhotos, 'studio', 'studio-seed', 'portrait')
+    const leftPages = pages.filter((page) => page.type === 'studio' && page.studio.side === 'left')
+    expect(leftPages.map((page) => page.layoutId)).toEqual([
+      'studio-hero',
+      'studio-triptych',
+      'studio-pair',
+    ])
+    expect(leftPages[1].studio.boxes).toHaveLength(3)
+  })
+
+  it('超宽图使用完整展示的跨页横幅，而不是被裁成跨页满版', () => {
+    const photos = makePhotos([ULTRA_WIDE, [4200, 1800], SQUARE, SQUARE, SQUARE])
+    const pages = planPages(photos, 'studio', 'panorama-seed', 'portrait')
+    const panoramaPages = pages.filter(
+      (page) => page.type === 'studio' && page.studio.side === 'left' && page.layoutId === 'studio-panorama',
+    )
+    expect(panoramaPages).toHaveLength(2)
   })
 })
 

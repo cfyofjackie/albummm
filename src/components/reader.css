@@ -16,6 +16,8 @@
   bottom: max(18px, env(safe-area-inset-bottom));
   z-index: 20;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 8px;
   max-width: calc(100vw - 24px);
@@ -58,4 +60,14 @@
 .chip--active {
   border-color: var(--ink);
   box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.reader__format {
+  min-height: 34px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
 }

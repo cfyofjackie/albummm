@@ -153,6 +153,51 @@
   color: var(--ink-soft);
 }
 
+/* 开本：这是整本书的纸张形状，不是单张照片的裁切比例。 */
+.formats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.format-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.format-card--active {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.format-card__ratio {
+  grid-row: span 2;
+  color: var(--ink);
+  font-size: 18px;
+  letter-spacing: -0.04em;
+}
+
+.format-card__name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.format-card__desc {
+  margin-top: 2px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 /* 生成按钮 */
 .generate {
   margin-top: 36px;
@@ -180,6 +225,6 @@
   }
 
   .styles {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 }

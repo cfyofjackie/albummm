@@ -1,14 +1,14 @@
-/* 书本视图：整本书是一个完整视觉对象（书影 + 书脊），内部页面仍为 4:5 固定坐标系 */
+/* 书本视图：整本书是一个完整视觉对象（书影 + 书脊），每本使用固定的开本比例。 */
 
 .book-stage {
-  width: min(100%, calc((100dvh - 180px) * 1.6));
+  width: min(100%, calc((100dvh - 180px) * var(--spread-scale, 1.5)));
   margin: 0 auto;
   outline: none;
 }
 
 .book {
   position: relative;
-  aspect-ratio: 8 / 5;
+  aspect-ratio: var(--spread-ratio, 3 / 2);
   perspective: 2200px;
   background: var(--paper);
   box-shadow:
@@ -38,6 +38,65 @@
   background: rgba(26, 26, 24, 0.14);
   z-index: 6;
   pointer-events: none;
+}
+
+/* 书口翻页热区独立于图片。外侧 12% 永远翻页，中央画面才能安全用于放大。 */
+.book__nav-hit {
+  position: absolute;
+  z-index: 12;
+  top: 0;
+  bottom: 0;
+  width: 12%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--paper);
+  cursor: pointer;
+}
+
+.book__nav-hit--prev { left: 0; }
+.book__nav-hit--next { right: 0; }
+
+.book__nav-hit::after {
+  position: absolute;
+  top: 50%;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: clamp(24px, 4cqw, 38px);
+  line-height: 1;
+  opacity: 0;
+  text-shadow: 0 1px 6px rgba(26, 26, 24, 0.35);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.book__nav-hit--prev::after {
+  content: '‹';
+  left: 20%;
+  transform: translate(-3px, -50%);
+}
+
+.book__nav-hit--next::after {
+  content: '›';
+  right: 20%;
+  transform: translate(3px, -50%);
+}
+
+.book__nav-hit:not(:disabled):hover::after,
+.book__nav-hit:focus-visible::after {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.book__nav-hit:focus-visible {
+  outline: 1px solid rgba(26, 26, 24, 0.58);
+  outline-offset: -2px;
+}
+
+.book__nav-hit:disabled {
+  pointer-events: none;
+}
+
+@media (hover: none) {
+  .book__nav-hit:not(:disabled)::after { opacity: 0.3; }
 }
 
 .book__gutter {

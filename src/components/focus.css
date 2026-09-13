@@ -4,7 +4,7 @@
 
 .zfocus {
   --zedge: 8vw; /* 书脊侧邻页露出宽度 */
-  --zpage-w: min(86vw, calc((100dvh - 170px) * 0.8));
+  --zpage-w: min(86vw, calc((100dvh - 170px) * var(--focus-scale, 0.75)));
   --morph-ms: 360ms;
   /* 入场：起步慢——缩放开头的几十毫秒里书芯还压在书中矩形上，纸色底趁机铺满，
      等底铺满了再让页面滑到阅读位，途中不会露出底下的书（无重影） */

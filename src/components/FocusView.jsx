@@ -15,7 +15,7 @@ import './focus.css'
 const SWIPE_THRESHOLD = 48 // px，横向位移超过才算一次有效翻页手势
 
 const FocusView = forwardRef(function FocusView(
-  { album, index, onIndexChange, onCloseRequest, onClosed, sourceSpread },
+  { album, index, onIndexChange, onCloseRequest, onClosed, sourceSpread, onTriptychDetail },
   ref,
 ) {
   const rootRef = useRef(null)
@@ -276,6 +276,28 @@ const FocusView = forwardRef(function FocusView(
 
   const handleWrapClick = (e, i) => {
     e.stopPropagation()
+    const page = album.pages[i]
+    const triptychPhoto = e.target.closest('.studio-box--triptych[data-photo-id]')
+
+    // 三联图仍是两张物理相纸，而不是三张独立图片：当前纸上的主图点按缩回；
+    // 中图经过书脊，进入自己的跨中缝细看；左右图才按相邻物理页平滑移动。
+    if (triptychPhoto && page?.type === 'studio' && page.layoutId === 'studio-triptych') {
+      const photoPosition = page.studio.imageIds.indexOf(triptychPhoto.dataset.photoId)
+      if (photoPosition === 1) {
+        onTriptychDetail?.(i, triptychPhoto.dataset.photoId, triptychPhoto.getBoundingClientRect())
+        return
+      }
+      const direction = page.studio.side === 'left'
+        ? (photoPosition > 0 ? 1 : 0)
+        : (photoPosition < page.studio.imageIds.length - 1 ? -1 : 0)
+      const next = Math.max(0, Math.min(total - 1, i + direction))
+      if (next !== i) {
+        onIndexChange(next)
+        positionAt(next, 'smooth')
+        return
+      }
+    }
+
     if (i === indexRef.current) {
       onCloseRef.current() // 点当前页 → 缩回书
     } else {
@@ -285,7 +307,11 @@ const FocusView = forwardRef(function FocusView(
   }
 
   return (
-    <div className="zfocus" ref={rootRef}>
+    <div
+      className="zfocus"
+      ref={rootRef}
+      style={{ '--focus-scale': album.format.focusScale }}
+    >
       <div className="zfocus__scrim" />
       <div
         className="zfocus__track"

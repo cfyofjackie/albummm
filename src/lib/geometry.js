@@ -6,7 +6,7 @@
 // anchorY 决定垂直锚点——top/bottom 是 V0.5 新增的竖图留白节奏位。
 const SINGLE_SPEC = {
   'single-center': { w: 0.7, h: 0.7 },
-  'single-full': { w: 0.97, h: 0.97 },
+  'single-full': { w: 1, h: 1 },
   'single-small': { w: 0.52, h: 0.52 },
   'single-offset': { w: 0.64, h: 0.64 },
   'single-top': { w: 0.86, h: 0.8, anchorY: 'top' },

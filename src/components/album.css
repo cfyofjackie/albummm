@@ -1,10 +1,10 @@
-/* 相册页面：4:5 固定设计坐标系，内部只用百分比/相对单位（SLC.md 三） */
+/* 相册页面：每本书固定一种设计坐标系，内部只用百分比/相对单位。 */
 
 .album-page {
   box-sizing: border-box;
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 5;
+  aspect-ratio: var(--page-ratio, 3 / 4);
   background: var(--paper);
   overflow: hidden;
   container-type: inline-size;
@@ -31,6 +31,112 @@
   display: block;
   width: 100%;
   height: 100%;
+  object-fit: contain;
+}
+
+/* 仅当排版引擎确认照片比例接近当前开本时使用满版，避免自动粗暴裁切。 */
+.album-page--bleed {
+  padding: 0;
+}
+
+.imgbox--cover img {
+  object-fit: cover;
+}
+
+/* 摄影书模式：跨页在数据层已配对，但视觉上以一张双页画布处理。 */
+.album-page--studio {
+  padding: 0;
+}
+
+.studio-canvas {
+  position: absolute;
+  top: 0;
+  width: 200%;
+  height: 100%;
+}
+
+.studio-canvas--left { left: 0; }
+.studio-canvas--right { left: -100%; }
+
+.studio-box {
+  position: absolute;
+  margin: 0;
+  overflow: hidden;
+}
+
+.studio-box--hero {
+  inset: 0;
+}
+
+.studio-box--hero img {
+  object-fit: cover;
+}
+
+.studio-box--panorama {
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+/* 超宽图跨页只占满可用宽度，居中保留上下纸面，避免 21:9 被强行裁切。 */
+.studio-box--panorama img {
+  object-fit: contain;
+  object-position: center;
+}
+
+/* 三联图统一高度、各自按比例给宽度；白色纸面和间距把它们收束为同一段落。 */
+.studio-box--triptych {
+  background: #fffdf8;
+}
+
+.studio-box--triptych img {
+  object-fit: cover;
+}
+
+.studio-pair-photo {
+  position: absolute;
+  inset: 10% 8%;
+  margin: 0;
+  background: #fffdf8;
+}
+
+.studio-pair-photo img {
+  object-fit: contain;
+}
+
+.studio-title {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 14%;
+}
+
+.studio-title__eyebrow {
+  color: var(--ink-soft);
+  font-size: 2.1cqw;
+  letter-spacing: 0.17em;
+}
+
+.studio-title__text {
+  margin-top: 6%;
+  font-family: Georgia, 'Songti SC', serif;
+  font-size: 7.5cqw;
+  line-height: 1.16;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+.studio-title-photo {
+  position: absolute;
+  inset: 8%;
+  margin: 0;
+  background: #fffdf8;
+}
+
+.studio-title-photo img {
   object-fit: contain;
 }
 

@@ -71,9 +71,12 @@ const BookView = forwardRef(function BookView(
     : null
 
   const handleHalfClick = (side, e) => {
-    if (swiped.current) return
-    // 点页面本体 → 带着该页的屏幕矩形进入 Focus View；点留白/书页边缘 → 翻页
-    if (e.target.closest('.imgbox')) {
+    if (swiped.current || anim) return
+    const imageBox = e.target.closest('.imgbox')
+    if (imageBox) {
+      // 任何照片（含跨中缝的跨页主图 / 横幅 / 三联中图）都进入它所在的那一页：
+      // 与双图白边页完全同一套放大阅读，靠左右滑动看相邻页。
+      // 跨页在这里只影响排版，不影响「点开」的行为——不再有中缝热区或单张独立照片。
       const flat = flatIndexOf(leaves, leafIndex, side, album.pages.length)
       if (flat != null) {
         onPageOpen(flat, getSpreadRects())
@@ -105,6 +108,9 @@ const BookView = forwardRef(function BookView(
     <div
       ref={rootRef}
       className="book-stage"
+      style={{ '--spread-ratio': album.format.spreadRatio, '--spread-scale': album.format.aspect * 2 }}
+      tabIndex="0"
+      aria-label="相册书本。点最外侧边缘或使用方向键翻页，点照片可放大查看。"
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
         if (e.key === 'ArrowRight') go(1)
@@ -129,6 +135,22 @@ const BookView = forwardRef(function BookView(
           <div className="book__gutter book__gutter--left-edge" />
         </div>
         <div className="book__spine" />
+
+        {/* 翻页热区独立覆盖在书口，满版照片也不会吞掉翻页操作。 */}
+        <button
+          type="button"
+          className="book__nav-hit book__nav-hit--prev"
+          aria-label="上一页"
+          disabled={anim || leafIndex === 0}
+          onClick={() => go(-1)}
+        />
+        <button
+          type="button"
+          className="book__nav-hit book__nav-hit--next"
+          aria-label="下一页"
+          disabled={anim || leafIndex === leaves.length - 1}
+          onClick={() => go(1)}
+        />
 
         {anim && (
           <div

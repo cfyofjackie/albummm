@@ -8,6 +8,7 @@ import {
 } from './lib/photo.js'
 import { planPages } from './lib/plan.js'
 import { pickCoverColor } from './lib/palette.js'
+import { DEFAULT_PAGE_FORMAT, PAGE_FORMATS, getPageFormat } from './lib/pageFormat.js'
 import AlbumViewer from './components/AlbumViewer.jsx'
 import './App.css'
 
@@ -15,12 +16,14 @@ const STYLES = [
   { id: 'gallery', name: 'Gallery', desc: '克制 · 大留白 · 安静的摄影书' },
   { id: 'rhythm', name: 'Rhythm', desc: '更丰富的节奏 · 适合旅行与日常' },
   { id: 'frame', name: 'Frame', desc: '展览图录 · 装裱感 · 对尺寸更友好' },
+  { id: 'studio', name: 'Studio', desc: '摄影书 · 跨页主图 · 严格白边网格' },
 ]
 
 export default function App() {
   const [photos, setPhotos] = useState([])
   const [title, setTitle] = useState('')
   const [style, setStyle] = useState('gallery')
+  const [format, setFormat] = useState(DEFAULT_PAGE_FORMAT)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [dragOver, setDragOver] = useState(false)
@@ -59,11 +62,17 @@ export default function App() {
 
   const canGenerate = photos.length >= MIN_PHOTOS && !loading
 
-  const generate = (styleId = style, seed = Math.floor(Math.random() * 1e9), photoList = photos) => {
-    const pages = planPages(photoList, styleId, seed)
+  const generate = (
+    styleId = style,
+    seed = Math.floor(Math.random() * 1e9),
+    photoList = photos,
+    formatId = format,
+  ) => {
+    const pages = planPages(photoList, styleId, seed, formatId)
     setAlbum({
       title: title.trim() || 'Untitled Album',
       style: styleId,
+      format: getPageFormat(formatId),
       seed,
       coverColor: pickCoverColor(seed),
       photos: photoList,
@@ -84,8 +93,10 @@ export default function App() {
         if (params.get('go')) {
           const seed = Math.floor(Math.random() * 1e9)
           const styleId = params.get('style') || 'gallery'
+          const formatId = params.get('format') || DEFAULT_PAGE_FORMAT
           setStyle(styleId)
-          generate(styleId, seed, demoPhotos)
+          setFormat(formatId)
+          generate(styleId, seed, demoPhotos, formatId)
         }
       }),
     )
@@ -97,8 +108,15 @@ export default function App() {
       <AlbumViewer
         album={album}
         onBack={() => setAlbum(null)}
-        onRegenerate={() => generate(album.style)}
-        onStyleChange={(styleId) => generate(styleId, album.seed)}
+        onRegenerate={() => generate(album.style, undefined, album.photos, album.format.id)}
+        onStyleChange={(styleId) => {
+          setStyle(styleId)
+          generate(styleId, album.seed, album.photos, album.format.id)
+        }}
+        onFormatChange={(formatId) => {
+          setFormat(formatId)
+          generate(album.style, album.seed, album.photos, formatId)
+        }}
       />
     )
   }
@@ -177,6 +195,26 @@ export default function App() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
+        </section>
+
+        <section className="field">
+          <span className="field__label">相册开本</span>
+          <div className="formats" role="radiogroup" aria-label="相册开本">
+            {PAGE_FORMATS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="radio"
+                aria-checked={format === item.id}
+                className={`format-card ${format === item.id ? 'format-card--active' : ''}`}
+                onClick={() => setFormat(item.id)}
+              >
+                <span className="format-card__ratio">{item.shortName}</span>
+                <span className="format-card__name">{item.name}</span>
+                <span className="format-card__desc">{item.desc}</span>
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="field">
