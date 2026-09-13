@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
 import AlbumPage from './AlbumPage.jsx'
-import { buildLeaves, leafOfFlat } from '../lib/book.js'
+import { buildLeaves, flatIndexOf, leafOfFlat } from '../lib/book.js'
 import './focus.css'
 
 // Focus View：把「书里那一页」放大来读。
@@ -41,6 +41,38 @@ const FocusView = forwardRef(function FocusView(
 
   const activeWrap = () => trackRef.current?.children[indexRef.current] ?? null
 
+  // 取景只允许落在「当前 spread 的两页 + 两侧纸边」之内。
+  // 不然点到靠边的照片（比如三联最右那张 9）时，纯几何居中会把视口推过 spread 的边界，
+  // 于是右边露出下一个 spread 的第一页——看起来就是多出来一条白边。
+  const clampToSpread = (target, pageIndex) => {
+    const track = trackRef.current
+    if (!track) return target
+    const leaf = leafOfFlat(pageIndex, leaves, total)
+    const left = flatIndexOf(leaves, leaf, 'left', total)
+    const right = flatIndexOf(leaves, leaf, 'right', total)
+    const lo = left ?? right
+    const hi = right ?? left
+    if (lo == null || hi == null) return target
+    const trackRect = track.getBoundingClientRect()
+    let min = 0
+    let max = Infinity
+    for (let i = 0; i < track.children.length; i++) {
+      if (i >= lo && i <= hi) continue // 本 spread 的页可以露
+      const r = track.children[i].getBoundingClientRect()
+      const pageLeft = track.scrollLeft + r.left - trackRect.left
+      if (i < lo) min = Math.max(min, pageLeft + r.width) // 前一页整体退到视口左侧
+      else max = Math.min(max, pageLeft - track.clientWidth) // 后一页整体退到视口右侧
+    }
+    if (max < min) return target // 视口比一个 spread 还宽，钳不了，保持原样
+    return Math.min(Math.max(target, min), max)
+  }
+
+  const scrollTrack = (target, behavior = 'auto', pageIndex = indexRef.current) => {
+    const track = trackRef.current
+    if (!track) return
+    track.scrollTo({ left: Math.max(0, clampToSpread(target, pageIndex)), behavior })
+  }
+
   // 把第 i 页摆到它的阅读位（recto 贴左缘留 edge、verso 贴右缘留 edge，见 CSS scroll-margin）
   const positionAt = (i, behavior = 'auto') => {
     const track = trackRef.current
@@ -51,7 +83,7 @@ const FocusView = forwardRef(function FocusView(
       sideOf(i) === 'right'
         ? wrap.offsetLeft - parseFloat(cs.scrollMarginLeft)
         : wrap.offsetLeft + wrap.offsetWidth + parseFloat(cs.scrollMarginRight) - track.clientWidth
-    track.scrollTo({ left: Math.max(0, target), behavior })
+    scrollTrack(target, behavior, i)
   }
 
   // 某张照片在条带里的元素。跨中缝的照片左右两页各渲染一份，取第一个即它在中缝坐标系里的真实位置。
@@ -68,7 +100,7 @@ const FocusView = forwardRef(function FocusView(
     const trackRect = track.getBoundingClientRect()
     const rect = el.getBoundingClientRect()
     const target = track.scrollLeft + (rect.left + rect.width / 2 - trackRect.left) - track.clientWidth / 2
-    track.scrollTo({ left: Math.max(0, target), behavior })
+    scrollTrack(target, behavior)
     return true
   }
 
@@ -86,7 +118,7 @@ const FocusView = forwardRef(function FocusView(
     const track = trackRef.current
     const x = spineAt(pageIndex)
     if (!track || x == null) return false
-    track.scrollTo({ left: Math.max(0, x - track.clientWidth / 2), behavior })
+    scrollTrack(x - track.clientWidth / 2, behavior, pageIndex)
     return true
   }
 
