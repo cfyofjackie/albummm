@@ -26,7 +26,7 @@
 .zspread__book {
   position: relative;
   z-index: 1;
-  width: min(100vw, calc((100dvh - 104px) * var(--spread-scale, 1.5)));
+  width: min(100vw, calc((100dvh - 72px) * var(--spread-scale, 1.5)));
   aspect-ratio: var(--spread-ratio, 3 / 2);
   overflow: hidden;
   background: var(--paper);
