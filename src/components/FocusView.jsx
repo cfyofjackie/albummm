@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import AlbumPage from './AlbumPage.jsx'
 import { buildLeaves, flatIndexOf, leafOfFlat } from '../lib/book.js'
 import './focus.css'
