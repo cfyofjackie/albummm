@@ -103,17 +103,8 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
             {s.name}
           </button>
         ))}
-        <select
-          className="reader__format"
-          aria-label="相册开本"
-          value={album.format.id}
-          onChange={(e) => onFormatChange(e.target.value)}
-        >
-          <option value="portrait">3:4 竖版</option>
-          <option value="landscape">4:3 横版</option>
-          <option value="square">1:1 方形</option>
-          <option value="editorial">4:5 Editorial</option>
-        </select>
+        {/* 开本只做 3:4，这里不再给选择器（手机上 3:4 的跨页是 3:2，观感接近实物书）。
+            机制保留：onFormatChange / album.format / ?format= 都还在，放开时把 select 渲染回来即可。 */}
         <span className="reader__sep" />
         <button type="button" className="chip" onClick={onRegenerate}>
           重新生成
