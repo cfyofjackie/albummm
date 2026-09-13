@@ -152,7 +152,6 @@ const FocusView = forwardRef(function FocusView(
   }
 
   const applyAnchor = (anchor, behavior = 'auto') => {
-    setSpreadMode(!!anchor && anchor.kind !== 'photo') // 跨页图走整跨适配
     if (!anchor) return false
     if (anchor.kind === 'photo') return centerPhoto(anchor.photoId, behavior)
     if (anchor.kind === 'spine') return centerSpine(anchor.pageIndex ?? indexRef.current, behavior)
@@ -377,13 +376,13 @@ const FocusView = forwardRef(function FocusView(
   // 取景模式变了（单页 ↔ 整跨），页面宽度跟着变，重新对位一次
   useLayoutEffect(() => {
     if (!enteredRef.current) return
-    applyAnchor(anchorRef.current)
+    applyAnchor(anchorRef.current, 'smooth')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spreadMode])
 
   // 窗口尺寸变化后重新对位（页宽用了 vw/dvh，偏移会变）
   useEffect(() => {
-    const onResize = () => applyAnchor(anchorRef.current)
+    const onResize = () => applyAnchor(anchorRef.current, 'smooth')
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -419,6 +418,13 @@ const FocusView = forwardRef(function FocusView(
     // 点了同一个取景 → 还原回书；点了别的照片 / 另一侧 / 书脊 → 平滑换取景
     if (anchor && !same) {
       anchorRef.current = anchor
+      const nextMode = anchor.kind !== 'photo' // 跨页图整跨适配，其余一页撑满
+      if (nextMode !== spreadMode) {
+        // 布局会整体变（页宽 82vw ↔ 41vw），此时再滚一次会打在旧坐标上；
+        // 只改模式，交给下面的 effect 在同一帧之后统一平滑对位。
+        setSpreadMode(nextMode)
+        return
+      }
       applyAnchor(anchor, 'smooth')
       return
     }
