@@ -282,6 +282,21 @@ describe('Studio 摄影书模式', () => {
     expect(pair.studio.boxes).toHaveLength(2)
   })
 
+  // 准入表：方图（1:1）不进跨页——跨页会让书脊从正中切开方块，它们属于单页模块。
+  it('1:1 方图不会被选去跨页，即使它是最大的那张', () => {
+    const photos = makePhotos([[2000, 2000], [1600, 1200], PORTRAIT, PORTRAIT, PORTRAIT, PORTRAIT])
+    for (let seed = 1; seed <= 6; seed++) {
+      const pages = planPages(photos, 'studio', `square-${seed}`, 'portrait')
+      const cross = new Set(['studio-hero', 'studio-inset', 'studio-panorama', 'studio-triptych'])
+      const crossIds = pages
+        .filter((page) => cross.has(page.layoutId))
+        .flatMap((page) => page.imageIds)
+      expect(crossIds).not.toContain('p0') // 方图
+      // 横图仍可走跨页
+      expect(crossIds).toContain('p1')
+    }
+  })
+
   // 随机排版：同一批图、不同种子 → 模块顺序不同（这是这次改动的核心诉求）。
   it('同一批图换种子，排版顺序会变', () => {
     const photos = makePhotos([

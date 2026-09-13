@@ -266,10 +266,9 @@ function planStudioPages(photos, seed, formatId) {
   const specs = [] // 先收集模块，最后统一排序落页——顺序本身也是随机的
   const pool = shuffleBy(photos.map((photo, index) => ({ ...photo, _i: index })), rng)
 
-  // ① 跨页主视觉：在手感相近的候选里随机挑一张，而不是永远挑面积最大的那张。
-  const heroCandidates = pool.filter(
-    (photo) => isWideish(photo) && photo.orientation !== 'ultra-wide',
-  )
+  // ① 跨页主视觉：只在真正的横图里随机挑（面积相近的候选）。
+  //    方图（1:1 那类）不进跨页——准入表里它们属于单页模块，硬跨页会被书脊从正中切开。
+  const heroCandidates = pool.filter((photo) => photo.orientation === 'landscape')
   if (heroCandidates.length > 0) {
     const biggest = Math.max(...heroCandidates.map(area))
     const good = heroCandidates.filter((photo) => area(photo) >= biggest * 0.6)
