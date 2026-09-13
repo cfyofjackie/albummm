@@ -6,14 +6,10 @@ import './focus.css'
 // Focus View：把「书里那一页」放大来读。
 // - 页面沿连续书芯横向排布；进出场是双页独立 FLIP，从书中真实矩形连续放大/缩回
 // - 点一张照片 = 把它平滑移到画面中心（倍数不变，只移动视点）；再点同一张 = 还原回书
-// - 横滑 = 换一个 spread（一次跨两页）；下滑 / 点纸面 / ✕ 也是还原
+// - 下滑 / 点纸面 / ✕ 也是还原。**没有横滑换页**（V0.6.11 删除）：
+//   换一跨交给书——还原 → 翻页（带 3D 翻页动画）→ 再点开，和翻真相册一样。
 // 倍数不是写死的数字，而是「页面吃满可用空间」推出来的：窄屏受宽度约束、宽屏受高度约束，
 // 于是同一套规则在手机和电脑上自动成立（实测约 1.9× / 1.15×），所有照片共用同一档。
-//
-// 翻页是自管分页器：手指拖动跟手，松手后无论甩多用力都只换一个 spread。
-// 不用原生 scroll-snap + 惯性——动能会一次滑过好几个 spread，且 CSS 无法限制。
-const SWIPE_THRESHOLD = 48 // px，横向位移超过才算一次有效换页手势
-const PAGE_STEP = 2 // 一次换一个 spread = 跨两页（保持左右手性）
 const SPINE_ZONE_MIN = 24 // 书脊判定的最小半径（手指比像素粗）
 
 const FocusView = forwardRef(function FocusView(
@@ -25,7 +21,6 @@ const FocusView = forwardRef(function FocusView(
   const touchRef = useRef(null)
   const closingRef = useRef(false)
   const enteredRef = useRef(false)
-  const slidingRef = useRef(false) // 换 spread 的滑入动画进行中，期间忽略拖拽
   const anchorRef = useRef(null) // 当前取景：{ photoId, kind: 'photo' | 'page' | 'spine', pageIndex }
   const indexRef = useRef(index)
   indexRef.current = index
@@ -162,77 +157,6 @@ const FocusView = forwardRef(function FocusView(
     return true
   }
 
-  // 换 spread：无论手势多用力，一次只走一个 spread（跨两页，左右手性不变）。
-  // 过渡不用横向滚动——滚动会把两跨之间的纸边从画面中间扫过去，看起来就像相册
-  // 在中间打开又合上。改成：旧一跨钉在原地不动，新一跨从相邻一侧滑进来盖住它，
-  // 两页相纸同步位移（同一个位移量），中途不会出现纸边，也不会互相错开。
-  const go = (delta) => {
-    const track = trackRef.current
-    const next = Math.max(0, Math.min(total - 1, indexRef.current + delta * PAGE_STEP))
-    if (next === indexRef.current) {
-      applyAnchor(anchorRef.current, 'smooth') // 已经是首/末，弹回原位
-      return
-    }
-    const prev = indexRef.current
-    const prevScroll = readingScrollOf(prev)
-    const nextScroll = readingScrollOf(next)
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (!track || prevScroll == null || nextScroll == null || reduce) {
-      anchorRef.current = null
-      onIndexChange(next)
-      positionAt(next, 'smooth')
-      return
-    }
-
-    const outWraps = spreadFlatsOf(prev).map((i) => track.children[i]).filter(Boolean)
-    const inWraps = spreadFlatsOf(next).map((i) => track.children[i]).filter(Boolean)
-    const moved = [...outWraps, ...inWraps]
-    const zedge = parseFloat(getComputedStyle(track).getPropertyValue('--zedge')) || 0
-    const vw = track.clientWidth
-    const ms = parseFloat(getComputedStyle(rootRef.current).getPropertyValue('--morph-ms')) || 360
-    // 钉住旧一跨要按「手指停下时的实际滚动位置」算，不能按阅读位——
-    // 拖拽可以停在任意位置，否则跳转那一帧旧一跨会先弹一下。
-    const scrollBefore = track.scrollLeft
-
-    anchorRef.current = null
-    slidingRef.current = true
-    inWraps.forEach((w) => { w.style.zIndex = '3' }) // 新一跨盖在上面（往前翻时它本来在下面）
-    onIndexChange(next)
-    positionAt(next) // 瞬时到位，只看得见补偿后的画面
-    const pitch = track.scrollLeft - scrollBefore // 跳转带来的实际位移
-    // 起始态必须和「提升合成层」在同一帧同步落地，再回流一次：
-    // 否则新一跨是「边画边被 transform 拖着走」，浏览器会按瓦片分批更新，
-    // 跨中缝的照片就会被切成几竖条、彼此错位（用户看到的「闪一下、不对齐」）。
-    moved.forEach((w) => {
-      w.classList.add('morph-prep')
-      w.style.transition = 'none'
-    })
-    // 旧一跨按原位钉住：瞬时滚到新阅读位后，它整体偏左了 pitch，补回来
-    outWraps.forEach((w) => { w.style.transform = `translateX(${pitch}px)` })
-    // 新一跨先摆到屏外相邻侧（刚好看不见），再动画滑进来盖住旧一跨
-    const entry = delta > 0 ? vw - zedge : -(vw - zedge)
-    inWraps.forEach((w) => { w.style.transform = `translateX(${entry}px)` })
-    void track.offsetWidth // 固化起始态 + 让 will-change 生效（两页同一个位移，刚性一体）
-
-    requestAnimationFrame(() => {
-      inWraps.forEach((w) => {
-        w.style.transition = `transform ${ms}ms cubic-bezier(0.28, 0.74, 0.3, 1)`
-        w.style.transform = ''
-      })
-      setTimeout(() => {
-        moved.forEach((w) => {
-          w.style.transition = 'none'
-          w.style.transform = ''
-          w.classList.remove('morph-prep')
-        })
-        inWraps.forEach((w) => {
-          w.style.transition = ''
-          w.style.zIndex = ''
-        })
-        slidingRef.current = false
-      }, ms + 40)
-    })
-  }
 
   // 每页独立 FLIP：当前页和同 spread 的另一页都从书中真实矩形出发。
   // 单一的 track transform 只能约束当前页，无法同时对齐另一页。
@@ -396,32 +320,29 @@ const FocusView = forwardRef(function FocusView(
     },
   }))
 
-  // 自管手势：横向拖动跟手（禁用原生惯性），松手后无论甩多用力都只换一个 spread；下滑退出
+  // 自管手势：只保留下滑退出。
+  // 横滑换 spread 已删除（V0.6.11）：它把「两页刚性同动 + 提交式跳转 + 合成层提升 +
+  // 触摸互斥」四件事绑在一起，是这套代码里最容易出问题的一块，而它换来的只是
+  // 「不用退出去就能看下一跨」。换跨交给书：还原 → 翻页（有 3D 翻页动画）→ 再点开。
   useEffect(() => {
     const track = trackRef.current
     if (!track) return
 
     const onStart = (e) => {
-      if (slidingRef.current) return
       const t = e.touches[0]
-      touchRef.current = { x: t.clientX, y: t.clientY, scroll: track.scrollLeft, mode: 'pending' }
+      touchRef.current = { x: t.clientX, y: t.clientY, mode: 'pending' }
     }
     const onMove = (e) => {
       const d = touchRef.current
-      if (!d || slidingRef.current) return
+      if (!d) return
       const t = e.touches[0]
       const dx = t.clientX - d.x
       const dy = t.clientY - d.y
-      if (d.mode === 'pending') {
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      if (d.mode === 'pending' && (Math.abs(dx) >= 8 || Math.abs(dy) >= 8)) {
         d.mode = Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical'
       }
-      if (d.mode === 'horizontal') {
-        e.preventDefault() // 接管横向滚动：原生惯性会一次滑过好几个 spread
-        track.scrollLeft = d.scroll - dx
-        anchorRef.current = null // 手动拖过之后取景作废，下一次点按重新定位而不是「还原」
-      }
-      // vertical 模式不拦截，留给 touchend 判定下滑退出
+      // 横向拖动不再接管滚动：这里什么都不做（也不 preventDefault），
+      // 于是横向手势对视图没有影响。
     }
     const onEnd = (e) => {
       const d = touchRef.current
@@ -430,20 +351,12 @@ const FocusView = forwardRef(function FocusView(
       const t = e.changedTouches[0]
       const dx = t.clientX - d.x
       const dy = t.clientY - d.y
-      if (d.mode === 'vertical') {
-        if (dy > 90 && Math.abs(dy) > Math.abs(dx) * 1.2) onCloseRef.current()
-        return
-      }
-      if (d.mode === 'horizontal') {
-        if (Math.abs(dx) > SWIPE_THRESHOLD) {
-          go(dx < 0 ? 1 : -1) // 无论甩多用力，一次只换一个 spread
-        } else {
-          applyAnchor(anchorRef.current, 'smooth') // 没过阈值，弹回当前取景
-        }
+      if (d.mode === 'vertical' && dy > 90 && Math.abs(dy) > Math.abs(dx) * 1.2) {
+        onCloseRef.current()
       }
     }
     track.addEventListener('touchstart', onStart, { passive: true })
-    track.addEventListener('touchmove', onMove, { passive: false })
+    track.addEventListener('touchmove', onMove, { passive: true })
     track.addEventListener('touchend', onEnd)
     const onCancel = () => {
       touchRef.current = null

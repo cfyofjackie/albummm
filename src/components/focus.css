@@ -47,8 +47,13 @@
   height: 100%;
   display: flex;
   align-items: center;
-  overflow-x: auto;
+  overflow-x: auto; /* 只用 JS 通过 scrollLeft 定位；触摸不再驱动它 */
   overflow-y: hidden;
+  /* 关掉横向手势：不接管横滑之后，浏览器会拿横向拖动去滚这个容器，
+     等于把「一次滑过好几跨 + 中间扫过纸边」那套问题全带回来。
+     pan-y 只保留纵向（下滑退出），横向拖动对视图没有任何影响。 */
+  touch-action: pan-y;
+  overscroll-behavior-x: none;
   padding-inline: var(--zedge);
   scrollbar-width: none;
 }
