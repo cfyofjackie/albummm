@@ -165,9 +165,15 @@ function isNearSquare(photo) {
   return Math.min(aspect, 1 / aspect) >= NEAR_SQUARE
 }
 
-function pageBoxFor(photo, formatId, side) {
-  if (!isNearSquare(photo)) return singleBox(photo, formatId, side)
-  return { photoId: photo.id, x: halfOrigin(side), y: 0, w: 50, h: 100, fit: 'contain' }
+// 近方图（1:1 那类）只有两种归宿，随机选一种——既不跨页，也不跟别的图上下拼：
+//  · 留白版：四周留白、裱在纸面上；
+//  · 杂志版：占满整页宽度（比例不足处留上下纸面），对页留给文字。
+// 其余照片只走留白版。
+function pageBoxFor(photo, formatId, side, rng) {
+  if (isNearSquare(photo) && rng() < 0.5) {
+    return { photoId: photo.id, x: halfOrigin(side), y: 0, w: 50, h: 100, fit: 'contain' }
+  }
+  return singleBox(photo, formatId, side)
 }
 
 // 两张图占一页：统一高度、按各自比例定宽、共用中轴、等距。
@@ -225,11 +231,11 @@ function triptychBoxes(photos, formatId) {
 // 合不了（尺寸准入不过）就返回 null，交给调用方兜底。
 function mergeIntoSpread(members, formatId) {
   const single = members.find(isPortraitish) ?? members[0]
-  const flats = members.filter((photo) => photo !== single)
+  const flats = members.filter((photo) => photo !== single && !isNearSquare(photo))
   if (flats.length !== 2) return null
   const stacked = stack2Boxes(flats, formatId, 'right')
   if (!stacked) return null
-  return [pageBoxFor(single, formatId, 'left'), ...stacked]
+  return [singleBox(single, formatId, 'left'), ...stacked]
 }
 
 // 可种子随机：洗牌（同 seed 结果一致，换 seed 重新生成）
@@ -320,6 +326,12 @@ function planStudioPages(photos, seed, formatId) {
     })
   }
 
+  // 近方图没有别的归宿（不跨页、不上下拼），先排到前面，成对时优先把它消化掉，
+  // 免得最后剩一张方图既合不进 spread、又只能退成题名页。
+  const ordered = [...pool.filter(isNearSquare), ...pool.filter((photo) => !isNearSquare(photo))]
+  pool.length = 0
+  pool.push(...ordered)
+
   // ④ 单页模块：按 2/3 张成组。三张一跨的组数 k 在合法值里随机（剩下的必须是偶数），
   //    于是"几张三张一页、几张左右各一"每本书都不同；同时永不剩单张。
   const validThrees = []
@@ -329,7 +341,10 @@ function planStudioPages(photos, seed, formatId) {
   let wantThrees = validThrees.length ? validThrees[Math.floor(rng() * validThrees.length)] : 0
   while (pool.length >= 2) {
     const single = pool.find(isPortraitish) ?? pool[0]
-    const flats = shuffleBy(pool.filter((photo) => photo !== single && !isPortraitish(photo)), rng)
+    const flats = shuffleBy(
+      pool.filter((photo) => photo !== single && !isPortraitish(photo) && !isNearSquare(photo)),
+      rng,
+    )
     const stacked = wantThrees > 0 && flats.length >= 2
       ? stack2Boxes(flats.slice(0, 2), formatId, 'right')
       : null
@@ -339,7 +354,7 @@ function planStudioPages(photos, seed, formatId) {
       specs.push({
         layoutId: 'studio-mixed',
         members: [...group].sort((a, b) => a._i - b._i),
-        boxes: [pageBoxFor(single, formatId, 'left'), ...stacked],
+        boxes: [pageBoxFor(single, formatId, 'left', rng), ...stacked],
       })
       wantThrees -= 1
       continue
@@ -348,7 +363,7 @@ function planStudioPages(photos, seed, formatId) {
     specs.push({
       layoutId: 'studio-pair',
       members,
-      boxes: [pageBoxFor(members[0], formatId, 'left'), pageBoxFor(members[1], formatId, 'right')],
+      boxes: [pageBoxFor(members[0], formatId, 'left', rng), pageBoxFor(members[1], formatId, 'right', rng)],
     })
   }
 
