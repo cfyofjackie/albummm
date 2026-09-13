@@ -75,11 +75,16 @@ const BookView = forwardRef(function BookView(
     const imageBox = e.target.closest('.imgbox')
     if (imageBox) {
       // 任何照片（含跨中缝的跨页主图 / 横幅 / 三联中图）都进入它所在的那一页：
-      // 与双图白边页完全同一套放大阅读，点了哪张就把视点落到哪张，横滑换 spread。
-      // 跨页在这里只影响排版，不影响「点开」的行为——不再有中缝热区或单张独立照片。
+      // 点了哪张就把视点落到哪张；铺满整页的跨页图再看落点——贴书脊看中间、点两侧看那一页。
+      // 跨页在这里只影响排版，不影响「点开」的行为——没有中缝热区，也没有单张独立照片。
       const flat = flatIndexOf(leaves, leafIndex, side, album.pages.length)
       if (flat != null) {
-        onPageOpen(flat, getSpreadRects(), imageBox.dataset.photoId ?? null)
+        const bookRect = rootRef.current?.querySelector('.book')?.getBoundingClientRect()
+        const nearSpine = bookRect
+          ? Math.abs(e.clientX - (bookRect.left + bookRect.width / 2))
+            <= Math.max(24, bookRect.width * 0.04)
+          : false
+        onPageOpen(flat, getSpreadRects(), imageBox.dataset.photoId ?? null, nearSpine)
         return
       }
     }

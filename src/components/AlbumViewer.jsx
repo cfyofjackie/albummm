@@ -19,6 +19,7 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
   const focusRef = useRef(null)
   const sourceSpreadRef = useRef([])
   const sourcePhotoRef = useRef(null)
+  const sourceNearSpineRef = useRef(false)
   const closingRef = useRef(false)
   const leaves = useMemo(() => buildLeaves(album.pages), [album])
 
@@ -38,9 +39,10 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
     return () => window.removeEventListener('keydown', onKey)
   }, [focusIndex])
 
-  const openFocus = (flat, sourceSpread, photoId) => {
+  const openFocus = (flat, sourceSpread, photoId, nearSpine) => {
     sourceSpreadRef.current = sourceSpread
     sourcePhotoRef.current = photoId ?? null
+    sourceNearSpineRef.current = !!nearSpine
     setFocusIndex(flat)
   }
 
@@ -77,6 +79,7 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
           onClosed={() => setFocusIndex(null)}
           sourceSpread={sourceSpreadRef.current}
           sourcePhotoId={sourcePhotoRef.current}
+          sourceNearSpine={sourceNearSpineRef.current}
         />
       )}
 

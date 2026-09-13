@@ -14,9 +14,10 @@ import './focus.css'
 // 不用原生 scroll-snap + 惯性——动能会一次滑过好几个 spread，且 CSS 无法限制。
 const SWIPE_THRESHOLD = 48 // px，横向位移超过才算一次有效换页手势
 const PAGE_STEP = 2 // 一次换一个 spread = 跨两页（保持左右手性）
+const SPINE_ZONE_MIN = 24 // 书脊判定的最小半径（手指比像素粗）
 
 const FocusView = forwardRef(function FocusView(
-  { album, index, onIndexChange, onCloseRequest, onClosed, sourceSpread, sourcePhotoId },
+  { album, index, onIndexChange, onCloseRequest, onClosed, sourceSpread, sourcePhotoId, sourceNearSpine },
   ref,
 ) {
   const rootRef = useRef(null)
@@ -24,8 +25,7 @@ const FocusView = forwardRef(function FocusView(
   const touchRef = useRef(null)
   const closingRef = useRef(false)
   const enteredRef = useRef(false)
-  const morphingRef = useRef(false)
-  const focusedRef = useRef(sourcePhotoId ?? null)
+  const anchorRef = useRef(null) // 当前取景：{ photoId, kind: 'photo' | 'page' | 'spine', pageIndex }
   const indexRef = useRef(index)
   indexRef.current = index
   const onCloseRef = useRef(onCloseRequest)
@@ -72,38 +72,57 @@ const FocusView = forwardRef(function FocusView(
     return true
   }
 
-  const focusOn = (id, behavior = 'auto') => {
-    if (id && centerPhoto(id, behavior)) return true
-    positionAt(indexRef.current, behavior)
-    return false
+  // 书脊在条带里的位置：当前页的内侧边（recto 的内侧在左，verso 在内侧在右）
+  const spineAt = (pageIndex) => {
+    const track = trackRef.current
+    const wrap = track?.children[pageIndex]
+    if (!track || !wrap) return null
+    const rect = wrap.getBoundingClientRect()
+    const left = track.scrollLeft + rect.left - track.getBoundingClientRect().left
+    return sideOf(pageIndex) === 'right' ? left : left + rect.width
   }
 
-  // 视口中心最近的那张照片 = 当前视点落在谁身上（横滑、拖动之后自动跟随）
-  const photoNearestCenter = () => {
+  const centerSpine = (pageIndex, behavior = 'auto') => {
     const track = trackRef.current
-    if (!track) return null
-    const mid = track.getBoundingClientRect().left + track.clientWidth / 2
-    let best = null
-    let bestDistance = Infinity
-    track.querySelectorAll('[data-photo-id]').forEach((el) => {
-      const r = el.getBoundingClientRect()
-      const d = Math.abs(r.left + r.width / 2 - mid)
-      if (d < bestDistance) {
-        bestDistance = d
-        best = el
-      }
-    })
-    return best?.dataset.photoId ?? null
+    const x = spineAt(pageIndex)
+    if (!track || x == null) return false
+    track.scrollTo({ left: Math.max(0, x - track.clientWidth / 2), behavior })
+    return true
+  }
+
+  // 点一张照片该落在哪：
+  // - 比一页窄的照片（三联左右图 / 三联中图 / 双图白边 / Gallery 各页）→ 居中它自己
+  // - 铺满整页的跨页图（跨页主图、超宽横幅）→ 贴书脊看中间，点两侧看那一页
+  const anchorFor = (photoId, tapX, pageIndex) => {
+    const track = trackRef.current
+    const el = photoEl(photoId)
+    const wrap = track?.children[pageIndex]
+    if (!track || !el || !wrap) return null
+    const pageRect = wrap.getBoundingClientRect()
+    const rect = el.getBoundingClientRect()
+    if (rect.width < pageRect.width - 1) return { photoId, kind: 'photo', pageIndex: undefined }
+    const spineX = sideOf(pageIndex) === 'right' ? pageRect.left : pageRect.right
+    const zone = Math.max(SPINE_ZONE_MIN, pageRect.width * 0.07)
+    if (Math.abs(tapX - spineX) <= zone) return { photoId, kind: 'spine', pageIndex }
+    return { photoId, kind: 'page', pageIndex }
+  }
+
+  const applyAnchor = (anchor, behavior = 'auto') => {
+    if (!anchor) return false
+    if (anchor.kind === 'photo') return centerPhoto(anchor.photoId, behavior)
+    if (anchor.kind === 'spine') return centerSpine(anchor.pageIndex ?? indexRef.current, behavior)
+    positionAt(anchor.pageIndex ?? indexRef.current, behavior)
+    return true
   }
 
   // 换 spread：无论手势多用力，一次只走一个 spread（跨两页，左右手性不变）
   const go = (delta) => {
     const next = Math.max(0, Math.min(total - 1, indexRef.current + delta * PAGE_STEP))
     if (next === indexRef.current) {
-      focusOn(focusedRef.current, 'smooth') // 已经是首/末，弹回原位
+      applyAnchor(anchorRef.current, 'smooth') // 已经是首/末，弹回原位
       return
     }
-    focusedRef.current = null // 换了 spread，视点重新落回整页
+    anchorRef.current = null // 换了 spread，取景重新落回整页
     onIndexChange(next)
     positionAt(next, 'smooth')
   }
@@ -141,7 +160,6 @@ const FocusView = forwardRef(function FocusView(
         wrap.style.transform = ''
       }
     })
-    morphingRef.current = false
   }
 
   // 入场：先把视点落到被点的那张照片上，然后当前 spread 的两页从书中真实位置连续展开。
@@ -153,8 +171,24 @@ const FocusView = forwardRef(function FocusView(
     if (enteredRef.current) return // StrictMode 下 effect 会跑两遍，防重入
     enteredRef.current = true
     // 定位必须在 FLIP 之前、且只跑一次：StrictMode 的第二次 effect 里页面已经带上
-    // 变形 transform，那时再量矩形会得到错的滚动位置（视点会偏半个照片）
-    focusOn(sourcePhotoId)
+    // 变形 transform，那时再量矩形会得到错的滚动位置（视点会偏半个照片）。
+    // 取景由「书里点的是哪张、落在哪」决定：窄照片居中自己；铺满整页的看落点。
+    const wrapPage = track.children[index]
+    const sourceEl = photoEl(sourcePhotoId)
+    const wide = !!sourceEl
+      && sourceEl.getBoundingClientRect().width >= wrapPage.getBoundingClientRect().width - 1
+    if (!sourcePhotoId) {
+      positionAt(index)
+    } else if (!wide) {
+      anchorRef.current = { photoId: sourcePhotoId, kind: 'photo' }
+      centerPhoto(sourcePhotoId)
+    } else if (sourceNearSpine) {
+      anchorRef.current = { photoId: sourcePhotoId, kind: 'spine', pageIndex: index }
+      centerSpine(index)
+    } else {
+      anchorRef.current = { photoId: sourcePhotoId, kind: 'page', pageIndex: index }
+      positionAt(index)
+    }
     const flips = (sourceSpread ?? [])
       .map(({ flat, rect }) => computePageFlip(flat, rect))
       .filter(Boolean)
@@ -163,7 +197,6 @@ const FocusView = forwardRef(function FocusView(
       return
     }
 
-    morphingRef.current = true
     const visibleWraps = new Set(flips.map(({ wrap: item }) => item))
     Array.from(track.children).forEach((item) => {
       if (!visibleWraps.has(item)) item.classList.add('morph-hidden')
@@ -228,7 +261,6 @@ const FocusView = forwardRef(function FocusView(
       // 底与控件先退，页面在缩回途中保持不透明：底下的书只在页面快落回原位时才透出
       root?.classList.remove('is-open')
       root?.classList.add('is-closing')
-      morphingRef.current = true
       const visibleWraps = new Set(flips.map(({ wrap: item }) => item))
       Array.from(track.children).forEach((item) => {
         if (!visibleWraps.has(item)) item.classList.add('morph-hidden')
@@ -279,6 +311,7 @@ const FocusView = forwardRef(function FocusView(
       if (d.mode === 'horizontal') {
         e.preventDefault() // 接管横向滚动：原生惯性会一次滑过好几个 spread
         track.scrollLeft = d.scroll - dx
+        anchorRef.current = null // 手动拖过之后取景作废，下一次点按重新定位而不是「还原」
       }
       // vertical 模式不拦截，留给 touchend 判定下滑退出
     }
@@ -297,7 +330,7 @@ const FocusView = forwardRef(function FocusView(
         if (Math.abs(dx) > SWIPE_THRESHOLD) {
           go(dx < 0 ? 1 : -1) // 无论甩多用力，一次只换一个 spread
         } else {
-          focusOn(focusedRef.current, 'smooth') // 没过阈值，弹回当前视点
+          applyAnchor(anchorRef.current, 'smooth') // 没过阈值，弹回当前取景
         }
       }
     }
@@ -319,7 +352,7 @@ const FocusView = forwardRef(function FocusView(
 
   // 窗口尺寸变化后重新对位（页宽用了 vw/dvh，偏移会变）
   useEffect(() => {
-    const onResize = () => focusOn(focusedRef.current)
+    const onResize = () => applyAnchor(anchorRef.current)
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -341,17 +374,21 @@ const FocusView = forwardRef(function FocusView(
       }
     }
     if (best !== indexRef.current) onIndexChange(best)
-    // 拖动 / 换页之后，视点跟着落到新的照片上（变形途中矩形不代表真实布局，跳过）
-    if (!morphingRef.current) focusedRef.current = photoNearestCenter()
   }
 
   const handleWrapClick = (e, i) => {
     e.stopPropagation()
     const photoId = e.target.closest('[data-photo-id]')?.dataset.photoId ?? null
-    // 点一张还没拉近的照片 → 平移视点到它；点已经拉近的这张、或点纸面 → 还原回书
-    if (photoId && photoId !== focusedRef.current) {
-      focusedRef.current = photoId
-      centerPhoto(photoId, 'smooth')
+    const anchor = photoId ? anchorFor(photoId, e.clientX, i) : null
+    const cur = anchorRef.current
+    const same = !!anchor && !!cur
+      && anchor.photoId === cur.photoId
+      && anchor.kind === cur.kind
+      && anchor.pageIndex === cur.pageIndex
+    // 点了同一个取景 → 还原回书；点了别的照片 / 另一侧 / 书脊 → 平滑换取景
+    if (anchor && !same) {
+      anchorRef.current = anchor
+      applyAnchor(anchor, 'smooth')
       return
     }
     onCloseRef.current()
