@@ -154,6 +154,22 @@ function singleBox(photo, formatId, side) {
   }
 }
 
+// 单页模块有两种做法：
+//  · 留白版（matted）：四周留白、按比例 contain，作品集里"裱上去"的感觉；
+//  · 杂志版（editorial，对应 LAYOUT 的 ⑥）：占满这一页的宽度——比例接近本页时
+//    正好满版出血，比例不同时上下留纸（contain，绝不裁切），对页留给文字。
+// 近方（1:1 那类）走杂志版：它们在页面上占满宽度最好看；这也是用户指定 ⑥ 的用途。
+const NEAR_SQUARE = 0.88
+function isNearSquare(photo) {
+  const aspect = photo.width / photo.height
+  return Math.min(aspect, 1 / aspect) >= NEAR_SQUARE
+}
+
+function pageBoxFor(photo, formatId, side) {
+  if (!isNearSquare(photo)) return singleBox(photo, formatId, side)
+  return { photoId: photo.id, x: halfOrigin(side), y: 0, w: 50, h: 100, fit: 'contain' }
+}
+
 // 两张图占一页：统一高度、按各自比例定宽、共用中轴、等距。
 // 放不下就返回 null——准入由尺寸决定，不硬塞。
 function stack2Boxes(photos, formatId, side, gap = 4) {
@@ -213,7 +229,7 @@ function mergeIntoSpread(members, formatId) {
   if (flats.length !== 2) return null
   const stacked = stack2Boxes(flats, formatId, 'right')
   if (!stacked) return null
-  return [singleBox(single, formatId, 'left'), ...stacked]
+  return [pageBoxFor(single, formatId, 'left'), ...stacked]
 }
 
 // 可种子随机：洗牌（同 seed 结果一致，换 seed 重新生成）
@@ -323,7 +339,7 @@ function planStudioPages(photos, seed, formatId) {
       specs.push({
         layoutId: 'studio-mixed',
         members: [...group].sort((a, b) => a._i - b._i),
-        boxes: [singleBox(single, formatId, 'left'), ...stacked],
+        boxes: [pageBoxFor(single, formatId, 'left'), ...stacked],
       })
       wantThrees -= 1
       continue
@@ -332,7 +348,7 @@ function planStudioPages(photos, seed, formatId) {
     specs.push({
       layoutId: 'studio-pair',
       members,
-      boxes: [singleBox(members[0], formatId, 'left'), singleBox(members[1], formatId, 'right')],
+      boxes: [pageBoxFor(members[0], formatId, 'left'), pageBoxFor(members[1], formatId, 'right')],
     })
   }
 
