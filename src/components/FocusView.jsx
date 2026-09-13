@@ -186,37 +186,44 @@ const FocusView = forwardRef(function FocusView(
 
     const outWraps = spreadFlatsOf(prev).map((i) => track.children[i]).filter(Boolean)
     const inWraps = spreadFlatsOf(next).map((i) => track.children[i]).filter(Boolean)
+    const moved = [...outWraps, ...inWraps]
     const zedge = parseFloat(getComputedStyle(track).getPropertyValue('--zedge')) || 0
     const vw = track.clientWidth
-    const pitch = nextScroll - prevScroll // 两跨阅读位的距离
+    const ms = parseFloat(getComputedStyle(rootRef.current).getPropertyValue('--morph-ms')) || 360
+    // 钉住旧一跨要按「手指停下时的实际滚动位置」算，不能按阅读位——
+    // 拖拽可以停在任意位置，否则跳转那一帧旧一跨会先弹一下。
+    const scrollBefore = track.scrollLeft
 
     anchorRef.current = null
     slidingRef.current = true
     inWraps.forEach((w) => { w.style.zIndex = '3' }) // 新一跨盖在上面（往前翻时它本来在下面）
     onIndexChange(next)
     positionAt(next) // 瞬时到位，只看得见补偿后的画面
+    const pitch = track.scrollLeft - scrollBefore // 跳转带来的实际位移
+    // 起始态必须和「提升合成层」在同一帧同步落地，再回流一次：
+    // 否则新一跨是「边画边被 transform 拖着走」，浏览器会按瓦片分批更新，
+    // 跨中缝的照片就会被切成几竖条、彼此错位（用户看到的「闪一下、不对齐」）。
+    moved.forEach((w) => {
+      w.classList.add('morph-prep')
+      w.style.transition = 'none'
+    })
     // 旧一跨按原位钉住：瞬时滚到新阅读位后，它整体偏左了 pitch，补回来
-    outWraps.forEach((w) => {
-      w.style.transition = 'none'
-      w.style.transform = `translateX(${pitch}px)`
-    })
-    // 新一跨先摆到「正好贴住旧一跨外缘」的位置，再动画回到 0
+    outWraps.forEach((w) => { w.style.transform = `translateX(${pitch}px)` })
+    // 新一跨先摆到屏外相邻侧（刚好看不见），再动画滑进来盖住旧一跨
     const entry = delta > 0 ? vw - zedge : -(vw - zedge)
-    inWraps.forEach((w) => {
-      w.style.transition = 'none'
-      w.style.transform = `translateX(${entry}px)`
-    })
-    void track.offsetWidth // 固化起始态（两页同一个位移，刚性一体）
+    inWraps.forEach((w) => { w.style.transform = `translateX(${entry}px)` })
+    void track.offsetWidth // 固化起始态 + 让 will-change 生效（两页同一个位移，刚性一体）
+
     requestAnimationFrame(() => {
-      const ms = parseFloat(getComputedStyle(rootRef.current).getPropertyValue('--morph-ms')) || 360
       inWraps.forEach((w) => {
         w.style.transition = `transform ${ms}ms cubic-bezier(0.28, 0.74, 0.3, 1)`
         w.style.transform = ''
       })
       setTimeout(() => {
-        outWraps.forEach((w) => {
+        moved.forEach((w) => {
           w.style.transition = 'none'
           w.style.transform = ''
+          w.classList.remove('morph-prep')
         })
         inWraps.forEach((w) => {
           w.style.transition = ''
