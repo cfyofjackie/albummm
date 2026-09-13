@@ -37,6 +37,7 @@ export default function App() {
   // 'editor' 上传编辑 · 'shelf' 封面墙 · 'closed' 合着的书 · 'reading' 翻开在读
   const [screen, setScreen] = useState('editor')
   const inputRef = useRef(null)
+  const demoRanRef = useRef(false) // StrictMode 下 effect 跑两次，演示只生成一次
 
   // 启动时把书库读回来：有书就直接落在封面墙（第二次打开就是书架）。
   // 演示 / 验证钩子（?demo=…&go=…）自己决定落在哪，这里让路。
@@ -46,7 +47,12 @@ export default function App() {
     let alive = true
     loadBooks().then((saved) => {
       if (!alive || saved.length === 0) return
-      setBooks(saved) // 演示地址也要把已存的书读回来，否则书架上只看得见刚生成的那本
+      // 合并而不是覆盖：读库是异步的，此刻内存里可能已经有刚生成的书
+      setBooks((prev) => {
+        const byId = new Map(saved.map((book) => [book.id, book]))
+        prev.forEach((book) => byId.set(book.id, book)) // 内存里的是用户刚操作的，以它为准
+        return [...byId.values()]
+      })
       if (!demo) setScreen('shelf') // 演示/验证钩子自己决定落在哪
     })
     return () => { alive = false }
@@ -92,10 +98,11 @@ export default function App() {
   ) => {
     const pages = planPages(photoList, styleId, seed, formatId)
     // 生成即落成书库里的一本：'new' 或没有当前书＝新建，否则更新当前那本
-    // 演示书用固定 id：反复用演示地址不会在书架上堆出一串
-    const demoBook = new URLSearchParams(window.location.search).has('demo')
-    const bookId = demoBook ? 'demo-book'
-      : !bookIdArg || bookIdArg === 'new' ? `book-` : bookIdArg
+    // id 必须唯一：之前这里被写成了固定的 `book-`（变量插值被吃掉），
+    // 结果每本新书都顶着同一个 id，后生成的把前一本覆盖掉。
+    const bookId = !bookIdArg || bookIdArg === 'new'
+      ? `book-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+      : bookIdArg
     const nextBook = {
       id: bookId,
       title: title.trim() || 'Untitled Album',
@@ -128,6 +135,8 @@ export default function App() {
     const params = new URLSearchParams(window.location.search)
     const demoCount = parseInt(params.get('demo'), 10)
     if (!demoCount) return
+    if (demoRanRef.current) return // StrictMode 会执行两次，演示只生成一次
+    demoRanRef.current = true
     const n = Math.max(MIN_PHOTOS, Math.min(MAX_PHOTOS, demoCount))
     import('./lib/demo.js').then(({ makeDemoPhotos }) =>
       makeDemoPhotos(n).then((demoPhotos) => {
