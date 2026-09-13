@@ -11,8 +11,8 @@ const STYLE_OPTIONS = [
   { id: 'studio', name: 'Studio' },
 ]
 
-export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange, onFormatChange }) {
-  const [leafIndex, setLeafIndex] = useState(0)
+export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange, onFormatChange, initialLeaf = 0 }) {
+  const [leafIndex, setLeafIndex] = useState(initialLeaf)
   const [focusIndex, setFocusIndex] = useState(null)
   const [uiVisible, setUiVisible] = useState(true)
   const bookRef = useRef(null)

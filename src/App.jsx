@@ -10,6 +10,7 @@ import { planPages } from './lib/plan.js'
 import { pickCoverColor } from './lib/palette.js'
 import { DEFAULT_PAGE_FORMAT, getPageFormat } from './lib/pageFormat.js'
 import AlbumViewer from './components/AlbumViewer.jsx'
+import ClosedBook from './components/ClosedBook.jsx'
 import './App.css'
 
 const STYLES = [
@@ -28,6 +29,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [album, setAlbum] = useState(null)
+  const [opened, setOpened] = useState(false) // false = 合着的书（刚生成完）；true = 翻开在读
   const inputRef = useRef(null)
 
   const addFiles = useCallback(
@@ -91,6 +93,7 @@ export default function App() {
       makeDemoPhotos(n).then((demoPhotos) => {
         setPhotos(demoPhotos)
         if (params.get('go')) {
+          setOpened(!params.get('closed'))
           const seed = Math.floor(Math.random() * 1e9)
           const styleId = params.get('style') || 'gallery'
           const formatId = params.get('format') || DEFAULT_PAGE_FORMAT
@@ -103,9 +106,15 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 合着的书：生成完成后的落点。点一下翻开，直接落在第一页内容（不再重复看封面）。
+  if (album && !opened) {
+    return <ClosedBook album={album} onOpen={() => setOpened(true)} />
+  }
+
   if (album) {
     return (
       <AlbumViewer
+        initialLeaf={1}
         album={album}
         onBack={() => setAlbum(null)}
         onRegenerate={() => generate(album.style, undefined, album.photos, album.format.id)}
@@ -224,7 +233,10 @@ export default function App() {
           type="button"
           className="generate"
           disabled={!canGenerate}
-          onClick={() => generate()}
+          onClick={() => {
+            setOpened(false) // 从编辑器生成：先给一本合着的书，点一下才翻开
+            generate()
+          }}
         >
           {loading
             ? '读取中…'

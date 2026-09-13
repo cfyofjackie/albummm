@@ -1,7 +1,7 @@
 import { boxesForPage } from '../lib/geometry.js'
 import './album.css'
 
-function Cover({ album, back }) {
+export function Cover({ album, back }) {
   const color = album.coverColor
   return (
     <div

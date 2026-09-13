@@ -1,0 +1,54 @@
+/* 合着的书：居中摆在纸面上。封面复用阅读里的封面设计，
+   下面错开一点露出的那一层就是"纸张"——书页侧边的厚度感。 */
+.closed-book {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 7vh 8vw;
+  background: var(--paper);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.closed-book__stack {
+  position: relative;
+  width: min(62vw, calc((100dvh - 200px) * 0.75));
+}
+
+/* 纸张：封面下缘与右侧露出的页芯，用细横线表示一叠纸 */
+.closed-book__pages {
+  position: absolute;
+  inset: 0;
+  transform: translate(5px, 5px);
+  background: repeating-linear-gradient(
+    to bottom,
+    #f4f2ed 0 2px,
+    #e4e1d9 2px 3px
+  );
+  box-shadow: 0 16px 34px rgba(26, 26, 24, 0.16);
+}
+
+.closed-book__cover {
+  position: relative;
+  box-shadow: 0 10px 26px rgba(26, 26, 24, 0.22);
+  transition: transform 180ms ease;
+}
+
+.closed-book:hover .closed-book__cover,
+.closed-book:focus-visible .closed-book__cover {
+  transform: translateY(-2px);
+}
+
+.closed-book:focus-visible {
+  outline: none;
+}
+
+.closed-book__hint {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+}
