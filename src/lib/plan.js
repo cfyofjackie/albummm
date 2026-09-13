@@ -248,28 +248,33 @@ function planStudioPages(photos, seed, formatId) {
     })
   }
 
-  // 其余照片两两成组：两张横图（或方图）走「两张图占一页」（上下拼在同一页），
-  // 其余走「左右各一张」；只剩一张时配一张题名页收尾。
+  // 剩下的照片按「一个 spread = 两个单页模块」组装：
+  // 优先凑三张一跨——一页放一张（挑竖图/超长竖，它们不适合上下拼），
+  // 另一页放上下两张（挑横图/方图）。凑不出三张时再退回两人一组。
+  const takeOut = (list) => list.forEach((photo) => pool.splice(pool.indexOf(photo), 1))
+  while (pool.length >= 3) {
+    const single = pool.find(isPortraitish) ?? pool[0]
+    const flats = pool.filter((photo) => photo !== single && !isPortraitish(photo))
+    const stacked = flats.length >= 2 ? stack2Boxes(flats.slice(0, 2), formatId, 'right') : null
+    if (!stacked) break
+    const members = [single, ...flats.slice(0, 2)].sort((a, b) => a._i - b._i)
+    takeOut([single, ...flats.slice(0, 2)])
+    append('studio-mixed', members, {
+      boxes: [
+        singleBox(single, formatId, 'left'),
+        ...stacked,
+      ],
+    })
+  }
   while (pool.length >= 2) {
     const members = pool.splice(0, 2)
-    const bothFlat = members.every((photo) => !isPortraitish(photo))
-    const stacked = bothFlat ? stack2Boxes(members, formatId, 'right') : null
-    if (stacked) {
-      append('studio-stack2', members, { boxes: stacked })
-    } else {
-      append('studio-pair', members, {
-        boxes: [singleBox(members[0], formatId, 'left'), singleBox(members[1], formatId, 'right')],
-      })
-    }
+    append('studio-pair', members, {
+      boxes: [singleBox(members[0], formatId, 'left'), singleBox(members[1], formatId, 'right')],
+    })
   }
   if (pool.length === 1) append('studio-title-photo', pool.splice(0, 1))
 
-  // 播放 seed 仅用于将双图对偶尔镜像，保持同一张组图的顺序不被打乱。
-  if (rng() > 0.5) {
-    for (const page of pages) {
-      if (page.layoutId === 'studio-pair') page.studio.flipPair = true
-    }
-  }
+  void rng // 种子暂时不用：随机排版是下一步（准入 + 分组 + 洗牌 + 节奏）
 
   return [
     { type: 'cover', layoutId: 'cover', imageIds: [] },

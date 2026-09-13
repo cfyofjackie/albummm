@@ -267,14 +267,14 @@ describe('Studio 摄影书模式', () => {
     expect(new Set(used).size).toBe(studioPhotos.length)
   })
 
-  it('生成跨页主图、三联跨页与两张图一页', () => {
+  it('生成跨页主图、三联跨页与左右各一张', () => {
     const pages = planPages(studioPhotos, 'studio', 'studio-seed', 'portrait')
     const leftPages = pages.filter((page) => page.type === 'studio' && page.studio.side === 'left')
-    // 剩下的两张横图现在走「两张图占一页」（上下拼在同一页）
+    // 剩下的正好两张，凑不出三张一跨，走「左右各一张」
     expect(leftPages.map((page) => page.layoutId)).toEqual([
       'studio-hero',
       'studio-triptych',
-      'studio-stack2',
+      'studio-pair',
     ])
     expect(leftPages[1].studio.boxes).toHaveLength(3)
     expect(leftPages[2].studio.boxes).toHaveLength(2)
@@ -289,21 +289,21 @@ describe('Studio 摄影书模式', () => {
     expect(panoramaPages).toHaveLength(2)
   })
 
-  // 单页模块：两张图占同一页（上下拼），对页另算。
-  it('两张横图走「两张图占一页」：同高、同页、各自保比例', () => {
+  // 单页模块：一个 spread = 两个单页模块（左页一张图、右页上下两张），对页不再留空。
+  it('一个 spread 拼两个单页模块：左页一张、右页上下两张', () => {
     const photos = makePhotos([[2400, 1800], LANDSCAPE, LANDSCAPE, PORTRAIT, SQUARE, SQUARE])
     const pages = planPages(photos, 'studio', 'stack-seed', 'portrait')
     const left = pages.filter((page) => page.type === 'studio' && page.studio.side === 'left')
-    const stack = left.find((page) => page.layoutId === 'studio-stack2')
-    expect(stack).toBeTruthy()
-    const [a, b] = stack.studio.boxes
-    expect(stack.studio.boxes).toHaveLength(2)
-    expect(a.h).toBe(b.h) // 统一高度
-    expect(a.fit).toBe('contain') // 不裁切
-    expect(a.x).toBeGreaterThanOrEqual(50) // 两张都在右页
-    expect(b.x).toBeGreaterThanOrEqual(50)
-    expect(a.x).toBe(b.x) // 共用中轴（等宽时同 x）
-    expect(b.y).toBeGreaterThan(a.y) // 上下排列
+    const mixed = left.find((page) => page.layoutId === 'studio-mixed')
+    expect(mixed).toBeTruthy()
+    const boxes = mixed.studio.boxes
+    expect(boxes).toHaveLength(3)
+    expect(boxes.filter((box) => box.x < 50)).toHaveLength(1) // 左页一张
+    const onRight = boxes.filter((box) => box.x >= 50)
+    expect(onRight).toHaveLength(2) // 右页上下两张
+    expect(onRight[0].h).toBe(onRight[1].h) // 统一高度
+    expect(boxes.every((box) => box.fit === 'contain')).toBe(true) // 不裁切
+    expect(onRight[1].y).toBeGreaterThan(onRight[0].y)
   })
 
   // T2：比例不够接近满版的横图不再被裁成跨页满版，也不再掉到单页，
