@@ -42,12 +42,12 @@ export default function App() {
   // 演示 / 验证钩子（?demo=…&go=…）自己决定落在哪，这里让路。
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.has('demo')) return undefined
+    const demo = params.has('demo')
     let alive = true
     loadBooks().then((saved) => {
       if (!alive || saved.length === 0) return
-      setBooks(saved)
-      setScreen('shelf')
+      setBooks(saved) // 演示地址也要把已存的书读回来，否则书架上只看得见刚生成的那本
+      if (!demo) setScreen('shelf') // 演示/验证钩子自己决定落在哪
     })
     return () => { alive = false }
   }, [])
@@ -92,7 +92,10 @@ export default function App() {
   ) => {
     const pages = planPages(photoList, styleId, seed, formatId)
     // 生成即落成书库里的一本：'new' 或没有当前书＝新建，否则更新当前那本
-    const bookId = !bookIdArg || bookIdArg === 'new' ? `book-` : bookIdArg
+    // 演示书用固定 id：反复用演示地址不会在书架上堆出一串
+    const demoBook = new URLSearchParams(window.location.search).has('demo')
+    const bookId = demoBook ? 'demo-book'
+      : !bookIdArg || bookIdArg === 'new' ? `book-` : bookIdArg
     const nextBook = {
       id: bookId,
       title: title.trim() || 'Untitled Album',
@@ -173,7 +176,13 @@ export default function App() {
 
   // 合着的书：生成完成后的落点。点一下翻开，直接落在第一页内容（不再重复看封面）。
   if (album && screen === 'closed') {
-    return <ClosedBook album={album} onOpen={() => setScreen('reading')} />
+    return (
+      <ClosedBook
+        album={album}
+        onOpen={() => setScreen('reading')}
+        onBack={() => setScreen('shelf')}
+      />
+    )
   }
 
   if (album && screen === 'reading') {
@@ -185,7 +194,7 @@ export default function App() {
           setAlbum(null)
           setScreen('shelf') // 合上书 → 回到封面墙
         }}
-        onRegenerate={() => generate(album.style, undefined, album.photos, album.format.id)}
+        onRegenerate={() => generate(album.style, undefined, album.photos, album.format.id, 'new')}
         onStyleChange={(styleId) => {
           setStyle(styleId)
           generate(styleId, album.seed, album.photos, album.format.id)

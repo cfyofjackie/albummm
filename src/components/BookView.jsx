@@ -84,7 +84,10 @@ const BookView = forwardRef(function BookView(
           ? Math.abs(e.clientX - (bookRect.left + bookRect.width / 2))
             <= Math.max(24, bookRect.width * 0.04)
           : false
-        onPageOpen(flat, getSpreadRects(), imageBox.dataset.photoId ?? null, nearSpine)
+        // 这张照片是否横跨两页：跨页图放大时改走「整跨落在屏内」，不按单页放大
+        const pageW = e.currentTarget.getBoundingClientRect().width
+        const crossSpread = imageBox.getBoundingClientRect().width > pageW * 1.2
+        onPageOpen(flat, getSpreadRects(), imageBox.dataset.photoId ?? null, nearSpine, crossSpread)
         return
       }
     }

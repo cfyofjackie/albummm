@@ -20,6 +20,7 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
   const sourceSpreadRef = useRef([])
   const sourcePhotoRef = useRef(null)
   const sourceNearSpineRef = useRef(false)
+  const sourceCrossSpreadRef = useRef(false)
   const closingRef = useRef(false)
   const leaves = useMemo(() => buildLeaves(album.pages), [album])
 
@@ -39,10 +40,11 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
     return () => window.removeEventListener('keydown', onKey)
   }, [focusIndex])
 
-  const openFocus = (flat, sourceSpread, photoId, nearSpine) => {
+  const openFocus = (flat, sourceSpread, photoId, nearSpine, crossSpread) => {
     sourceSpreadRef.current = sourceSpread
     sourcePhotoRef.current = photoId ?? null
     sourceNearSpineRef.current = !!nearSpine
+    sourceCrossSpreadRef.current = !!crossSpread
     setFocusIndex(flat)
   }
 
@@ -62,6 +64,18 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
 
   return (
     <div className="reader" onClick={() => setUiVisible((v) => !v)}>
+      {/* 左上角：直接回封面墙 */}
+      <button
+        type="button"
+        className="reader__shelf"
+        aria-label="返回封面墙"
+        onClick={(e) => {
+          e.stopPropagation()
+          onBack()
+        }}
+      >
+        <span aria-hidden="true">⌂</span>
+      </button>
       <BookView
         ref={bookRef}
         album={album}
@@ -80,6 +94,7 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
           sourceSpread={sourceSpreadRef.current}
           sourcePhotoId={sourcePhotoRef.current}
           sourceNearSpine={sourceNearSpineRef.current}
+          sourceCrossSpread={sourceCrossSpreadRef.current}
         />
       )}
 

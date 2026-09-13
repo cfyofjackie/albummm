@@ -13,7 +13,7 @@ import './focus.css'
 const SPINE_ZONE_MIN = 24 // 书脊判定的最小半径（手指比像素粗）
 
 const FocusView = forwardRef(function FocusView(
-  { album, index, onIndexChange, onCloseRequest, onClosed, sourceSpread, sourcePhotoId, sourceNearSpine },
+  { album, index, onIndexChange, onCloseRequest, onClosed, sourceSpread, sourcePhotoId, sourceNearSpine, sourceCrossSpread },
   ref,
 ) {
   const rootRef = useRef(null)
@@ -23,6 +23,8 @@ const FocusView = forwardRef(function FocusView(
   const enteredRef = useRef(false)
   const anchorRef = useRef(null) // 当前取景：{ photoId, kind: 'photo' | 'page' | 'spine', pageIndex }
   const indexRef = useRef(index)
+  // 单页模式（一页撑满屏幕）／整跨模式（一张跨两页的图完整落在屏内）
+  const [spreadMode, setSpreadMode] = useState(!!sourceCrossSpread)
   indexRef.current = index
   const onCloseRef = useRef(onCloseRequest)
   onCloseRef.current = onCloseRequest
@@ -150,6 +152,7 @@ const FocusView = forwardRef(function FocusView(
   }
 
   const applyAnchor = (anchor, behavior = 'auto') => {
+    setSpreadMode(!!anchor && anchor.kind !== 'photo') // 跨页图走整跨适配
     if (!anchor) return false
     if (anchor.kind === 'photo') return centerPhoto(anchor.photoId, behavior)
     if (anchor.kind === 'spine') return centerSpine(anchor.pageIndex ?? indexRef.current, behavior)
@@ -371,6 +374,13 @@ const FocusView = forwardRef(function FocusView(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 取景模式变了（单页 ↔ 整跨），页面宽度跟着变，重新对位一次
+  useLayoutEffect(() => {
+    if (!enteredRef.current) return
+    applyAnchor(anchorRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spreadMode])
+
   // 窗口尺寸变化后重新对位（页宽用了 vw/dvh，偏移会变）
   useEffect(() => {
     const onResize = () => applyAnchor(anchorRef.current)
@@ -417,7 +427,7 @@ const FocusView = forwardRef(function FocusView(
 
   return (
     <div
-      className="zfocus"
+      className={`zfocus ${spreadMode ? 'zfocus--spread' : ''}`}
       ref={rootRef}
       style={{ '--focus-scale': album.format.focusScale }}
     >

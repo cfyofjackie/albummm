@@ -77,3 +77,22 @@
   font: inherit;
   font-size: 12px;
 }
+
+/* 阅读界面左上角：直接回封面墙 */
+.reader__shelf {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 30;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}

@@ -3,7 +3,7 @@ import './closed-book.css'
 
 // 合着的书：封面 + 露出的纸边 + 投影。点一下翻开（进阅读，直接落在第一页内容）。
 // 复用阅读里那一套封面设计（书名 + 由种子定的配色），所以这里不需要加载任何照片。
-export default function ClosedBook({ album, onOpen }) {
+export default function ClosedBook({ album, onOpen, onBack }) {
   const pageStyle = { '--page-ratio': album.format.pageRatio }
   return (
     <div
@@ -19,6 +19,19 @@ export default function ClosedBook({ album, onOpen }) {
         }
       }}
     >
+      {onBack && (
+        <button
+          type="button"
+          className="closed-book__shelf"
+          aria-label="返回封面墙"
+          onClick={(e) => {
+            e.stopPropagation()
+            onBack()
+          }}
+        >
+          <span aria-hidden="true">⌂</span>
+        </button>
+      )}
       <div className="closed-book__stack">
         <div className="closed-book__pages" aria-hidden="true" />
         <div className="closed-book__cover" style={pageStyle}>
