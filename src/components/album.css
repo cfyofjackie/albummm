@@ -84,6 +84,18 @@
   object-position: center;
 }
 
+/* T2 跨页留白：框由排版引擎按「四边等宽内缩」算好（inline style 给位置尺寸），
+   这里只负责把图完整放进框里居中。
+   不能写成 inset/padding 内缩：图片是绝对定位子元素时 inset:0 按 padding box 解析，会把 padding 吃掉。
+   也不能用 display:grid + place-items:center：隐式行是 auto 行，行高会按图片固有高度撑开，
+   于是 height:100% 解析成「图片固有高」而不是框高，图比框高就被 overflow:hidden 竖着裁掉。 */
+.studio-box--inset img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
 /* 三联图统一高度、各自按比例给宽度；白色纸面和间距把它们收束为同一段落。 */
 .studio-box--triptych {
   background: #fffdf8;

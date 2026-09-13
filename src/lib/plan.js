@@ -111,6 +111,19 @@ function makeStudioSpread(layoutId, photos, spreadId, extra = {}) {
   ]
 }
 
+// T2 跨页留白：把整张跨页画布四边各内缩 margin%（按宽度算，所以四边视觉等宽），
+// 得到的框交给 contain 居中放图——比例不匹配时多出来的空间落在其中一轴上，但不裁图。
+function insetBox(photo, formatId, margin = 6) {
+  const spreadAspect = getPageFormat(formatId).aspect * 2
+  return {
+    photoId: photo.id,
+    x: margin,
+    y: margin * spreadAspect,
+    w: 100 - margin * 2,
+    h: 100 - margin * 2 * spreadAspect,
+  }
+}
+
 function triptychBoxes(photos, formatId) {
   const pageAspect = getPageFormat(formatId).aspect
   const spreadAspect = pageAspect * 2
@@ -139,14 +152,20 @@ function planStudioPages(photos, seed, formatId) {
     pages.push(...makeStudioSpread(layoutId, members, `studio-${spreadIndex++}`, extra))
   }
 
-  // 开篇优先把一张比例匹配的横图做成跨页主视觉；不匹配时宁可保留白边。
+  // 开篇优先把一张比例匹配的横图做成跨页主视觉；比例不够接近满版时不裁图，
+  // 改走 T2「跨页留白」（四周等宽白边）——宁可留白也不破坏原图比例。
+  // 超宽图（>1.8）不参与：它们有自己的 T3 横幅（宽度顶满、完整不裁）。
   const heroCandidates = pool.filter(
-    (photo) => isWideish(photo) && isSpreadBleedCompatible(photo, formatId),
+    (photo) => isWideish(photo) && photo.orientation !== 'ultra-wide',
   )
   if (heroCandidates.length > 0) {
     const hero = heroCandidates.reduce((best, photo) => (area(photo) > area(best) ? photo : best))
     pool.splice(pool.indexOf(hero), 1)
-    append('studio-hero', [hero])
+    if (isSpreadBleedCompatible(hero, formatId)) {
+      append('studio-hero', [hero])
+    } else {
+      append('studio-inset', [hero], { boxes: [insetBox(hero, formatId)] })
+    }
   }
 
   // 21:9 等超宽图也横跨书脊，但用全宽完整展示，绝不为了铺满高度切掉两端。

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { classify } from './photo.js'
 import { MIN_PHOTOS, MAX_PHOTOS, planPages } from './plan.js'
-import { isFullBleedCompatible } from './pageFormat.js'
+import { isFullBleedCompatible, isSpreadBleedCompatible } from './pageFormat.js'
 
 function makePhotos(specs) {
   // specs 为 [width, height] 对，id 按序号生成
@@ -285,6 +285,22 @@ describe('Studio 摄影书模式', () => {
       (page) => page.type === 'studio' && page.studio.side === 'left' && page.layoutId === 'studio-panorama',
     )
     expect(panoramaPages).toHaveLength(2)
+  })
+
+  // T2：比例不够接近满版的横图不再被裁成跨页满版，也不再掉到单页，
+  // 而是横跨两页、四周留等宽白边（宁可留白，不裁比例）。
+  it('比例差得多的横图走「跨页留白」T2，而不是裁成满版', () => {
+    const photos = makePhotos([[3200, 1800], [2400, 1800], PORTRAIT, PORTRAIT, PORTRAIT, PORTRAIT])
+    expect(isSpreadBleedCompatible(photos[0], 'portrait')).toBe(false) // 前提：16:9 铺不满 3:2 跨页
+    const pages = planPages(photos, 'studio', 'inset-seed', 'portrait')
+    const left = pages.filter((page) => page.type === 'studio' && page.studio.side === 'left')
+    // 面积最大的横图占开篇那个跨页位；它不兼容满版 → 走 T2
+    expect(left[0].layoutId).toBe('studio-inset')
+    expect(left[0].imageIds).toEqual(['p0'])
+    // 一本只用一个跨页主视觉位：没有满版
+    expect(pages.some((page) => page.layoutId === 'studio-hero')).toBe(false)
+    // 白边四边等宽：3:4 开本 → 跨页 3:2，按宽度 6% 内缩 → x=6 / y=9 / w=88 / h=82
+    expect(left[0].studio.boxes[0]).toMatchObject({ x: 6, y: 9, w: 88, h: 82 })
   })
 })
 

@@ -18,8 +18,23 @@ function StudioSpreadPage({ page, album, pageStyle }) {
   const photosById = album.photosById
   const canvasClass = `studio-canvas studio-canvas--${side}`
 
-  if (layoutId === 'studio-hero' || layoutId === 'studio-panorama') {
+  // 一张图横跨两页的三种做法：满版（仅在裁切可忽略时）、超宽横幅（完整不裁）、
+  // 跨页留白 T2（四周等宽白边）——比例不够接近满版时就走 T2，宁可留白也不裁图。
+  if (layoutId === 'studio-hero' || layoutId === 'studio-panorama' || layoutId === 'studio-inset') {
     const photo = photosById[imageIds[0]]
+    const boxClass = layoutId === 'studio-hero'
+      ? 'hero'
+      : layoutId === 'studio-panorama' ? 'panorama' : 'inset'
+    // T2 的框由排版引擎算好（四边等宽内缩）；hero / panorama 铺满整张画布。
+    const box = boxes[0]
+    const boxStyle = box
+      ? {
+        left: `${box.x}%`,
+        top: `${box.y}%`,
+        width: `${box.w}%`,
+        height: `${box.h}%`,
+      }
+      : undefined
     return (
       <div
         className={`album-page album-page--studio ${layoutId === 'studio-hero' ? 'album-page--bleed' : ''}`}
@@ -27,7 +42,8 @@ function StudioSpreadPage({ page, album, pageStyle }) {
       >
         <div className={canvasClass}>
           <figure
-            className={`imgbox studio-box studio-box--${layoutId === 'studio-hero' ? 'hero' : 'panorama'}`}
+            className={`imgbox studio-box studio-box--${boxClass}`}
+            style={boxStyle}
             data-photo-id={imageIds[0]}
           >
             <img src={photo.previewSrc} alt="" />
