@@ -12,6 +12,7 @@ import { DEFAULT_PAGE_FORMAT, getPageFormat } from './lib/pageFormat.js'
 import AlbumViewer from './components/AlbumViewer.jsx'
 import ClosedBook from './components/ClosedBook.jsx'
 import Shelf from './components/Shelf.jsx'
+import { loadBooks, saveBook } from './lib/storage.js'
 import './App.css'
 
 const STYLES = [
@@ -37,6 +38,19 @@ export default function App() {
   const [screen, setScreen] = useState('editor')
   const inputRef = useRef(null)
 
+  // 启动时把书库读回来：有书就直接落在封面墙（第二次打开就是书架）。
+  // 演示 / 验证钩子（?demo=…&go=…）自己决定落在哪，这里让路。
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('demo')) return undefined
+    let alive = true
+    loadBooks().then((saved) => {
+      if (!alive || saved.length === 0) return
+      setBooks(saved)
+      setScreen('shelf')
+    })
+    return () => { alive = false }
+  }, [])
   const addFiles = useCallback(
     async (fileList) => {
       const files = [...fileList].filter(isAcceptedFile)
@@ -93,6 +107,7 @@ export default function App() {
       ? prev.map((b) => (b.id === bookId ? nextBook : b))
       : [...prev, nextBook]))
     setCurrentId(bookId)
+    saveBook(nextBook) // 持久化：失败就当作没有书库，不影响使用
     setAlbum({
       title: title.trim() || 'Untitled Album',
       style: styleId,
