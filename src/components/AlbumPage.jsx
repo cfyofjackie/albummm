@@ -26,7 +26,10 @@ function StudioSpreadPage({ page, album, pageStyle }) {
         style={pageStyle}
       >
         <div className={canvasClass}>
-          <figure className={`imgbox studio-box studio-box--${layoutId === 'studio-hero' ? 'hero' : 'panorama'}`}>
+          <figure
+            className={`imgbox studio-box studio-box--${layoutId === 'studio-hero' ? 'hero' : 'panorama'}`}
+            data-photo-id={imageIds[0]}
+          >
             <img src={photo.previewSrc} alt="" />
           </figure>
         </div>
@@ -63,7 +66,7 @@ function StudioSpreadPage({ page, album, pageStyle }) {
             <span className="studio-title__text">{album.title}</span>
           </div>
         ) : (
-          <figure className="imgbox studio-title-photo">
+          <figure className="imgbox studio-title-photo" data-photo-id={imageIds[0]}>
             <img src={photo.previewSrc} alt="" />
           </figure>
         )}
@@ -75,7 +78,7 @@ function StudioSpreadPage({ page, album, pageStyle }) {
   const photo = photosById[imageIds[photoIndex]]
   return (
     <div className="album-page album-page--studio" style={pageStyle}>
-      <figure className="imgbox studio-pair-photo">
+      <figure className="imgbox studio-pair-photo" data-photo-id={photo.id}>
         <img src={photo.previewSrc} alt="" />
       </figure>
     </div>
@@ -102,6 +105,7 @@ export default function AlbumPage({ page, album }) {
           <figure
             key={b.photoId}
             className={`imgbox ${page.layoutId === 'single-full' ? 'imgbox--cover' : ''}`}
+            data-photo-id={b.photoId}
             style={{
               left: `${b.x}%`,
               top: `${b.y}%`,

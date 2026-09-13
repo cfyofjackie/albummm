@@ -1,21 +1,22 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from 'react'
 import AlbumPage from './AlbumPage.jsx'
+import { buildLeaves, leafOfFlat } from '../lib/book.js'
 import './focus.css'
 
-// Focus View：放大阅读书的单页。物理正确的书页几何：
-// - 右页（recto）靠左放，书脊在其左侧，同 spread 的左页从左侧露出一小条
-// - 左页（verso）镜像：靠右放，书脊在其右侧，右页从右侧露出
-// - 页面沿书的连续书芯横向滑动，底层纸色与 Book View 完全一致
-// 进出场为双页独立 FLIP：当前 spread 的两页都从书中的实际位置放大/缩回。
-// 分层要点：缩放只作用于 track（页面全程不透明），纸色底与控件单独淡入淡出——
-// 入场时书还在，页面像是从书里被拎出来；退场时书在页面落回原位后才露面。
+// Focus View：把「书里那一页」放大来读。
+// - 页面沿连续书芯横向排布；进出场是双页独立 FLIP，从书中真实矩形连续放大/缩回
+// - 点一张照片 = 把它平滑移到画面中心（倍数不变，只移动视点）；再点同一张 = 还原回书
+// - 横滑 = 换一个 spread（一次跨两页）；下滑 / 点纸面 / ✕ 也是还原
+// 倍数不是写死的数字，而是「页面吃满可用空间」推出来的：窄屏受宽度约束、宽屏受高度约束，
+// 于是同一套规则在手机和电脑上自动成立（实测约 1.9× / 1.15×），所有照片共用同一档。
 //
-// 翻页是自管分页器：手指拖动跟手，松手后无论甩多用力都只翻一页。
-// 不用原生 scroll-snap + 惯性——动能会一次滑过好几页，且 CSS 无法限制。
-const SWIPE_THRESHOLD = 48 // px，横向位移超过才算一次有效翻页手势
+// 翻页是自管分页器：手指拖动跟手，松手后无论甩多用力都只换一个 spread。
+// 不用原生 scroll-snap + 惯性——动能会一次滑过好几个 spread，且 CSS 无法限制。
+const SWIPE_THRESHOLD = 48 // px，横向位移超过才算一次有效换页手势
+const PAGE_STEP = 2 // 一次换一个 spread = 跨两页（保持左右手性）
 
 const FocusView = forwardRef(function FocusView(
-  { album, index, onIndexChange, onCloseRequest, onClosed, sourceSpread, onTriptychDetail },
+  { album, index, onIndexChange, onCloseRequest, onClosed, sourceSpread, sourcePhotoId },
   ref,
 ) {
   const rootRef = useRef(null)
@@ -23,12 +24,15 @@ const FocusView = forwardRef(function FocusView(
   const touchRef = useRef(null)
   const closingRef = useRef(false)
   const enteredRef = useRef(false)
+  const morphingRef = useRef(false)
+  const focusedRef = useRef(sourcePhotoId ?? null)
   const indexRef = useRef(index)
   indexRef.current = index
   const onCloseRef = useRef(onCloseRequest)
   onCloseRef.current = onCloseRequest
 
   const total = album.pages.length
+  const leaves = useMemo(() => buildLeaves(album.pages), [album])
   const sideOf = (f) => {
     if (f === 0) return 'right'
     if (f === total - 1) return 'left'
@@ -50,13 +54,56 @@ const FocusView = forwardRef(function FocusView(
     track.scrollTo({ left: Math.max(0, target), behavior })
   }
 
-  // 翻页：无论手势多用力，一次只走一页
+  // 某张照片在条带里的元素。跨中缝的照片左右两页各渲染一份，取第一个即它在中缝坐标系里的真实位置。
+  const photoEl = (id) =>
+    (id ? trackRef.current?.querySelector(`[data-photo-id="${id}"]`) ?? null : null)
+
+  // 把某张照片的中心移到视口中心——只移动视点，不动倍数。
+  // 这就是「点 9 → 点 7 → 点 2」能平滑移动过去的原因。
+  const centerPhoto = (id, behavior = 'auto') => {
+    const track = trackRef.current
+    if (!track) return false
+    const el = photoEl(id)
+    if (!el) return false
+    const trackRect = track.getBoundingClientRect()
+    const rect = el.getBoundingClientRect()
+    const target = track.scrollLeft + (rect.left + rect.width / 2 - trackRect.left) - track.clientWidth / 2
+    track.scrollTo({ left: Math.max(0, target), behavior })
+    return true
+  }
+
+  const focusOn = (id, behavior = 'auto') => {
+    if (id && centerPhoto(id, behavior)) return true
+    positionAt(indexRef.current, behavior)
+    return false
+  }
+
+  // 视口中心最近的那张照片 = 当前视点落在谁身上（横滑、拖动之后自动跟随）
+  const photoNearestCenter = () => {
+    const track = trackRef.current
+    if (!track) return null
+    const mid = track.getBoundingClientRect().left + track.clientWidth / 2
+    let best = null
+    let bestDistance = Infinity
+    track.querySelectorAll('[data-photo-id]').forEach((el) => {
+      const r = el.getBoundingClientRect()
+      const d = Math.abs(r.left + r.width / 2 - mid)
+      if (d < bestDistance) {
+        bestDistance = d
+        best = el
+      }
+    })
+    return best?.dataset.photoId ?? null
+  }
+
+  // 换 spread：无论手势多用力，一次只走一个 spread（跨两页，左右手性不变）
   const go = (delta) => {
-    const next = Math.max(0, Math.min(total - 1, indexRef.current + delta))
+    const next = Math.max(0, Math.min(total - 1, indexRef.current + delta * PAGE_STEP))
     if (next === indexRef.current) {
-      positionAt(indexRef.current, 'smooth') // 已经是首/末页，弹回当前页
+      focusOn(focusedRef.current, 'smooth') // 已经是首/末，弹回原位
       return
     }
+    focusedRef.current = null // 换了 spread，视点重新落回整页
     onIndexChange(next)
     positionAt(next, 'smooth')
   }
@@ -94,18 +141,20 @@ const FocusView = forwardRef(function FocusView(
         wrap.style.transform = ''
       }
     })
+    morphingRef.current = false
   }
 
-  // 入场：定位到当前页，然后当前 spread 的两页从书中真实位置连续展开。
+  // 入场：先把视点落到被点的那张照片上，然后当前 spread 的两页从书中真实位置连续展开。
   // 必须用 useLayoutEffect：初始 transform 要在浏览器绘制第一帧之前就位。
   useLayoutEffect(() => {
     const track = trackRef.current
     const wrap = track?.children[index]
     if (!wrap) return
-    positionAt(index)
     if (enteredRef.current) return // StrictMode 下 effect 会跑两遍，防重入
     enteredRef.current = true
-
+    // 定位必须在 FLIP 之前、且只跑一次：StrictMode 的第二次 effect 里页面已经带上
+    // 变形 transform，那时再量矩形会得到错的滚动位置（视点会偏半个照片）
+    focusOn(sourcePhotoId)
     const flips = (sourceSpread ?? [])
       .map(({ flat, rect }) => computePageFlip(flat, rect))
       .filter(Boolean)
@@ -114,6 +163,7 @@ const FocusView = forwardRef(function FocusView(
       return
     }
 
+    morphingRef.current = true
     const visibleWraps = new Set(flips.map(({ wrap: item }) => item))
     Array.from(track.children).forEach((item) => {
       if (!visibleWraps.has(item)) item.classList.add('morph-hidden')
@@ -178,6 +228,7 @@ const FocusView = forwardRef(function FocusView(
       // 底与控件先退，页面在缩回途中保持不透明：底下的书只在页面快落回原位时才透出
       root?.classList.remove('is-open')
       root?.classList.add('is-closing')
+      morphingRef.current = true
       const visibleWraps = new Set(flips.map(({ wrap: item }) => item))
       Array.from(track.children).forEach((item) => {
         if (!visibleWraps.has(item)) item.classList.add('morph-hidden')
@@ -206,7 +257,7 @@ const FocusView = forwardRef(function FocusView(
     },
   }))
 
-  // 自管分页手势：横向拖动跟手（禁用原生惯性），松手后无论甩多用力都只翻一页；下滑退出
+  // 自管手势：横向拖动跟手（禁用原生惯性），松手后无论甩多用力都只换一个 spread；下滑退出
   useEffect(() => {
     const track = trackRef.current
     if (!track) return
@@ -226,7 +277,7 @@ const FocusView = forwardRef(function FocusView(
         d.mode = Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical'
       }
       if (d.mode === 'horizontal') {
-        e.preventDefault() // 接管横向滚动：原生惯性会一次滑过好几页
+        e.preventDefault() // 接管横向滚动：原生惯性会一次滑过好几个 spread
         track.scrollLeft = d.scroll - dx
       }
       // vertical 模式不拦截，留给 touchend 判定下滑退出
@@ -244,9 +295,9 @@ const FocusView = forwardRef(function FocusView(
       }
       if (d.mode === 'horizontal') {
         if (Math.abs(dx) > SWIPE_THRESHOLD) {
-          go(dx < 0 ? 1 : -1) // 无论甩多用力，一次只翻一页
+          go(dx < 0 ? 1 : -1) // 无论甩多用力，一次只换一个 spread
         } else {
-          positionAt(indexRef.current, 'smooth') // 没过阈值，弹回当前页
+          focusOn(focusedRef.current, 'smooth') // 没过阈值，弹回当前视点
         }
       }
     }
@@ -268,42 +319,42 @@ const FocusView = forwardRef(function FocusView(
 
   // 窗口尺寸变化后重新对位（页宽用了 vw/dvh，偏移会变）
   useEffect(() => {
-    const onResize = () => positionAt(indexRef.current)
+    const onResize = () => focusOn(focusedRef.current)
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const handleScroll = () => {
+    const track = trackRef.current
+    if (!track) return
+    const vw = track.clientWidth
+    // 与视口重叠最大的页即当前页（snap 位置按页的左右侧偏移，不能用居中近似）
+    let best = indexRef.current
+    let bestOverlap = -1
+    for (let i = 0; i < track.children.length; i++) {
+      const r = track.children[i].getBoundingClientRect()
+      const overlap = Math.min(r.right, vw) - Math.max(r.left, 0)
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap
+        best = i
+      }
+    }
+    if (best !== indexRef.current) onIndexChange(best)
+    // 拖动 / 换页之后，视点跟着落到新的照片上（变形途中矩形不代表真实布局，跳过）
+    if (!morphingRef.current) focusedRef.current = photoNearestCenter()
+  }
+
   const handleWrapClick = (e, i) => {
     e.stopPropagation()
-    const page = album.pages[i]
-    const triptychPhoto = e.target.closest('.studio-box--triptych[data-photo-id]')
-
-    // 三联图仍是两张物理相纸，而不是三张独立图片：当前纸上的主图点按缩回；
-    // 中图经过书脊，进入自己的跨中缝细看；左右图才按相邻物理页平滑移动。
-    if (triptychPhoto && page?.type === 'studio' && page.layoutId === 'studio-triptych') {
-      const photoPosition = page.studio.imageIds.indexOf(triptychPhoto.dataset.photoId)
-      if (photoPosition === 1) {
-        onTriptychDetail?.(i, triptychPhoto.dataset.photoId, triptychPhoto.getBoundingClientRect())
-        return
-      }
-      const direction = page.studio.side === 'left'
-        ? (photoPosition > 0 ? 1 : 0)
-        : (photoPosition < page.studio.imageIds.length - 1 ? -1 : 0)
-      const next = Math.max(0, Math.min(total - 1, i + direction))
-      if (next !== i) {
-        onIndexChange(next)
-        positionAt(next, 'smooth')
-        return
-      }
+    const photoId = e.target.closest('[data-photo-id]')?.dataset.photoId ?? null
+    // 点一张还没拉近的照片 → 平移视点到它；点已经拉近的这张、或点纸面 → 还原回书
+    if (photoId && photoId !== focusedRef.current) {
+      focusedRef.current = photoId
+      centerPhoto(photoId, 'smooth')
+      return
     }
-
-    if (i === indexRef.current) {
-      onCloseRef.current() // 点当前页 → 缩回书
-    } else {
-      onIndexChange(i)
-      positionAt(i, 'smooth') // 点露出的邻页 → 滑过去看它
-    }
+    onCloseRef.current()
   }
 
   return (
@@ -316,6 +367,7 @@ const FocusView = forwardRef(function FocusView(
       <div
         className="zfocus__track"
         ref={trackRef}
+        onScroll={handleScroll}
         onClick={(e) => {
           e.stopPropagation()
           if (!e.target.closest('.zfocus__page-wrap')) onCloseRef.current()
@@ -332,7 +384,7 @@ const FocusView = forwardRef(function FocusView(
         ))}
       </div>
       <div className="zfocus__counter">
-        {index + 1} / {total}
+        {leafOfFlat(index, leaves, total) + 1} / {leaves.length}
       </div>
       <button type="button" className="zfocus__close" aria-label="缩回书本" onClick={onCloseRequest}>
         ✕

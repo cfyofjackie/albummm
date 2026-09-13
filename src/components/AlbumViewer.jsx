@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import BookView from './BookView.jsx'
 import FocusView from './FocusView.jsx'
-import SpreadFocusView from './SpreadFocusView.jsx'
-import { BLANK_PAGE, buildLeaves, leafOfFlat } from '../lib/book.js'
+import { buildLeaves, leafOfFlat } from '../lib/book.js'
 import './reader.css'
 
 const STYLE_OPTIONS = [
@@ -15,12 +14,11 @@ const STYLE_OPTIONS = [
 export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange, onFormatChange }) {
   const [leafIndex, setLeafIndex] = useState(0)
   const [focusIndex, setFocusIndex] = useState(null)
-  const [spreadFocus, setSpreadFocus] = useState(null)
   const [uiVisible, setUiVisible] = useState(true)
   const bookRef = useRef(null)
   const focusRef = useRef(null)
-  const spreadRef = useRef(null)
   const sourceSpreadRef = useRef([])
+  const sourcePhotoRef = useRef(null)
   const closingRef = useRef(false)
   const leaves = useMemo(() => buildLeaves(album.pages), [album])
 
@@ -28,40 +26,22 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
   useEffect(() => {
     setLeafIndex(0)
     setFocusIndex(null)
-    setSpreadFocus(null)
   }, [album])
 
   useEffect(() => {
     const onKey = (e) => {
-      if (focusIndex != null || spreadFocus != null) return
+      if (focusIndex != null) return
       if (e.key === 'ArrowRight') bookRef.current?.go(1)
       if (e.key === 'ArrowLeft') bookRef.current?.go(-1)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [focusIndex, spreadFocus])
+  }, [focusIndex])
 
-  const openFocus = (flat, sourceSpread) => {
+  const openFocus = (flat, sourceSpread, photoId) => {
     sourceSpreadRef.current = sourceSpread
+    sourcePhotoRef.current = photoId ?? null
     setFocusIndex(flat)
-  }
-
-  // Focus 内再次点到跨中缝的三联中图时，仍停留在当前阅读层的背后；
-  // 缩回跨页细看后，用户回到原来的单张相纸，而不是被送回书本。
-  const openTriptychDetail = (flat, photoId, sourceRect) => {
-    const leaf = leafOfFlat(flat, leaves, album.pages.length)
-    const pair = leaves[leaf] ?? []
-    setSpreadFocus({
-      spread: { left: pair[0] ?? BLANK_PAGE, right: pair[1] ?? BLANK_PAGE },
-      photoId,
-      sourceRect,
-      sourceSpread: [],
-    })
-  }
-
-  // 跨页退场：先连续缩回书中双页矩形，动画结束才卸载（与单页 Focus 同一套收尾方式）
-  const requestCloseSpread = () => {
-    spreadRef.current?.playClose()
   }
 
   // 退出 Focus：先把书摊开到当前页所在 spread（Focus 覆盖着，用户看不到跳变），
@@ -96,19 +76,7 @@ export default function AlbumViewer({ album, onBack, onRegenerate, onStyleChange
           onCloseRequest={requestCloseFocus}
           onClosed={() => setFocusIndex(null)}
           sourceSpread={sourceSpreadRef.current}
-          onTriptychDetail={openTriptychDetail}
-        />
-      )}
-      {spreadFocus != null && (
-        <SpreadFocusView
-          ref={spreadRef}
-          album={album}
-          spread={spreadFocus.spread}
-          photoId={spreadFocus.photoId}
-          sourceRect={spreadFocus.sourceRect}
-          sourceSpread={spreadFocus.sourceSpread}
-          onClose={requestCloseSpread}
-          onClosed={() => setSpreadFocus(null)}
+          sourcePhotoId={sourcePhotoRef.current}
         />
       )}
 
