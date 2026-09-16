@@ -67,7 +67,10 @@ function TemplateRail({ category, onChoose }) {
     suppressClick.current = false
   }
 
-  return <div className={`flow-template-rail ${dragging ? 'flow-template-rail--dragging' : ''}`} aria-label={`${category.name}模板`} onMouseDown={startDrag} onMouseMove={moveDrag} onMouseUp={stopDrag} onMouseLeave={stopDrag} onClickCapture={suppressClickAfterDrag}>{category.templates.map((templateItem, itemIndex) => <button key={templateItem.id} type="button" className="flow-home-template" onClick={() => onChoose(category.id, itemIndex)}><BoardPreview boardId={templateItem.id} className="flow-home-template__preview" /><span><b>{templateItem.name}</b><small>{templateItem.count} 张照片</small></span></button>)}</div>
+  return <section className="flow-template-stage">
+    <div className={`flow-template-rail ${dragging ? 'flow-template-rail--dragging' : ''}`} aria-label={`${category.name}模板`} onMouseDown={startDrag} onMouseMove={moveDrag} onMouseUp={stopDrag} onMouseLeave={stopDrag} onClickCapture={suppressClickAfterDrag}>{category.templates.map((templateItem, itemIndex) => <button key={templateItem.id} type="button" className="flow-home-template" onClick={() => onChoose(category.id, itemIndex)}><BoardPreview boardId={templateItem.id} className="flow-home-template__preview" /><span><b>{templateItem.name}</b><small>{templateItem.count} 张照片</small></span></button>)}</div>
+    <span className="flow-paper-ledge" aria-hidden="true" />
+  </section>
 }
 
 export default function CollageFlowPrototype() {
