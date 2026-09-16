@@ -17,3 +17,9 @@
 .flow-deck-card__copy small{overflow:hidden;color:#747067;font-size:9px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
 /* Every route starts with the same centered photo pile. Only print templates keep the instant-film frame. */
 .flow-stack--neat .flow-stack__photo,.flow-stack--editorial .flow-stack__photo,.flow-stack--torn .flow-stack__photo{border:0;box-shadow:0 4px 10px rgba(23,22,18,.18)}
+.flow-stack--torn .flow-stack__photo--1{clip-path:polygon(0 3%,95% 0,100% 6%,97% 100%,6% 97%,0 92%,4% 81%,0 67%,5% 52%,0 36%)}
+.flow-stack--torn .flow-stack__photo--2{clip-path:polygon(4% 0,100% 3%,96% 100%,0 96%,3% 85%,0 72%,4% 57%,0 41%)}
+.flow-stack--torn .flow-stack__photo--3{clip-path:polygon(0 2%,100% 0,96% 96%,88% 100%,5% 97%,0 91%,4% 79%,0 63%,4% 47%,0 31%)}
+.flow-stack--torn .flow-stack__photo--4{clip-path:polygon(3% 0,100% 4%,97% 94%,92% 100%,0 96%,4% 82%,0 66%,5% 49%,0 33%)}
+.flow-stack--torn .flow-stack__photo--5{clip-path:polygon(0 5%,96% 0,100% 8%,97% 100%,7% 96%,0 89%,4% 73%,0 56%,5% 40%,0 23%)}
+.flow-stack--torn .flow-stack__photo--6{clip-path:polygon(5% 0,100% 4%,96% 100%,0 95%,3% 82%,0 65%,4% 49%,0 32%,5% 17%)}
