@@ -34,7 +34,7 @@ function stackStyleFor(boardId) {
 
 function StackedPhotos({ boardId }) {
   const stackStyle = stackStyleFor(boardId)
-  return <div className={`flow-stack flow-stack--${stackStyle}`} aria-hidden="true">{TONES.map((tone, index) => <i key={tone} className={`flow-stack__photo flow-stack__photo--${index + 1} flow-photo__image--${tone}`} />)}{stackStyle === 'editorial' && <span className="flow-stack__editorial-mark">01<br />moments</span>}{stackStyle === 'torn' && <><span className="flow-stack__tape flow-stack__tape--one" /><span className="flow-stack__tape flow-stack__tape--two" /></>}</div>
+  return <div className={`flow-stack flow-stack--${stackStyle}`} aria-hidden="true">{TONES.map((tone, index) => <i key={tone} className={`flow-stack__photo flow-stack__photo--${index + 1} flow-photo__image--${tone}`} />)}</div>
 }
 
 function Artwork({ boardId, stacked = false, interactive = false, onPointerDown, onPointerUp, onPointerCancel }) {
