@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import './CollageFlowPrototype.css'
 
 // PROTOTYPE — A phone-sized, end-to-end flow for making and keeping one collage.
@@ -40,9 +40,14 @@ function Photos({ framed = true, className = '' }) {
   ))
 }
 
-function Artwork({ category, stacked = false }) {
+function Artwork({ category, stacked = false, interactive = false, onPointerDown, onPointerUp, onPointerCancel }) {
   return (
-    <section className={`flow-art flow-art--${category} ${stacked ? 'flow-art--stacked' : ''}`}>
+    <section
+      className={`flow-art flow-art--${category} ${stacked ? 'flow-art--stacked' : ''} ${interactive ? 'flow-art--interactive' : ''}`}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+    >
       {category === 'prints' || category === 'torn' ? <Photos className="art-card" /> : <Photos framed={false} className="art-card" />}
       {category === 'editorial' && <strong>little<br />moments</strong>}
       {category === 'torn' && <><span className="art-tape art-tape--one" /><span className="art-tape art-tape--two" /></>}
@@ -58,6 +63,7 @@ export default function CollageFlowPrototype() {
   const [expanded, setExpanded] = useState(false)
   const [works, setWorks] = useState([])
   const [downloaded, setDownloaded] = useState(false)
+  const revealStartY = useRef(null)
 
   const category = CATEGORIES.find((item) => item.id === categoryId)
   const template = category.templates[templateIndex] || category.templates[0]
@@ -77,6 +83,27 @@ export default function CollageFlowPrototype() {
   const finish = () => {
     setWorks((previous) => previous.length ? previous : [{ id: Date.now(), category: categoryId, template: template[0] }])
     setScreen('result')
+  }
+
+  const beginDragReveal = (event) => {
+    if (expanded) return
+
+    revealStartY.current = event.clientY
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+  }
+
+  const finishDragReveal = (event) => {
+    if (revealStartY.current === null) return
+
+    const upwardDistance = revealStartY.current - event.clientY
+    revealStartY.current = null
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+
+    if (upwardDistance >= 36) setExpanded(true)
+  }
+
+  const cancelDragReveal = () => {
+    revealStartY.current = null
   }
 
   return (
@@ -143,7 +170,14 @@ export default function CollageFlowPrototype() {
           <>
             <BackBar onBack={() => setScreen('upload')} />
             <section className="flow-reveal-copy"><p>准备好了</p><h1>{expanded ? '照片已归位' : '向上展开照片'}</h1></section>
-            <Artwork category={categoryId} stacked={!expanded} />
+            <Artwork
+              category={categoryId}
+              stacked={!expanded}
+              interactive={!expanded}
+              onPointerDown={beginDragReveal}
+              onPointerUp={finishDragReveal}
+              onPointerCancel={cancelDragReveal}
+            />
             {!expanded ? (
               <button type="button" className="flow-gesture" onClick={() => setExpanded(true)}><b>↑</b>向上拖动照片堆</button>
             ) : (
