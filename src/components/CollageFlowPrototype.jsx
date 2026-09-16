@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { BOARDS } from './CollageMastersPrototype.jsx'
 import './CollageMastersPrototype.css'
 import './CollageFlowPrototype.css'
@@ -41,23 +41,10 @@ function Artwork({ boardId, stacked = false, interactive = false, onPointerDown,
   return <section className={`flow-art ${stacked ? 'flow-art--stacked' : ''} ${interactive ? 'flow-art--interactive' : ''}`} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>{stacked ? <StackedPhotos boardId={boardId} /> : <BoardPreview boardId={boardId} className="flow-board-preview--art" />}</section>
 }
 
-function DeckPositionRing({ count, activeIndex }) {
-  if (count < 2) return null
-  const radius = 7
-  const center = 10
-  const arc = (start, end) => {
-    const point = (angle) => [center + radius * Math.cos((angle - 90) * Math.PI / 180), center + radius * Math.sin((angle - 90) * Math.PI / 180)]
-    const [startX, startY] = point(start)
-    const [endX, endY] = point(end)
-    return `M ${startX} ${startY} A ${radius} ${radius} 0 ${end - start > 180 ? 1 : 0} 1 ${endX} ${endY}`
-  }
-  const segment = 360 / count
-  return <svg className="flow-deck-card__ring" viewBox="0 0 20 20" aria-hidden="true">{Array.from({ length: count }, (_, index) => <path key={index} className={index === activeIndex ? 'is-active' : ''} d={arc(index * segment + 6, (index + 1) * segment - 6)} />)}</svg>
-}
-
-function DeckCarousel({ category, activeTemplateIndex, onCycle, onChoose }) {
+function DeckCarousel({ category, activeTemplateIndex, onCycle, onChoose, showHint }) {
   const pointerStartX = useRef(null)
   const handledPointer = useRef(false)
+  const [dragOffset, setDragOffset] = useState(0)
   const template = category.templates[activeTemplateIndex]
 
   const finishPointer = (event) => {
@@ -65,6 +52,7 @@ function DeckCarousel({ category, activeTemplateIndex, onCycle, onChoose }) {
     const distance = event.clientX - pointerStartX.current
     pointerStartX.current = null
     handledPointer.current = true
+    setDragOffset(0)
     if (Math.abs(distance) >= 28 && category.templates.length > 1) {
       onCycle(distance < 0 ? 1 : -1)
       return
@@ -73,10 +61,16 @@ function DeckCarousel({ category, activeTemplateIndex, onCycle, onChoose }) {
   }
 
   const positionFor = (templateIndex) => (templateIndex - activeTemplateIndex + category.templates.length) % category.templates.length
+  const sheetStyle = (templateIndex) => {
+    const position = positionFor(templateIndex)
+    if (position === 0) return { transform: `translateX(${dragOffset}px) rotate(-1.2deg)` }
+    if (position === 1) return { transform: `translateX(${dragOffset * -0.08}px) rotate(1deg) scale(${1 + Math.abs(dragOffset) / 1000})` }
+    return undefined
+  }
 
-  return <button type="button" className="flow-deck-card" aria-label={`${category.name}，${template.name}，第 ${activeTemplateIndex + 1} 张，共 ${category.templates.length} 张；轻扫切换，轻点使用`} onPointerDown={(event) => { pointerStartX.current = event.clientX; event.currentTarget.setPointerCapture?.(event.pointerId) }} onPointerUp={finishPointer} onPointerCancel={() => { pointerStartX.current = null }} onClick={() => { if (handledPointer.current) { handledPointer.current = false; return } onChoose(category.id, activeTemplateIndex) }} onKeyDown={(event) => { if (event.key === 'ArrowRight') { event.preventDefault(); onCycle(1) } if (event.key === 'ArrowLeft') { event.preventDefault(); onCycle(-1) } }}>
-    <span className={`flow-deck-card__stack flow-deck-card__stack--${category.templates.length}`} aria-hidden="true">{category.templates.slice(0, 3).map((templateItem, templateIndex) => <BoardPreview key={templateItem.id} boardId={templateItem.id} className={`flow-deck-card__sheet flow-deck-card__sheet--${positionFor(templateIndex)}`} />)}</span>
-    <span className="flow-deck-card__copy"><span className="flow-deck-card__title"><b>{category.name}</b><DeckPositionRing count={category.templates.length} activeIndex={activeTemplateIndex} /></span><small>{template.name} · {activeTemplateIndex + 1} / {category.templates.length}</small></span>
+  return <button type="button" className={`flow-deck-card ${dragOffset ? 'flow-deck-card--dragging' : ''}`} aria-label={`${category.name}，${template.name}；${category.templates.length > 1 ? `${category.templates.length} 个版式可左右轻扫切换；` : ''}轻点使用`} onPointerDown={(event) => { pointerStartX.current = event.clientX; event.currentTarget.setPointerCapture?.(event.pointerId) }} onPointerMove={(event) => { if (pointerStartX.current === null) return; setDragOffset(Math.max(-34, Math.min(34, event.clientX - pointerStartX.current))) }} onPointerUp={finishPointer} onPointerCancel={() => { pointerStartX.current = null; setDragOffset(0) }} onClick={() => { if (handledPointer.current) { handledPointer.current = false; return } onChoose(category.id, activeTemplateIndex) }} onKeyDown={(event) => { if (event.key === 'ArrowRight') { event.preventDefault(); onCycle(1) } if (event.key === 'ArrowLeft') { event.preventDefault(); onCycle(-1) } }}>
+    <span className={`flow-deck-card__stack flow-deck-card__stack--${category.templates.length} ${showHint && category.templates.length > 1 ? 'flow-deck-card__stack--hint' : ''}`} aria-hidden="true">{category.templates.slice(0, 3).map((templateItem, templateIndex) => <BoardPreview key={templateItem.id} boardId={templateItem.id} className={`flow-deck-card__sheet flow-deck-card__sheet--${positionFor(templateIndex)}`} style={sheetStyle(templateIndex)} />)}</span>
+    <span className="flow-deck-card__copy"><b>{category.name}</b><small>{template.name}</small></span>
   </button>
 }
 
@@ -89,6 +83,7 @@ export default function CollageFlowPrototype() {
   const [works, setWorks] = useState([])
   const [downloaded, setDownloaded] = useState(false)
   const [deckIndexes, setDeckIndexes] = useState({})
+  const [showDeckHint, setShowDeckHint] = useState(true)
   const revealStartY = useRef(null)
   const revealTimer = useRef(null)
 
@@ -112,13 +107,19 @@ export default function CollageFlowPrototype() {
   const beginDragReveal = (event) => { if (expanded) return; revealStartY.current = event.clientY; event.currentTarget.setPointerCapture?.(event.pointerId) }
   const finishDragReveal = (event) => { if (revealStartY.current === null) return; const upwardDistance = revealStartY.current - event.clientY; revealStartY.current = null; event.currentTarget.releasePointerCapture?.(event.pointerId); if (upwardDistance >= 36) completeReveal() }
 
+  useEffect(() => {
+    if (!showDeckHint) return undefined
+    const timer = window.setTimeout(() => setShowDeckHint(false), 2200)
+    return () => window.clearTimeout(timer)
+  }, [showDeckHint])
+
   return (
     <main className="flow-prototype">
       <section className="flow-phone">
         {screen === 'home' && <>
           <BackBar rightLabel="我的" onRight={() => setScreen('library')} />
-          <section className="flow-home-intro"><p>MAKE A PAGE</p><h1>把照片<br />摊成一页。</h1><span>轻扫牌堆切换版式，轻点当前模板开始。</span></section>
-          <section className="flow-deck-list" aria-label="选择拼贴类型">{CATEGORIES.map((item) => <DeckCarousel key={item.id} category={item} activeTemplateIndex={deckIndexes[item.id] || 0} onCycle={(direction) => cycleDeck(item.id, direction)} onChoose={chooseTemplate} />)}</section>
+          <section className="flow-home-intro"><p>MAKE A PAGE</p><h1>把照片<br />摊成一页。</h1><span>轻扫纸堆切换版式，轻点当前页开始。</span></section>
+          <section className="flow-deck-list" aria-label="选择拼贴类型">{CATEGORIES.map((item) => <DeckCarousel key={item.id} category={item} activeTemplateIndex={deckIndexes[item.id] || 0} onCycle={(direction) => cycleDeck(item.id, direction)} onChoose={chooseTemplate} showHint={showDeckHint} />)}</section>
         </>}
 
         {screen === 'upload' && <>
@@ -148,7 +149,7 @@ export default function CollageFlowPrototype() {
           {works.length ? <section className="flow-library-grid">{works.map((work) => <button type="button" key={work.id} onClick={() => { setCategoryId(work.category); setScreen('result') }}><BoardPreview boardId={work.boardId} /><span>{work.template}<small>刚刚创建</small></span></button>)}</section> : <section className="flow-empty"><b>+ </b><span>第一张拼贴页<br />会出现在这里</span></section>}
         </>}
       </section>
-      <aside className="flow-state"><span>原型状态</span><p>{screen === 'home' ? '四个裸牌堆分别独立切换模板，圆环提示当前位置。' : screen === 'upload' ? '第一张照片默认是主图。' : screen === 'reveal' ? '上滑完成后直接进入成品。' : screen === 'result' ? '作品自动保存，下载是唯一主操作。' : '“我的”按设备本地保存作品。'}</p></aside>
+      <aside className="flow-state"><span>原型状态</span><p>{screen === 'home' ? '右侧露出的纸页与一次轻推提示横滑；拖动时当前页会跟手。' : screen === 'upload' ? '第一张照片默认是主图。' : screen === 'reveal' ? '上滑完成后直接进入成品。' : screen === 'result' ? '作品自动保存，下载是唯一主操作。' : '“我的”按设备本地保存作品。'}</p></aside>
     </main>
   )
 }
