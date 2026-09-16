@@ -15,6 +15,7 @@ import Shelf from './components/Shelf.jsx'
 import { loadBooks, saveBook } from './lib/storage.js'
 import CollageMastersPrototype from './components/CollageMastersPrototype.jsx'
 import CollageInteractionPrototype from './components/CollageInteractionPrototype.jsx'
+import CollageFlowPrototype from './components/CollageFlowPrototype.jsx'
 import './App.css'
 
 const STYLES = [
@@ -33,6 +34,9 @@ export default function App() {
   }
   if (prototype === 'collage-interaction') {
     return <CollageInteractionPrototype />
+  }
+  if (prototype === 'collage-flow') {
+    return <CollageFlowPrototype />
   }
 
   const [photos, setPhotos] = useState([])
