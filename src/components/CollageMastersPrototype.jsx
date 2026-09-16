@@ -178,7 +178,7 @@ function TornPaper({ miniature = false }) {
   )
 }
 
-const BOARDS = {
+export const BOARDS = {
   'neat-grid': NeatGrid,
   'neat-grow': NeatGrow,
   'editorial-scatter': EditorialScatter,
