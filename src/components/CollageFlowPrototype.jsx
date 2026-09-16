@@ -125,8 +125,7 @@ export default function CollageFlowPrototype() {
     <main className="flow-prototype">
       <section className="flow-phone">
         {screen === 'home' && <>
-          <BackBar brandOnly />
-          <section className="flow-home-intro"><p>MAKE A PAGE</p><h1>把照片<br />摊成一页。</h1><span>轻扫纸堆切换版式，轻点当前页开始。</span></section>
+          <section className="flow-home-intro flow-home-intro--compact"><h1>把照片，摊成一页。</h1><span>轻扫纸堆切换版式，轻点当前页开始。</span></section>
           <section className="flow-deck-list" aria-label="选择拼贴类型">{CATEGORIES.map((item) => <DeckCarousel key={item.id} category={item} activeTemplateIndex={deckIndexes[item.id] || 0} onCycle={(direction) => cycleDeck(item.id, direction)} onChoose={chooseTemplate} showHint={showDeckHint} />)}</section>
         </>}
 
@@ -152,7 +151,6 @@ export default function CollageFlowPrototype() {
         </>}
 
         {screen === 'library' && <>
-          <BackBar brandOnly />
           <section className="flow-page-title flow-page-title--library"><p>YOUR PAGES</p><h1>作品</h1><span>{works.length ? `已制作 ${works.length} 张拼贴页` : '第一张拼贴页会从这里开始'}</span></section>
           {works.length ? <section className={`flow-library-grid ${works.length === 1 ? 'flow-library-grid--single' : ''}`}>{works.map((work) => <button type="button" key={work.id} onClick={() => { setCategoryId(work.category); setScreen('result') }}><BoardPreview boardId={work.boardId} /><span>{work.template}<small>刚刚创建</small></span></button>)}</section> : <section className="flow-empty"><b>+</b><span>还没有作品<br />先做一张拼贴页吧</span><button type="button" onClick={() => setScreen('home')}>开始制作</button></section>}
         </>}
