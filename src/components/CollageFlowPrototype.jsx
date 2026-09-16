@@ -16,8 +16,16 @@ const CATEGORIES = [
 
 const TONES = ['sunset', 'lake', 'street', 'cloud', 'forest', 'night']
 
-function BackBar({ onBack, rightLabel, onRight }) {
-  return <header className="flow-bar">{onBack ? <button type="button" onClick={onBack}>← 返回</button> : <span>ALBUMMM</span>}{rightLabel ? <button type="button" onClick={onRight}>{rightLabel}</button> : <span className="flow-bar__quiet">照片拼贴</span>}</header>
+function BackBar({ onBack, rightLabel, onRight, backLabel = '返回', brandOnly = false }) {
+  return <header className={`flow-bar ${brandOnly ? 'flow-bar--brand' : ''}`}>{onBack ? <button type="button" onClick={onBack}>← {backLabel}</button> : <span>ALBUMMM</span>}{!brandOnly && (rightLabel ? <button type="button" onClick={onRight}>{rightLabel}</button> : <span className="flow-bar__quiet">照片拼贴</span>)}</header>
+}
+
+function DockIcon({ type }) {
+  return <span className={`flow-dock__icon flow-dock__icon--${type}`} aria-hidden="true"><i /><i /><i /><i /></span>
+}
+
+function AppDock({ active, onNavigate }) {
+  return <nav className="flow-dock" aria-label="主导航"><button type="button" className={active === 'home' ? 'is-active' : ''} aria-current={active === 'home' ? 'page' : undefined} onClick={() => onNavigate('home')}><DockIcon type="make" /><span>制作</span></button><button type="button" className={active === 'library' ? 'is-active' : ''} aria-current={active === 'library' ? 'page' : undefined} onClick={() => onNavigate('library')}><DockIcon type="works" /><span>作品</span></button></nav>
 }
 
 function BoardPreview({ boardId, className = '' }) {
@@ -117,13 +125,13 @@ export default function CollageFlowPrototype() {
     <main className="flow-prototype">
       <section className="flow-phone">
         {screen === 'home' && <>
-          <BackBar rightLabel="我的" onRight={() => setScreen('library')} />
+          <BackBar brandOnly />
           <section className="flow-home-intro"><p>MAKE A PAGE</p><h1>把照片<br />摊成一页。</h1><span>轻扫纸堆切换版式，轻点当前页开始。</span></section>
           <section className="flow-deck-list" aria-label="选择拼贴类型">{CATEGORIES.map((item) => <DeckCarousel key={item.id} category={item} activeTemplateIndex={deckIndexes[item.id] || 0} onCycle={(direction) => cycleDeck(item.id, direction)} onChoose={chooseTemplate} showHint={showDeckHint} />)}</section>
         </>}
 
         {screen === 'upload' && <>
-          <BackBar onBack={() => setScreen('home')} rightLabel="我的" onRight={() => setScreen('library')} />
+          <BackBar onBack={() => setScreen('home')} />
           <section className="flow-page-title"><p>{category.name} · {template.name}</p><h1>添加 {template.count} 张照片</h1><span>第一张会成为主图。想突出哪张，就先添加它。</span></section>
           <section className="flow-upload-grid">{Array.from({ length: template.count }, (_, index) => <span key={index} className={`flow-upload-slot ${photosReady ? 'flow-upload-slot--ready' : ''}`}>{photosReady ? <i className={`flow-photo__image flow-photo__image--${TONES[index % TONES.length]}`} /> : <b>+</b>}<small>{index === 0 ? '主图 / 01' : String(index + 1).padStart(2, '0')}</small></span>)}</section>
           {!photosReady ? <button type="button" className="flow-primary flow-primary--page" onClick={() => setPhotosReady(true)}>添加 {template.count} 张示例照片</button> : <button type="button" className="flow-primary flow-primary--page" onClick={beginReveal}>开始排版</button>}
@@ -138,18 +146,19 @@ export default function CollageFlowPrototype() {
         </>}
 
         {screen === 'result' && <>
-          <BackBar onBack={() => setScreen('home')} rightLabel="我的" onRight={() => setScreen('library')} />
-          <section className="flow-result-copy"><span>已自动存入我的</span><h1>{template.name}</h1></section><Artwork boardId={template.id} />
-          <section className="flow-result-actions"><button type="button" className="flow-primary" onClick={() => setDownloaded(true)}>{downloaded ? '已下载图片' : '下载图片'}</button><button type="button" onClick={() => setScreen('library')}>查看我的</button></section>
+          <BackBar onBack={() => setScreen('home')} backLabel="完成" rightLabel="作品" onRight={() => setScreen('library')} />
+          <section className="flow-result-copy"><span>已收进作品</span><h1>{template.name}</h1></section><Artwork boardId={template.id} />
+          <section className="flow-result-actions"><button type="button" className="flow-primary" onClick={() => setDownloaded(true)}>{downloaded ? '已下载图片' : '下载图片'}</button><button type="button" onClick={() => setScreen('library')}>查看作品</button></section>
         </>}
 
         {screen === 'library' && <>
-          <BackBar onBack={() => setScreen('home')} />
-          <section className="flow-page-title flow-page-title--library"><p>MY PAGES</p><h1>我的</h1><span>{works.length ? '作品仅保存于这台设备' : '你还没有作品'}</span></section>
-          {works.length ? <section className="flow-library-grid">{works.map((work) => <button type="button" key={work.id} onClick={() => { setCategoryId(work.category); setScreen('result') }}><BoardPreview boardId={work.boardId} /><span>{work.template}<small>刚刚创建</small></span></button>)}</section> : <section className="flow-empty"><b>+ </b><span>第一张拼贴页<br />会出现在这里</span></section>}
+          <BackBar brandOnly />
+          <section className="flow-page-title flow-page-title--library"><p>YOUR PAGES</p><h1>作品</h1><span>{works.length ? `已制作 ${works.length} 张拼贴页` : '第一张拼贴页会从这里开始'}</span></section>
+          {works.length ? <section className={`flow-library-grid ${works.length === 1 ? 'flow-library-grid--single' : ''}`}>{works.map((work) => <button type="button" key={work.id} onClick={() => { setCategoryId(work.category); setScreen('result') }}><BoardPreview boardId={work.boardId} /><span>{work.template}<small>刚刚创建</small></span></button>)}</section> : <section className="flow-empty"><b>+</b><span>还没有作品<br />先做一张拼贴页吧</span><button type="button" onClick={() => setScreen('home')}>开始制作</button></section>}
         </>}
+        {(screen === 'home' || screen === 'library') && <AppDock active={screen} onNavigate={setScreen} />}
       </section>
-      <aside className="flow-state"><span>原型状态</span><p>{screen === 'home' ? '右侧露出的纸页与一次轻推提示横滑；拖动时当前页会跟手。' : screen === 'upload' ? '第一张照片默认是主图。' : screen === 'reveal' ? '上滑完成后直接进入成品。' : screen === 'result' ? '作品自动保存，下载是唯一主操作。' : '“我的”按设备本地保存作品。'}</p></aside>
+      <aside className="flow-state"><span>原型状态</span><p>{screen === 'home' ? '底部“制作 / 作品”切换两个一级页面；右侧露出的纸页提示横滑。' : screen === 'upload' ? '第一张照片默认是主图。' : screen === 'reveal' ? '上滑完成后直接进入成品。' : screen === 'result' ? '作品已收进作品页，下载是唯一主操作。' : '作品页区分空、单张与多张状态。'}</p></aside>
     </main>
   )
 }

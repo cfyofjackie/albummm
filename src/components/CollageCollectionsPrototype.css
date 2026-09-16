@@ -1,5 +1,5 @@
 /* PROTOTYPE — tests whether a 2 × 2 grid of bare template decks makes browsing feel more immediate. */
-.flow-deck-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 15px;padding:2px 20px 30px}
+.flow-deck-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 15px;padding:2px 20px 96px}
 .flow-deck-card{display:grid;grid-template-rows:176px auto;gap:7px;min-width:0;padding:0;border:0;background:transparent;color:#1d1d1b;text-align:left;cursor:pointer;touch-action:pan-y}
 .flow-deck-card__stack{position:relative;display:block;width:100%;height:176px}
 .flow-deck-card__sheet{position:absolute;bottom:0;width:126px;max-width:82%;overflow:hidden;border:1px solid #e3dfd9;border-radius:6px;background:#fff;box-shadow:0 5px 10px rgba(29,28,23,.13);transition:transform .38s cubic-bezier(.22,.75,.24,1),left .38s cubic-bezier(.22,.75,.24,1),bottom .38s cubic-bezier(.22,.75,.24,1),opacity .25s ease}
