@@ -13,6 +13,8 @@ import AlbumViewer from './components/AlbumViewer.jsx'
 import ClosedBook from './components/ClosedBook.jsx'
 import Shelf from './components/Shelf.jsx'
 import { loadBooks, saveBook } from './lib/storage.js'
+import CollageMastersPrototype from './components/CollageMastersPrototype.jsx'
+import CollageInteractionPrototype from './components/CollageInteractionPrototype.jsx'
 import './App.css'
 
 const STYLES = [
@@ -23,6 +25,16 @@ const STYLES = [
 ]
 
 export default function App() {
+  const params = new URLSearchParams(window.location.search)
+  const prototype = params.get('prototype')
+  // 原型默认不会出现在产品入口；保留带参数的链接，方便在 GitHub Pages 上做跨设备评审。
+  if (prototype === 'collage-masters') {
+    return <CollageMastersPrototype />
+  }
+  if (prototype === 'collage-interaction') {
+    return <CollageInteractionPrototype />
+  }
+
   const [photos, setPhotos] = useState([])
   const [title, setTitle] = useState('')
   const [style, setStyle] = useState('gallery')

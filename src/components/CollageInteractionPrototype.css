@@ -1,0 +1,205 @@
+.interaction-prototype {
+  min-height: 100dvh;
+  padding: 24px 16px 106px;
+  background: #eeece7;
+  color: #191916;
+}
+
+.interaction-app,
+.interaction-note {
+  width: min(100%, 390px);
+  margin: 0 auto;
+}
+
+.interaction-app {
+  overflow: hidden;
+  border: 1px solid #d7d4cc;
+  border-radius: 25px;
+  background: #fff;
+  box-shadow: 0 18px 38px rgba(30, 28, 23, .14);
+}
+
+.interaction-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 20px 20px 14px;
+}
+
+.interaction-header span,
+.interaction-note > span {
+  color: #79766e;
+  font-size: 9px;
+  letter-spacing: .15em;
+}
+
+.interaction-header p {
+  margin: 0;
+  color: #4b4943;
+  font-size: 11px;
+}
+
+.interaction-sheet {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  background: #fdfcf9;
+  background-image: radial-gradient(rgba(38, 36, 31, .035) .45px, transparent .65px);
+  background-size: 5px 5px;
+  touch-action: none;
+  user-select: none;
+}
+
+.instant-card {
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
+  padding: 6px 6px 18px;
+  overflow: hidden;
+  background: #fefefe;
+  box-shadow: 0 4px 10px rgba(31, 29, 24, .19);
+  transition-property: left, top, width, height, transform, box-shadow;
+  transition-duration: 820ms;
+  transition-timing-function: cubic-bezier(.2, .8, .2, 1);
+}
+
+.instant-card__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* 只用于交互原型：用不同影调模拟真实照片的层次，不是最终图片素材。 */
+.instant-card__image--sunset { background: linear-gradient(145deg, #cad4d2 0 39%, #9fa8a2 40% 62%, #686962 63%); }
+.instant-card__image--lake { background: linear-gradient(150deg, #d8d7c8 0 33%, #8aa4a7 34% 62%, #365a63 63%); }
+.instant-card__image--street { background: linear-gradient(145deg, #e0d3bf 0 38%, #a9967e 39% 64%, #4c4840 65%); }
+.instant-card__image--cloud { background: linear-gradient(155deg, #d5d7d2 0 38%, #a3afb0 39% 61%, #728284 62%); }
+.instant-card__image--forest { background: linear-gradient(145deg, #c1c1ab 0 36%, #7d8a71 37% 63%, #445246 64%); }
+.instant-card__image--night { background: linear-gradient(145deg, #4d5558 0 37%, #28353a 38% 64%, #12191d 65%); }
+
+/* 照片堆：每一张已经是相纸，只是还没有散开。 */
+.instant-card--1 { z-index: 1; left: 26%; top: 54%; width: 47%; height: 30%; transform: rotate(-5deg); }
+.instant-card--2 { z-index: 2; left: 28%; top: 51%; width: 47%; height: 30%; transform: rotate(4deg); }
+.instant-card--3 { z-index: 3; left: 24%; top: 48%; width: 48%; height: 31%; transform: rotate(-2deg); }
+.instant-card--4 { z-index: 4; left: 29%; top: 45%; width: 47%; height: 30%; transform: rotate(5deg); }
+.instant-card--5 { z-index: 5; left: 25%; top: 42%; width: 49%; height: 31%; transform: rotate(-4deg); }
+.instant-card--6 { z-index: 6; left: 28%; top: 39%; width: 47%; height: 30%; transform: rotate(2deg); }
+
+.interaction-sheet--midway .instant-card--1 { left: 15%; top: 48%; width: 42%; height: 28%; transform: rotate(-4deg); transition-delay: 0ms; }
+.interaction-sheet--midway .instant-card--2 { left: 50%; top: 45%; width: 36%; height: 24%; transform: rotate(4deg); transition-delay: 45ms; }
+.interaction-sheet--midway .instant-card--3 { left: 29%; top: 37%; width: 43%; height: 20%; transform: rotate(-1deg); transition-delay: 90ms; }
+.interaction-sheet--midway .instant-card--4 { left: 11%; top: 30%; width: 34%; height: 24%; transform: rotate(2deg); transition-delay: 135ms; }
+.interaction-sheet--midway .instant-card--5 { left: 54%; top: 27%; width: 35%; height: 26%; transform: rotate(-2deg); transition-delay: 180ms; }
+.interaction-sheet--midway .instant-card--6 { left: 38%; top: 62%; width: 29%; height: 17%; transform: rotate(2deg); transition-delay: 225ms; }
+
+/* 完成页：六个确定槽位，而不是随机散落。 */
+.interaction-sheet--expanded .instant-card--1 { z-index: 2; left: 12%; top: 13%; width: 43%; height: 31%; transform: rotate(-3deg); transition-delay: 0ms; }
+.interaction-sheet--expanded .instant-card--2 { z-index: 3; right: 9%; left: auto; top: 17%; width: 35%; height: 23%; transform: rotate(3deg); transition-delay: 65ms; }
+.interaction-sheet--expanded .instant-card--3 { z-index: 4; left: 30%; top: 36%; width: 43%; height: 20%; transform: rotate(-1deg); transition-delay: 130ms; }
+.interaction-sheet--expanded .instant-card--4 { z-index: 1; left: 10%; top: 59%; width: 31%; height: 22%; transform: rotate(2deg); transition-delay: 195ms; }
+.interaction-sheet--expanded .instant-card--5 { z-index: 3; right: 11%; left: auto; top: 57%; width: 38%; height: 27%; transform: rotate(-2deg); transition-delay: 260ms; }
+.interaction-sheet--expanded .instant-card--6 { z-index: 5; left: 42%; top: 73%; width: 27%; height: 16%; transform: rotate(2deg); transition-delay: 325ms; }
+
+.interaction-drag-hint {
+  position: absolute;
+  z-index: 10;
+  right: 0;
+  bottom: 5%;
+  left: 0;
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  border: 0;
+  background: transparent;
+  color: #37352f;
+  cursor: grab;
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+
+.interaction-drag-hint span { font-size: 21px; line-height: 1; }
+.interaction-drag-hint small { font-size: 11px; }
+.interaction-sheet--midway .interaction-drag-hint { opacity: 0; }
+
+.interaction-complete {
+  position: absolute;
+  right: 8%;
+  bottom: 6%;
+  z-index: 7;
+  color: #555149;
+  font-size: 7px;
+  letter-spacing: .1em;
+}
+
+.interaction-footer {
+  min-height: 56px;
+  display: grid;
+  place-items: center;
+  padding: 0 18px;
+}
+
+.interaction-footer p {
+  margin: 0;
+  color: #7d7a72;
+  font-size: 11px;
+}
+
+.interaction-footer button {
+  border: 0;
+  background: transparent;
+  color: #20201e;
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.interaction-note {
+  margin-top: 22px;
+  padding: 16px 0 0;
+  border-top: 1px solid #d3d0c9;
+}
+
+.interaction-note p {
+  margin: 7px 0 0;
+  color: #45423c;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.interaction-switcher {
+  position: fixed;
+  z-index: 20;
+  bottom: 20px;
+  left: 50%;
+  display: grid;
+  grid-template-columns: 40px auto 40px;
+  align-items: center;
+  min-width: 216px;
+  min-height: 44px;
+  overflow: hidden;
+  border: 1px solid #33322f;
+  border-radius: 999px;
+  background: #1d1d1b;
+  box-shadow: 0 8px 22px rgba(20, 20, 18, .2);
+  color: #fff;
+  font-size: 12px;
+  transform: translateX(-50%);
+}
+
+.interaction-switcher button {
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.interaction-switcher button:hover { background: #363530; }
+.interaction-switcher span { text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .instant-card { transition-duration: 1ms; }
+}
