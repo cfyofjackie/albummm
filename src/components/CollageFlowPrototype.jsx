@@ -32,6 +32,44 @@ function Artwork({ boardId, stacked = false, interactive = false, onPointerDown,
   return <section className={`flow-art ${stacked ? 'flow-art--stacked' : ''} ${interactive ? 'flow-art--interactive' : ''}`} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>{stacked ? <StackedPhotos /> : <BoardPreview boardId={boardId} className="flow-board-preview--art" />}</section>
 }
 
+function TemplateRail({ category, onChoose }) {
+  const drag = useRef(null)
+  const suppressClick = useRef(false)
+  const [dragging, setDragging] = useState(false)
+
+  const startDrag = (event) => {
+    drag.current = { startX: event.clientX, startScrollLeft: event.currentTarget.scrollLeft }
+  }
+
+  const moveDrag = (event) => {
+    if (!drag.current) return
+    const distance = event.clientX - drag.current.startX
+    if (Math.abs(distance) > 5) {
+      suppressClick.current = true
+      setDragging(true)
+      event.currentTarget.scrollLeft = drag.current.startScrollLeft - distance
+    }
+  }
+
+  const stopDrag = (event) => {
+    if (!drag.current) return
+    window.setTimeout(() => {
+      setDragging(false)
+      suppressClick.current = false
+    }, 0)
+    drag.current = null
+  }
+
+  const suppressClickAfterDrag = (event) => {
+    if (!suppressClick.current) return
+    event.preventDefault()
+    event.stopPropagation()
+    suppressClick.current = false
+  }
+
+  return <div className={`flow-template-rail ${dragging ? 'flow-template-rail--dragging' : ''}`} aria-label={`${category.name}模板`} onMouseDown={startDrag} onMouseMove={moveDrag} onMouseUp={stopDrag} onMouseLeave={stopDrag} onClickCapture={suppressClickAfterDrag}>{category.templates.map((templateItem, itemIndex) => <button key={templateItem.id} type="button" className="flow-home-template" onClick={() => onChoose(category.id, itemIndex)}><BoardPreview boardId={templateItem.id} className="flow-home-template__preview" /><span><b>{templateItem.name}</b><small>{templateItem.count} 张照片</small></span></button>)}</div>
+}
+
 export default function CollageFlowPrototype() {
   const [screen, setScreen] = useState('home')
   const [categoryId, setCategoryId] = useState('prints')
@@ -46,7 +84,12 @@ export default function CollageFlowPrototype() {
   const category = CATEGORIES.find((item) => item.id === categoryId)
   const template = category.templates[templateIndex] || category.templates[0]
 
-  const chooseCategory = (id) => { setCategoryId(id); setTemplateIndex(id === 'prints' ? 1 : 0); setScreen('templates') }
+  const chooseTemplate = (nextCategoryId, nextTemplateIndex) => {
+    setCategoryId(nextCategoryId)
+    setTemplateIndex(nextTemplateIndex)
+    setPhotosReady(false)
+    setScreen('upload')
+  }
   const beginReveal = () => { setExpanded(false); setScreen('reveal') }
   const finish = () => { setWorks((previous) => previous.length ? previous : [{ id: Date.now(), category: categoryId, template: template.name, boardId: template.id }]); setScreen('result') }
   const completeReveal = () => { if (expanded) return; setExpanded(true); revealTimer.current = window.setTimeout(finish, 680) }
@@ -59,19 +102,12 @@ export default function CollageFlowPrototype() {
       <section className="flow-phone">
         {screen === 'home' && <>
           <BackBar rightLabel="我的" onRight={() => setScreen('library')} />
-          <section className="flow-home-intro"><p>MAKE A PAGE</p><h1>把照片<br />摊成一页。</h1><span>先选你想留下来的感觉。</span></section>
-          <section className="flow-category-list" aria-label="选择拼贴类型">{CATEGORIES.map((item) => <button key={item.id} type="button" className="flow-category" onClick={() => chooseCategory(item.id)}><BoardPreview boardId={item.coverId} className="flow-category__preview" /><span><b>{item.name}</b><small>{item.note}</small><em>查看版式 →</em></span></button>)}</section>
-        </>}
-
-        {screen === 'templates' && <>
-          <BackBar onBack={() => setScreen('home')} rightLabel="我的" onRight={() => setScreen('library')} />
-          <section className="flow-page-title"><p>{category.name.toUpperCase()}</p><h1>选一张你想要的成品</h1><span>这一步选择的是完整版式；照片会自动放入对应位置。</span></section>
-          <section className="flow-template-list">{category.templates.map((item, index) => <button key={item.id} type="button" className={`flow-template ${templateIndex === index ? 'flow-template--selected' : ''}`} onClick={() => setTemplateIndex(index)}><BoardPreview boardId={item.id} className="flow-template__preview" /><span><b>{item.name}</b><small>{item.count} 张照片 · 自动排版</small></span><i>{templateIndex === index ? '已选择' : '点选此版式'}</i></button>)}</section>
-          <button type="button" className="flow-primary flow-primary--page" onClick={() => setScreen('upload')}>用这个版式</button>
+          <section className="flow-home-intro"><p>MAKE A PAGE</p><h1>把照片<br />摊成一页。</h1><span>按喜欢的感觉，选一张成品页面。</span></section>
+          <section className="flow-category-list" aria-label="选择拼贴类型">{CATEGORIES.map((item, categoryIndex) => <section className="flow-category" key={item.id}><header><span>{String(categoryIndex + 1).padStart(2, '0')}</span><div><h2>{item.name}</h2><p>{item.note}</p></div><small>{item.templates.length} 种版式</small></header><TemplateRail category={item} onChoose={chooseTemplate} /></section>)}</section>
         </>}
 
         {screen === 'upload' && <>
-          <BackBar onBack={() => setScreen('templates')} rightLabel="我的" onRight={() => setScreen('library')} />
+          <BackBar onBack={() => setScreen('home')} rightLabel="我的" onRight={() => setScreen('library')} />
           <section className="flow-page-title"><p>{category.name} · {template.name}</p><h1>添加 {template.count} 张照片</h1><span>第一张会成为主图。想突出哪张，就先添加它。</span></section>
           <section className="flow-upload-grid">{Array.from({ length: template.count }, (_, index) => <span key={index} className={`flow-upload-slot ${photosReady ? 'flow-upload-slot--ready' : ''}`}>{photosReady ? <i className={`flow-photo__image flow-photo__image--${TONES[index % TONES.length]}`} /> : <b>+</b>}<small>{index === 0 ? '主图 / 01' : String(index + 1).padStart(2, '0')}</small></span>)}</section>
           {!photosReady ? <button type="button" className="flow-primary flow-primary--page" onClick={() => setPhotosReady(true)}>添加 {template.count} 张示例照片</button> : <button type="button" className="flow-primary flow-primary--page" onClick={beginReveal}>开始排版</button>}
@@ -97,7 +133,7 @@ export default function CollageFlowPrototype() {
           {works.length ? <section className="flow-library-grid">{works.map((work) => <button type="button" key={work.id} onClick={() => { setCategoryId(work.category); setScreen('result') }}><BoardPreview boardId={work.boardId} /><span>{work.template}<small>刚刚创建</small></span></button>)}</section> : <section className="flow-empty"><b>+ </b><span>第一张拼贴页<br />会出现在这里</span></section>}
         </>}
       </section>
-      <aside className="flow-state"><span>原型状态</span><p>{screen === 'home' ? '首页用大卡片先让用户看见成品。' : screen === 'templates' ? '二级页只比较真实母板。' : screen === 'upload' ? '第一张照片默认是主图。' : screen === 'reveal' ? '上滑完成后直接进入成品。' : screen === 'result' ? '作品自动保存，下载是唯一主操作。' : '“我的”按设备本地保存作品。'}</p></aside>
+      <aside className="flow-state"><span>原型状态</span><p>{screen === 'home' ? '首页按类别横向比较真实母板。' : screen === 'upload' ? '第一张照片默认是主图。' : screen === 'reveal' ? '上滑完成后直接进入成品。' : screen === 'result' ? '作品自动保存，下载是唯一主操作。' : '“我的”按设备本地保存作品。'}</p></aside>
     </main>
   )
 }
