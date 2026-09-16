@@ -1,0 +1,27 @@
+/* PROTOTYPE — tests whether a collection-first home makes style choice clearer. */
+.flow-collection-list{display:grid;gap:12px;padding:0 20px 28px}
+.flow-collection{overflow:hidden;border:1px solid #e3dfd7;border-radius:18px;background:#f8f7f3;transition:background .2s ease}
+.flow-collection--open{background:#fff}
+.flow-collection__summary{position:relative;display:grid;grid-template-columns:18px minmax(0,1fr) 122px;gap:9px;align-items:start;width:100%;min-height:144px;padding:15px;border:0;background:transparent;color:#1d1d1b;text-align:left;cursor:pointer}
+.flow-collection__number{padding-top:2px;color:#8a867e;font-size:9px;letter-spacing:.08em}
+.flow-collection__copy{display:grid;align-content:start;gap:4px;padding-top:1px}
+.flow-collection__copy b{font-size:17px;font-weight:600;letter-spacing:-.045em}
+.flow-collection__copy small{max-width:112px;color:#716d64;font-size:10px;line-height:1.35}
+.flow-collection__copy i{margin-top:4px;color:#89847a;font-size:9px;font-style:normal}
+.flow-collection__action{position:absolute;bottom:15px;left:42px;color:#625e56;font-size:10px}
+.flow-collection-preview{position:relative;display:block;width:122px;height:108px;margin-top:2px}
+.flow-collection-preview__sheet{position:absolute;bottom:0;width:76px;overflow:hidden;border:1px solid #e5e1d9;border-radius:5px;background:#fff;box-shadow:0 4px 8px rgba(29,28,23,.11)}
+.flow-collection-preview__sheet .master-sheet{width:100%;box-shadow:none}
+.flow-collection-preview__sheet--1{z-index:3;left:1px;transform:rotate(-5deg)}
+.flow-collection-preview__sheet--2{z-index:2;left:25px;transform:translateY(-4px) rotate(2deg)}
+.flow-collection-preview__sheet--3{z-index:1;left:48px;transform:translateY(-8px) rotate(5deg)}
+.flow-collection-preview--1 .flow-collection-preview__sheet--1{left:23px;transform:rotate(-2deg)}
+.flow-collection__detail{display:grid;gap:10px;padding:12px 0 14px;border-top:1px solid #ebe8e1;background:#fdfcf9}
+.flow-collection__detail>header{display:flex;align-items:baseline;justify-content:space-between;padding:0 15px;color:#69645b}
+.flow-collection__detail>header span{font-size:11px;font-weight:600}
+.flow-collection__detail>header small{font-size:9px}
+.flow-collection__detail .flow-template-rail{padding:0 15px 8px;gap:12px}
+.flow-collection__detail .flow-home-template{flex-basis:212px}
+.flow-collection__detail .flow-home-template__preview{width:212px}
+.flow-collection__detail .flow-home-template b{font-size:13px}
+.flow-collection__detail .flow-home-template small{font-size:10px}

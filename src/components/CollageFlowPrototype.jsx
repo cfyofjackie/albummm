@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { BOARDS } from './CollageMastersPrototype.jsx'
 import './CollageMastersPrototype.css'
 import './CollageFlowPrototype.css'
+import './CollageCollectionsPrototype.css'
 
 // PROTOTYPE — tests whether choosing by a large, faithful master-board preview
 // makes the collage flow clearer. It intentionally keeps all state in memory.
@@ -67,9 +68,24 @@ function TemplateRail({ category, onChoose }) {
     suppressClick.current = false
   }
 
-  return <section className="flow-template-stage">
-    <div className={`flow-template-rail ${dragging ? 'flow-template-rail--dragging' : ''}`} aria-label={`${category.name}模板`} onMouseDown={startDrag} onMouseMove={moveDrag} onMouseUp={stopDrag} onMouseLeave={stopDrag} onClickCapture={suppressClickAfterDrag}>{category.templates.map((templateItem, itemIndex) => <button key={templateItem.id} type="button" className="flow-home-template" onClick={() => onChoose(category.id, itemIndex)}><BoardPreview boardId={templateItem.id} className="flow-home-template__preview" /><span><b>{templateItem.name}</b><small>{templateItem.count} 张照片</small></span></button>)}</div>
-    <span className="flow-paper-ledge" aria-hidden="true" />
+  return <div className={`flow-template-rail ${dragging ? 'flow-template-rail--dragging' : ''}`} aria-label={`${category.name}模板`} onMouseDown={startDrag} onMouseMove={moveDrag} onMouseUp={stopDrag} onMouseLeave={stopDrag} onClickCapture={suppressClickAfterDrag}>{category.templates.map((templateItem, itemIndex) => <button key={templateItem.id} type="button" className="flow-home-template" onClick={() => onChoose(category.id, itemIndex)}><BoardPreview boardId={templateItem.id} className="flow-home-template__preview" /><span><b>{templateItem.name}</b><small>{templateItem.count} 张照片</small></span></button>)}</div>
+}
+
+function CollectionPreview({ category }) {
+  return <span className={`flow-collection-preview flow-collection-preview--${category.templates.length}`} aria-hidden="true">
+    {category.templates.slice(0, 3).map((templateItem, index) => <BoardPreview key={templateItem.id} boardId={templateItem.id} className={`flow-collection-preview__sheet flow-collection-preview__sheet--${index + 1}`} />)}
+  </span>
+}
+
+function CollectionCard({ category, index, open, onToggle, onChoose }) {
+  return <section className={`flow-collection ${open ? 'flow-collection--open' : ''}`}>
+    <button type="button" className="flow-collection__summary" onClick={onToggle} aria-expanded={open}>
+      <span className="flow-collection__number">{String(index + 1).padStart(2, '0')}</span>
+      <span className="flow-collection__copy"><b>{category.name}</b><small>{category.note}</small><i>{category.templates.length} 个模板</i></span>
+      <CollectionPreview category={category} />
+      <span className="flow-collection__action">{open ? '收起 ↑' : '展开 ↓'}</span>
+    </button>
+    {open && <section className="flow-collection__detail"><header><span>选择一个版式</span><small>左右滑动浏览</small></header><TemplateRail category={category} onChoose={onChoose} /></section>}
   </section>
 }
 
@@ -81,6 +97,7 @@ export default function CollageFlowPrototype() {
   const [expanded, setExpanded] = useState(false)
   const [works, setWorks] = useState([])
   const [downloaded, setDownloaded] = useState(false)
+  const [openCategoryId, setOpenCategoryId] = useState(null)
   const revealStartY = useRef(null)
   const revealTimer = useRef(null)
 
@@ -105,8 +122,8 @@ export default function CollageFlowPrototype() {
       <section className="flow-phone">
         {screen === 'home' && <>
           <BackBar rightLabel="我的" onRight={() => setScreen('library')} />
-          <section className="flow-home-intro"><p>MAKE A PAGE</p><h1>把照片<br />摊成一页。</h1><span>按喜欢的感觉，选一张成品页面。</span></section>
-          <section className="flow-category-list" aria-label="选择拼贴类型">{CATEGORIES.map((item, categoryIndex) => <section className="flow-category" key={item.id}><header><span>{String(categoryIndex + 1).padStart(2, '0')}</span><div><h2>{item.name}</h2><p>{item.note}</p></div><small>{item.templates.length} 种版式</small></header><TemplateRail category={item} onChoose={chooseTemplate} /></section>)}</section>
+          <section className="flow-home-intro"><p>MAKE A PAGE</p><h1>把照片<br />摊成一页。</h1><span>先打开一种风格，再选择其中的版式。</span></section>
+          <section className="flow-collection-list" aria-label="选择拼贴类型">{CATEGORIES.map((item, categoryIndex) => <CollectionCard key={item.id} category={item} index={categoryIndex} open={openCategoryId === item.id} onToggle={() => setOpenCategoryId((current) => current === item.id ? null : item.id)} onChoose={chooseTemplate} />)}</section>
         </>}
 
         {screen === 'upload' && <>
@@ -136,7 +153,7 @@ export default function CollageFlowPrototype() {
           {works.length ? <section className="flow-library-grid">{works.map((work) => <button type="button" key={work.id} onClick={() => { setCategoryId(work.category); setScreen('result') }}><BoardPreview boardId={work.boardId} /><span>{work.template}<small>刚刚创建</small></span></button>)}</section> : <section className="flow-empty"><b>+ </b><span>第一张拼贴页<br />会出现在这里</span></section>}
         </>}
       </section>
-      <aside className="flow-state"><span>原型状态</span><p>{screen === 'home' ? '首页按类别横向比较真实母板。' : screen === 'upload' ? '第一张照片默认是主图。' : screen === 'reveal' ? '上滑完成后直接进入成品。' : screen === 'result' ? '作品自动保存，下载是唯一主操作。' : '“我的”按设备本地保存作品。'}</p></aside>
+      <aside className="flow-state"><span>原型状态</span><p>{screen === 'home' ? (openCategoryId ? '已展开一个风格收藏夹，可横滑选择其中模板。' : '首页以风格收藏夹呈现模板集合。') : screen === 'upload' ? '第一张照片默认是主图。' : screen === 'reveal' ? '上滑完成后直接进入成品。' : screen === 'result' ? '作品自动保存，下载是唯一主操作。' : '“我的”按设备本地保存作品。'}</p></aside>
     </main>
   )
 }
