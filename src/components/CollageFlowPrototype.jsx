@@ -33,18 +33,10 @@ function Artwork({ boardId, stacked = false, interactive = false, onPointerDown,
   return <section className={`flow-art ${stacked ? 'flow-art--stacked' : ''} ${interactive ? 'flow-art--interactive' : ''}`} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>{stacked ? <StackedPhotos /> : <BoardPreview boardId={boardId} className="flow-board-preview--art" />}</section>
 }
 
-function DeckCarousel({ category, index, active, activeTemplateIndex, onActivate, onCycle, onChoose }) {
+function DeckCarousel({ category, activeTemplateIndex, onCycle, onChoose }) {
   const pointerStartX = useRef(null)
   const handledPointer = useRef(false)
   const template = category.templates[activeTemplateIndex]
-
-  const interact = (event) => {
-    if (!active) {
-      onActivate()
-      return
-    }
-    onChoose(category.id, activeTemplateIndex)
-  }
 
   const finishPointer = (event) => {
     if (pointerStartX.current === null) return
@@ -55,16 +47,15 @@ function DeckCarousel({ category, index, active, activeTemplateIndex, onActivate
       onCycle(distance < 0 ? 1 : -1)
       return
     }
-    interact(event)
+    onChoose(category.id, activeTemplateIndex)
   }
 
   const positionFor = (templateIndex) => (templateIndex - activeTemplateIndex + category.templates.length) % category.templates.length
 
-  return <button type="button" className={`flow-deck-card ${active ? 'flow-deck-card--active' : ''}`} aria-label={`${category.name}，${active ? `${template.name}，轻扫切换或点击使用` : '点击打开模板牌堆'}`} onPointerDown={(event) => { pointerStartX.current = event.clientX; event.currentTarget.setPointerCapture?.(event.pointerId) }} onPointerUp={finishPointer} onPointerCancel={() => { pointerStartX.current = null }} onClick={(event) => { if (handledPointer.current) { handledPointer.current = false; return } interact(event) }} onKeyDown={(event) => { if (event.key === 'ArrowRight') { event.preventDefault(); onCycle(1) } if (event.key === 'ArrowLeft') { event.preventDefault(); onCycle(-1) } }}>
-    <span className="flow-deck-card__number">{String(index + 1).padStart(2, '0')}</span>
-    <span className="flow-deck-card__copy"><b>{category.name}</b><small>{active ? template.name : category.note}</small><i>{active ? `${activeTemplateIndex + 1} / ${category.templates.length}` : `${category.templates.length} 个模板`}</i></span>
+  return <button type="button" className="flow-deck-card" aria-label={`${category.name}，${template.name}，第 ${activeTemplateIndex + 1} 张，共 ${category.templates.length} 张；轻扫切换，轻点使用`} onPointerDown={(event) => { pointerStartX.current = event.clientX; event.currentTarget.setPointerCapture?.(event.pointerId) }} onPointerUp={finishPointer} onPointerCancel={() => { pointerStartX.current = null }} onClick={() => { if (handledPointer.current) { handledPointer.current = false; return } onChoose(category.id, activeTemplateIndex) }} onKeyDown={(event) => { if (event.key === 'ArrowRight') { event.preventDefault(); onCycle(1) } if (event.key === 'ArrowLeft') { event.preventDefault(); onCycle(-1) } }}>
     <span className={`flow-deck-card__stack flow-deck-card__stack--${category.templates.length}`} aria-hidden="true">{category.templates.slice(0, 3).map((templateItem, templateIndex) => <BoardPreview key={templateItem.id} boardId={templateItem.id} className={`flow-deck-card__sheet flow-deck-card__sheet--${positionFor(templateIndex)}`} />)}</span>
-    <span className="flow-deck-card__action">{active ? (category.templates.length > 1 ? '轻扫切换 · 点击使用' : '点击使用') : '点开牌堆'}</span>
+    <span className="flow-deck-card__copy"><b>{category.name}</b><small>{template.name} · {activeTemplateIndex + 1} / {category.templates.length}</small></span>
+    {category.templates.length > 1 && <span className="flow-deck-card__progress" aria-hidden="true">{category.templates.map((templateItem, templateIndex) => <i key={templateItem.id} className={templateIndex === activeTemplateIndex ? 'is-active' : ''} />)}</span>}
   </button>
 }
 
@@ -76,7 +67,6 @@ export default function CollageFlowPrototype() {
   const [expanded, setExpanded] = useState(false)
   const [works, setWorks] = useState([])
   const [downloaded, setDownloaded] = useState(false)
-  const [activeCategoryId, setActiveCategoryId] = useState(null)
   const [deckIndexes, setDeckIndexes] = useState({})
   const revealStartY = useRef(null)
   const revealTimer = useRef(null)
@@ -106,8 +96,8 @@ export default function CollageFlowPrototype() {
       <section className="flow-phone">
         {screen === 'home' && <>
           <BackBar rightLabel="我的" onRight={() => setScreen('library')} />
-          <section className="flow-home-intro"><p>MAKE A PAGE</p><h1>把照片<br />摊成一页。</h1><span>点开一种风格，在牌堆里挑一张版式。</span></section>
-          <section className="flow-deck-list" aria-label="选择拼贴类型">{CATEGORIES.map((item, categoryIndex) => <DeckCarousel key={item.id} category={item} index={categoryIndex} active={activeCategoryId === item.id} activeTemplateIndex={deckIndexes[item.id] || 0} onActivate={() => setActiveCategoryId(item.id)} onCycle={(direction) => cycleDeck(item.id, direction)} onChoose={chooseTemplate} />)}</section>
+          <section className="flow-home-intro"><p>MAKE A PAGE</p><h1>把照片<br />摊成一页。</h1><span>轻扫牌堆切换版式，轻点当前模板开始。</span></section>
+          <section className="flow-deck-list" aria-label="选择拼贴类型">{CATEGORIES.map((item) => <DeckCarousel key={item.id} category={item} activeTemplateIndex={deckIndexes[item.id] || 0} onCycle={(direction) => cycleDeck(item.id, direction)} onChoose={chooseTemplate} />)}</section>
         </>}
 
         {screen === 'upload' && <>
@@ -137,7 +127,7 @@ export default function CollageFlowPrototype() {
           {works.length ? <section className="flow-library-grid">{works.map((work) => <button type="button" key={work.id} onClick={() => { setCategoryId(work.category); setScreen('result') }}><BoardPreview boardId={work.boardId} /><span>{work.template}<small>刚刚创建</small></span></button>)}</section> : <section className="flow-empty"><b>+ </b><span>第一张拼贴页<br />会出现在这里</span></section>}
         </>}
       </section>
-      <aside className="flow-state"><span>原型状态</span><p>{screen === 'home' ? (activeCategoryId ? '激活卡片后，轻扫在牌堆里轮换最上层模板。' : '首页以四个模板牌堆呈现四种风格。') : screen === 'upload' ? '第一张照片默认是主图。' : screen === 'reveal' ? '上滑完成后直接进入成品。' : screen === 'result' ? '作品自动保存，下载是唯一主操作。' : '“我的”按设备本地保存作品。'}</p></aside>
+      <aside className="flow-state"><span>原型状态</span><p>{screen === 'home' ? '四个裸牌堆分别独立切换模板，底部短条提示当前位置。' : screen === 'upload' ? '第一张照片默认是主图。' : screen === 'reveal' ? '上滑完成后直接进入成品。' : screen === 'result' ? '作品自动保存，下载是唯一主操作。' : '“我的”按设备本地保存作品。'}</p></aside>
     </main>
   )
 }

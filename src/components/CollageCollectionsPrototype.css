@@ -1,21 +1,16 @@
-/* PROTOTYPE — tests whether a fixed-height template deck feels clearer than an expanded list. */
-.flow-deck-list{display:grid;gap:12px;padding:0 20px 28px}
-.flow-deck-card{position:relative;display:grid;grid-template-columns:18px minmax(0,1fr) 130px;gap:9px;align-items:start;width:100%;min-height:151px;overflow:hidden;padding:15px;border:1px solid #e3dfd7;border-radius:18px;background:#f8f7f3;color:#1d1d1b;text-align:left;cursor:pointer;touch-action:pan-y;transition:border-color .2s ease,background .2s ease,box-shadow .2s ease}
-.flow-deck-card--active{border-color:#bdb8ae;background:#fff;box-shadow:0 7px 16px rgba(31,29,24,.08)}
-.flow-deck-card__number{padding-top:2px;color:#8a867e;font-size:9px;letter-spacing:.08em}
-.flow-deck-card__copy{display:grid;align-content:start;gap:4px;padding-top:1px}
-.flow-deck-card__copy b{font-size:17px;font-weight:600;letter-spacing:-.045em}
-.flow-deck-card__copy small{max-width:116px;color:#716d64;font-size:10px;line-height:1.35}
-.flow-deck-card__copy i{margin-top:4px;color:#89847a;font-size:9px;font-style:normal}
-.flow-deck-card__action{position:absolute;bottom:15px;left:42px;color:#625e56;font-size:10px}
-.flow-deck-card--active .flow-deck-card__action{color:#1d1d1b}
-.flow-deck-card__stack{position:relative;display:block;width:130px;height:112px;margin-top:2px}
-.flow-deck-card__sheet{position:absolute;bottom:0;width:79px;overflow:hidden;border:1px solid #e3dfd9;border-radius:5px;background:#fff;box-shadow:0 4px 9px rgba(29,28,23,.12);transition:transform .38s cubic-bezier(.22,.75,.24,1),left .38s cubic-bezier(.22,.75,.24,1),bottom .38s cubic-bezier(.22,.75,.24,1),opacity .25s ease}
+/* PROTOTYPE — tests whether a 2 × 2 grid of bare template decks makes browsing feel more immediate. */
+.flow-deck-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 15px;padding:2px 20px 30px}
+.flow-deck-card{display:grid;grid-template-rows:176px auto auto;gap:7px;min-width:0;padding:0;border:0;background:transparent;color:#1d1d1b;text-align:left;cursor:pointer;touch-action:pan-y}
+.flow-deck-card__stack{position:relative;display:block;width:100%;height:176px}
+.flow-deck-card__sheet{position:absolute;bottom:0;width:126px;max-width:82%;overflow:hidden;border:1px solid #e3dfd9;border-radius:6px;background:#fff;box-shadow:0 5px 10px rgba(29,28,23,.13);transition:transform .38s cubic-bezier(.22,.75,.24,1),left .38s cubic-bezier(.22,.75,.24,1),bottom .38s cubic-bezier(.22,.75,.24,1),opacity .25s ease}
 .flow-deck-card__sheet .master-sheet{width:100%;box-shadow:none}
-.flow-deck-card__sheet--0{z-index:4;left:4px;bottom:0;transform:rotate(-3deg)}
-.flow-deck-card__sheet--1{z-index:3;left:29px;bottom:4px;transform:rotate(3deg)}
-.flow-deck-card__sheet--2{z-index:2;left:52px;bottom:8px;transform:rotate(6deg)}
-.flow-deck-card__stack--1 .flow-deck-card__sheet--0{left:25px;transform:rotate(-1deg)}
-.flow-deck-card--active .flow-deck-card__sheet--0{box-shadow:0 8px 13px rgba(29,28,23,.17)}
-.flow-deck-card--active .flow-deck-card__sheet--1{opacity:.88}
-.flow-deck-card--active .flow-deck-card__sheet--2{opacity:.75}
+.flow-deck-card__sheet--0{z-index:4;left:3%;bottom:0;transform:rotate(-3deg)}
+.flow-deck-card__sheet--1{z-index:3;left:15%;bottom:5px;transform:rotate(3deg)}
+.flow-deck-card__sheet--2{z-index:2;left:27%;bottom:10px;transform:rotate(6deg)}
+.flow-deck-card__stack--1 .flow-deck-card__sheet--0{left:10%;transform:rotate(-1deg)}
+.flow-deck-card__copy{display:grid;gap:2px;min-width:0;padding:0 2px}
+.flow-deck-card__copy b{font-size:14px;font-weight:600;letter-spacing:-.045em}
+.flow-deck-card__copy small{overflow:hidden;color:#747067;font-size:9px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
+.flow-deck-card__progress{display:flex;align-items:center;gap:3px;width:100%;height:7px;padding:0 2px}
+.flow-deck-card__progress i{display:block;flex:1;height:2px;border-radius:999px;background:#d7d4cd;transition:background .25s ease,transform .25s ease}
+.flow-deck-card__progress i.is-active{background:#373531;transform:scaleY(1.5)}
