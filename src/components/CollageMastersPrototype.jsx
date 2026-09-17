@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { buildJustifiedCollage, JUSTIFIED_PAGE_HEIGHT } from '../lib/justifiedCollage.js'
 import './CollageMastersPrototype.css'
 
 // PROTOTYPE — What should the four collage master layouts feel like?
@@ -95,13 +96,21 @@ export function arrangePhotosForBoard(boardId, photos) {
   return arrangePhotos(photos, [.8, 1.7, 1.9, .9, 2, 2.25])
 }
 
-function ImageBlock({ className = '', torn = '', src }) {
+function ImageBlock({ className = '', torn = '', src, style }) {
   const image = photoSource(src)
-  return <span className={`master-photo master-photo--${photoOrientation(src)} ${torn ? `master-photo--torn-${torn}` : ''} ${className}`} style={image ? { backgroundImage: `url("${image}")` } : undefined} />
+  return <span className={`master-photo master-photo--${photoOrientation(src)} ${torn ? `master-photo--torn-${torn}` : ''} ${className}`} style={{ ...style, ...(image ? { backgroundImage: `url("${image}")` } : {}) }} />
 }
 
 function NeatGrid({ miniature = false, photos = [] }) {
   const mainOrientation = photoOrientation(photos[0])
+  const tiles = buildJustifiedCollage(photos)
+  if (tiles.length) {
+    return (
+      <div className={`master-sheet master-sheet--grid master-sheet--grid-fluid ${miniature ? 'master-sheet--mini' : ''}`}>
+        {tiles.map((tile, index) => <ImageBlock key={tile.photo.src || index} className="grid-fluid-tile" src={tile.photo} style={{ left: `${tile.x}%`, top: `${tile.y / JUSTIFIED_PAGE_HEIGHT * 100}%`, width: `${tile.width}%`, height: `${tile.height / JUSTIFIED_PAGE_HEIGHT * 100}%` }} />)}
+      </div>
+    )
+  }
   const arranged = arrangePhotosForBoard('neat-grid', photos)
   return (
     <div className={`master-sheet master-sheet--grid master-sheet--grid-main-${mainOrientation} ${miniature ? 'master-sheet--mini' : ''}`}>

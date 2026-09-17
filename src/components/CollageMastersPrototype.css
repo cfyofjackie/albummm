@@ -66,6 +66,10 @@
 .grid-6 { left: 8%; top: calc(62% + var(--compact-gap)); width: 27%; height: calc(21% - var(--compact-gap)); }
 .grid-7 { left: calc(35% + var(--compact-gap)); top: calc(70% + var(--compact-gap)); width: calc(57% - var(--compact-gap)); height: calc(13% - var(--compact-gap)); }
 
+/* 真实比例拼图：每一格的宽高由上传照片本身决定，白缝替代裁切。 */
+.master-sheet--grid-fluid { --compact-gap: 0; }
+.master-sheet--grid-fluid .grid-fluid-tile { background-repeat: no-repeat; background-size: contain; }
+
 /* 同一构图的横向主图版本：保留拼图的紧凑感，同时避免把第一张横图硬塞进竖框。 */
 .master-sheet--grid-main-landscape .grid-1 { left: 8%; top: 11%; width: 84%; height: 32%; }
 .master-sheet--grid-main-landscape .grid-2 { left: 8%; top: 45%; width: 25%; height: 28%; }
