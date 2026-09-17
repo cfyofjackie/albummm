@@ -7,7 +7,7 @@ import './CollageFlowPrototype.css'
 import './CollageCollectionsPrototype.css'
 
 // PROTOTYPE — tests whether choosing by a large, faithful master-board preview
-// makes the collage flow clearer. It intentionally keeps all state in memory.
+// makes the collage flow clearer. Completed pages are saved only in this browser.
 
 const CATEGORIES = [
   { id: 'grid', name: '整齐拼图', note: '照片紧贴成一个完整构图', coverId: 'neat-grid', templates: [{ id: 'neat-grid', name: '紧凑拼图', count: 7 }, { id: 'neat-grow', name: '向外生长', count: 10 }] },
