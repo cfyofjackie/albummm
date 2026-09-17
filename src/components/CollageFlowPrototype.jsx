@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { toBlob } from 'html-to-image'
-import { BOARDS } from './CollageMastersPrototype.jsx'
+import { arrangePhotosForBoard, BOARDS } from './CollageMastersPrototype.jsx'
 import { worksStore } from '../lib/worksStore.js'
 import './CollageMastersPrototype.css'
 import './CollageFlowPrototype.css'
@@ -44,7 +44,8 @@ function stackStyleFor(boardId) {
 
 function StackedPhotos({ boardId, photos = [] }) {
   const stackStyle = stackStyleFor(boardId)
-  return <div className={`flow-stack flow-stack--${stackStyle}`} aria-hidden="true">{TONES.map((tone, index) => <i key={tone} className={`flow-stack__photo flow-stack__photo--${index + 1} flow-photo__image--${tone}`} style={photos[index] ? { backgroundImage: `url("${photos[index]}")` } : undefined} />)}</div>
+  const arranged = arrangePhotosForBoard(boardId, photos)
+  return <div className={`flow-stack flow-stack--${stackStyle}`} aria-hidden="true">{TONES.map((tone, index) => <i key={tone} className={`flow-stack__photo flow-stack__photo--${index + 1} flow-photo__image--${tone}`} style={arranged[index]?.src ? { backgroundImage: `url("${arranged[index].src}")` } : undefined} />)}</div>
 }
 
 function Artwork({ boardId, photos = [], stacked = false, interactive = false, onPointerDown, onPointerUp, onPointerCancel, boardRef }) {
@@ -54,7 +55,15 @@ function Artwork({ boardId, photos = [], stacked = false, interactive = false, o
 function readPhoto(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = () => resolve(reader.result)
+    reader.onload = () => {
+      const image = new Image()
+      image.onload = () => {
+        const aspect = image.naturalWidth / image.naturalHeight
+        resolve({ src: reader.result, aspect, orientation: aspect > 1.1 ? 'landscape' : aspect < .91 ? 'portrait' : 'square' })
+      }
+      image.onerror = () => reject(image.error)
+      image.src = reader.result
+    }
     reader.onerror = () => reject(reader.error)
     reader.readAsDataURL(file)
   })
@@ -219,10 +228,10 @@ export default function CollageFlowPrototype() {
         {screen === 'upload' && <>
           <BackBar onBack={() => setScreen('home')} />
           <section className="flow-page-title"><p>{category.name} · {template.name}</p><h1>添加 {template.count} 张照片</h1><span>第一张会成为主图。想突出哪张，就先添加它。</span></section>
-          <section className="flow-upload-grid">{Array.from({ length: template.count }, (_, index) => <span key={index} className={`flow-upload-slot ${photos[index] ? 'flow-upload-slot--ready' : ''}`}>{photos[index] ? <img src={photos[index]} alt={`已选照片 ${index + 1}`} /> : <b>+</b>}<small>{index === 0 ? '主图 / 01' : String(index + 1).padStart(2, '0')}</small></span>)}</section>
+          <section className="flow-upload-grid">{Array.from({ length: template.count }, (_, index) => <span key={index} className={`flow-upload-slot ${photos[index] ? 'flow-upload-slot--ready' : ''}`}>{photos[index] ? <img src={photos[index].src} alt={`已选照片 ${index + 1}`} /> : <b>+</b>}<small>{index === 0 ? '主图 / 01' : String(index + 1).padStart(2, '0')}</small></span>)}</section>
           <input ref={fileInputRef} className="flow-file-input" type="file" accept="image/*" multiple onChange={addPhotos} />
           {photos.length < template.count ? <button type="button" className="flow-primary flow-primary--page" onClick={() => fileInputRef.current?.click()}>{photos.length ? `还差 ${template.count - photos.length} 张照片` : `选择 ${template.count} 张照片`}</button> : <button type="button" className="flow-primary flow-primary--page" onClick={beginReveal}>开始排版</button>}
-          <p className="flow-prototype-note">照片只用于制作这张拼贴页，成品会保存在这台设备的“作品”里。</p>
+          <p className="flow-prototype-note">系统会先识别横图和竖图，再放进更合适的照片位；成品保存在这台设备的“作品”里。</p>
         </>}
 
         {screen === 'reveal' && <>

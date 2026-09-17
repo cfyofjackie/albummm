@@ -52,6 +52,8 @@
   position: absolute;
   display: block;
   background: #1d1d1b;
+  background-position: center;
+  background-size: cover;
 }
 
 /* 01 · 紧密拼成一个形状。 */
@@ -63,6 +65,15 @@
 .grid-5 { left: calc(47% + var(--compact-gap)); top: calc(49% + var(--compact-gap)); width: calc(45% - var(--compact-gap)); height: calc(21% - var(--compact-gap)); }
 .grid-6 { left: 8%; top: calc(62% + var(--compact-gap)); width: 27%; height: calc(21% - var(--compact-gap)); }
 .grid-7 { left: calc(35% + var(--compact-gap)); top: calc(70% + var(--compact-gap)); width: calc(57% - var(--compact-gap)); height: calc(13% - var(--compact-gap)); }
+
+/* 同一构图的横向主图版本：保留拼图的紧凑感，同时避免把第一张横图硬塞进竖框。 */
+.master-sheet--grid-main-landscape .grid-1 { left: 8%; top: 11%; width: 84%; height: 32%; }
+.master-sheet--grid-main-landscape .grid-2 { left: 8%; top: 45%; width: 25%; height: 28%; }
+.master-sheet--grid-main-landscape .grid-3 { left: calc(33% + var(--compact-gap)); top: 45%; width: calc(25% - var(--compact-gap)); height: 28%; }
+.master-sheet--grid-main-landscape .grid-4 { right: 8%; top: 45%; width: 30%; height: 13%; }
+.master-sheet--grid-main-landscape .grid-5 { right: 8%; top: calc(58% + var(--compact-gap)); width: 30%; height: 13%; }
+.master-sheet--grid-main-landscape .grid-6 { left: 8%; top: calc(73% + var(--compact-gap)); width: 42%; height: 18%; }
+.master-sheet--grid-main-landscape .grid-7 { right: 8%; top: calc(73% + var(--compact-gap)); width: 42%; height: 18%; }
 
 /* 02 · 参考“从中间向四周展开”的十字形照片群。
    十个槽位按参考图的连接关系逐块摆放，所有相邻块保留约 3px 的细白缝。 */

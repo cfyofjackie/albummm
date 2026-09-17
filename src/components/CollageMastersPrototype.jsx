@@ -56,35 +56,65 @@ const VARIANTS = [
   },
 ]
 
+function photoSource(photo) {
+  return typeof photo === 'string' ? photo : photo?.src
+}
+
+function photoOrientation(photo) {
+  if (typeof photo === 'string' || !photo) return 'portrait'
+  return photo.orientation || 'portrait'
+}
+
+function arrangePhotos(photos, slotAspects) {
+  if (!photos.length) return photos
+  const first = photos[0]
+  const remaining = photos.slice(1)
+  return slotAspects.map((slotAspect, index) => {
+    if (index === 0) return first
+    if (!remaining.length) return undefined
+    const nextIndex = remaining.reduce((bestIndex, photo, candidateIndex) => {
+      const bestDistance = Math.abs(Math.log((remaining[bestIndex].aspect || .75) / slotAspect))
+      const candidateDistance = Math.abs(Math.log((photo.aspect || .75) / slotAspect))
+      return candidateDistance < bestDistance ? candidateIndex : bestIndex
+    }, 0)
+    return remaining.splice(nextIndex, 1)[0]
+  })
+}
+
+export function arrangePhotosForBoard(boardId, photos) {
+  if (!photos.length) return photos
+  if (boardId === 'neat-grid') {
+    const mainOrientation = photoOrientation(photos[0])
+    return arrangePhotos(photos, [mainOrientation === 'landscape' ? 2 : .75, .67, .67, 1.73, 1.73, 1.75, 1.75])
+  }
+  if (boardId === 'neat-grow') return arrangePhotos(photos, [1, .7, .55, 1.5, 2.2, .85, .55, 1, .55, 1.35])
+  if (boardId === 'editorial-scatter') return arrangePhotos(photos, [.8, .75, .75, 1, .75, .85, .75, .7])
+  if (boardId === 'editorial-cover') return arrangePhotos(photos, [1.55, .75, .65, .7, 1.5, 1.5, 1.2, .8, 1, 1.45])
+  if (boardId === 'print-wall') return arrangePhotos(photos, [.9, .9, .9, .9, .9, .9, .9, .9, .9])
+  if (boardId === 'print-stack') return arrangePhotos(photos, [1.35, 1.4, 1.8, 1.2, 1.1, 1.4])
+  return arrangePhotos(photos, [.8, 1.7, 1.9, .9, 2, 2.25])
+}
+
 function ImageBlock({ className = '', torn = '', src }) {
-  return <span className={`master-photo ${torn ? `master-photo--torn-${torn}` : ''} ${className}`} style={src ? { backgroundImage: `url("${src}")` } : undefined} />
+  const image = photoSource(src)
+  return <span className={`master-photo master-photo--${photoOrientation(src)} ${torn ? `master-photo--torn-${torn}` : ''} ${className}`} style={image ? { backgroundImage: `url("${image}")` } : undefined} />
 }
 
 function NeatGrid({ miniature = false, photos = [] }) {
+  const mainOrientation = photoOrientation(photos[0])
+  const arranged = arrangePhotosForBoard('neat-grid', photos)
   return (
-    <div className={`master-sheet master-sheet--grid ${miniature ? 'master-sheet--mini' : ''}`}>
-      <ImageBlock className="grid-1" src={photos[0]} />
-      <ImageBlock className="grid-2" src={photos[1]} />
-      <ImageBlock className="grid-3" src={photos[2]} />
-      <ImageBlock className="grid-4" src={photos[3]} />
-      <ImageBlock className="grid-5" src={photos[4]} />
-      <ImageBlock className="grid-6" src={photos[5]} />
-      <ImageBlock className="grid-7" src={photos[6]} />
+    <div className={`master-sheet master-sheet--grid master-sheet--grid-main-${mainOrientation} ${miniature ? 'master-sheet--mini' : ''}`}>
+      {Array.from({ length: 7 }, (_, index) => <ImageBlock key={index} className={`grid-${index + 1}`} src={arranged[index]} />)}
     </div>
   )
 }
 
 function EditorialScatter({ miniature = false, photos = [] }) {
+  const arranged = arrangePhotosForBoard('editorial-scatter', photos)
   return (
     <div className={`master-sheet master-sheet--editorial ${miniature ? 'master-sheet--mini' : ''}`}>
-      <ImageBlock className="editorial-1" src={photos[0]} />
-      <ImageBlock className="editorial-2" src={photos[1]} />
-      <ImageBlock className="editorial-3" src={photos[2]} />
-      <ImageBlock className="editorial-4" src={photos[3]} />
-      <ImageBlock className="editorial-5" src={photos[4]} />
-      <ImageBlock className="editorial-6" src={photos[5]} />
-      <ImageBlock className="editorial-7" src={photos[6]} />
-      <ImageBlock className="editorial-8" src={photos[7]} />
+      {Array.from({ length: 8 }, (_, index) => <ImageBlock key={index} className={`editorial-${index + 1}`} src={arranged[index]} />)}
       <span className="editorial-kicker">A SMALL ARCHIVE / 01</span>
       <h2 className="editorial-title"><span>little</span><span>moments</span></h2>
       <span className="editorial-word editorial-word--left">some</span>
@@ -94,38 +124,42 @@ function EditorialScatter({ miniature = false, photos = [] }) {
 }
 
 function NeatGrow({ miniature = false, photos = [] }) {
+  const arranged = arrangePhotosForBoard('neat-grow', photos)
   return (
     <div className={`master-sheet master-sheet--grow ${miniature ? 'master-sheet--mini' : ''}`}>
       <div className="grow-cluster">
-        {Array.from({ length: 10 }, (_, index) => <ImageBlock key={index} className={`grow-${index + 1}`} src={photos[index]} />)}
+        {Array.from({ length: 10 }, (_, index) => <ImageBlock key={index} className={`grow-${index + 1}`} src={arranged[index]} />)}
       </div>
     </div>
   )
 }
 
 function EditorialCover({ miniature = false, photos = [] }) {
+  const arranged = arrangePhotosForBoard('editorial-cover', photos)
   return (
     <div className={`master-sheet master-sheet--editorial-cover ${miniature ? 'master-sheet--mini' : ''}`}>
       <h2 className="editorial-cover-title"><span>as</span><span>we</span><span>rise</span></h2>
       <p className="editorial-cover-subtitle">photography<br />from the<br />memory archive</p>
-      {Array.from({ length: 10 }, (_, index) => <ImageBlock key={index} className={`cover-${index + 1}`} src={photos[index]} />)}
+      {Array.from({ length: 10 }, (_, index) => <ImageBlock key={index} className={`cover-${index + 1}`} src={arranged[index]} />)}
       <span className="editorial-cover-credit">APERTURE / 01</span>
     </div>
   )
 }
 
 function PrintWall({ miniature = false, photos = [] }) {
+  const arranged = arrangePhotosForBoard('print-wall', photos)
   return (
     <div className={`master-sheet master-sheet--print-wall ${miniature ? 'master-sheet--mini' : ''}`}>
-      {Array.from({ length: 9 }, (_, index) => <span key={index} className={`paper-print wall-print-${index + 1}`}><ImageBlock src={photos[index]} /></span>)}
+      {Array.from({ length: 9 }, (_, index) => <span key={index} className={`paper-print wall-print-${index + 1}`}><ImageBlock src={arranged[index]} /></span>)}
     </div>
   )
 }
 
 function PrintStack({ miniature = false, photos = [] }) {
+  const arranged = arrangePhotosForBoard('print-stack', photos)
   return (
     <div className={`master-sheet master-sheet--prints ${miniature ? 'master-sheet--mini' : ''}`}>
-      {Array.from({ length: 6 }, (_, index) => <span key={index} className={`paper-print print-${index + 1}`}><ImageBlock src={photos[index]} /></span>)}
+      {Array.from({ length: 6 }, (_, index) => <span key={index} className={`paper-print print-${index + 1}`}><ImageBlock src={arranged[index]} /></span>)}
       <span className="print-tape print-tape-1" />
       <span className="print-tape print-tape-2" />
     </div>
@@ -133,14 +167,15 @@ function PrintStack({ miniature = false, photos = [] }) {
 }
 
 function TornPaper({ miniature = false, photos = [] }) {
+  const arranged = arrangePhotosForBoard('torn-paper', photos)
   return (
     <div className={`master-sheet master-sheet--torn ${miniature ? 'master-sheet--mini' : ''}`}>
-      <ImageBlock className="torn-1" torn="left" src={photos[0]} />
-      <ImageBlock className="torn-2" src={photos[1]} />
-      <ImageBlock className="torn-3" src={photos[2]} />
-      <ImageBlock className="torn-4" torn="right" src={photos[3]} />
-      <ImageBlock className="torn-5" torn="bottom" src={photos[4]} />
-      <ImageBlock className="torn-6" src={photos[5]} />
+      <ImageBlock className="torn-1" torn="left" src={arranged[0]} />
+      <ImageBlock className="torn-2" src={arranged[1]} />
+      <ImageBlock className="torn-3" src={arranged[2]} />
+      <ImageBlock className="torn-4" torn="right" src={arranged[3]} />
+      <ImageBlock className="torn-5" torn="bottom" src={arranged[4]} />
+      <ImageBlock className="torn-6" src={arranged[5]} />
       <span className="tape tape-1" />
       <span className="tape tape-2" />
     </div>
