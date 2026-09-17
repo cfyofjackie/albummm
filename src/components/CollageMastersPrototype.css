@@ -70,6 +70,9 @@
 .master-sheet--grid-fluid { --compact-gap: 0; }
 .master-sheet--grid-fluid .grid-fluid-tile { background-repeat: no-repeat; background-size: contain; }
 
+/* 上传后，向外生长不再拿固定十字格硬塞横竖图；照片的外框就等于照片本身。 */
+.master-sheet--grow-fluid .grow-fluid-tile { background-repeat: no-repeat; background-size: contain; }
+
 /* 同一构图的横向主图版本：保留拼图的紧凑感，同时避免把第一张横图硬塞进竖框。 */
 .master-sheet--grid-main-landscape .grid-1 { left: 8%; top: 11%; width: 84%; height: 32%; }
 .master-sheet--grid-main-landscape .grid-2 { left: 8%; top: 45%; width: 25%; height: 28%; }
@@ -259,18 +262,10 @@
 .print-tape-1 { left: 24%; top: 10%; transform: rotate(-8deg); }
 .print-tape-2 { right: 17%; top: 53%; transform: rotate(84deg); }
 
-/* 相纸的外框和照片窗跟随原图比例；白边和底部留白仍是固定的相纸语言。 */
-.paper-print--fluid { position: relative; display: grid; width: auto; height: auto; padding: 4px 4px 13px; }
+/* 相纸外框和里面的照片窗都从原图比例推导，横图与竖图不会再被压进同一种框。 */
+.paper-print--fluid { position: absolute; box-sizing: border-box; display: block; height: auto; padding: 4% 4% 16%; aspect-ratio: var(--paper-aspect); }
 .paper-print--fluid .master-photo { position: relative; width: 100%; height: auto; aspect-ratio: var(--photo-aspect); background-repeat: no-repeat; background-size: contain; }
-.master-sheet--print-wall-fluid .print-wall-fluid-grid { position: absolute; top: 50%; left: 14%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; width: 72%; align-items: start; transform: translateY(-50%); }
-.master-sheet--print-wall-fluid .wall-print-fluid { width: auto; transform: none; }
-.master-sheet--prints-fluid .paper-print--fluid { position: absolute; width: auto; height: auto; }
-.master-sheet--prints-fluid .print-1 { z-index: 2; left: 12%; top: 13%; width: 43%; transform: rotate(-3deg); }
-.master-sheet--prints-fluid .print-2 { z-index: 3; right: 9%; top: 17%; width: 35%; transform: rotate(3deg); }
-.master-sheet--prints-fluid .print-3 { z-index: 4; left: 30%; top: 36%; width: 43%; transform: rotate(-1deg); }
-.master-sheet--prints-fluid .print-4 { z-index: 1; left: 10%; top: 59%; width: 31%; transform: rotate(2deg); }
-.master-sheet--prints-fluid .print-5 { z-index: 3; right: 11%; top: 57%; width: 38%; transform: rotate(-2deg); }
-.master-sheet--prints-fluid .print-6 { z-index: 5; bottom: 7%; left: 42%; width: 27%; transform: rotate(2deg); }
+.master-sheet--print-wall-fluid .wall-print-fluid { transform: none; }
 
 /* 07 · 完整参考 6 图结构。前三层在上半部相互压住，底部两张把重心拉回。
    撕边只出现三次，并只沿一个边缘出现；最终产品会以对应方向的真实 alpha 蒙版替换这里的原型轮廓。 */

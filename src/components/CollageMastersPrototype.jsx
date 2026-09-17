@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { buildJustifiedCollage, JUSTIFIED_PAGE_HEIGHT } from '../lib/justifiedCollage.js'
+import { buildGrowingCollage, buildJustifiedCollage, buildPolaroidStack, buildPolaroidWall, JUSTIFIED_PAGE_HEIGHT, polaroidAspect } from '../lib/justifiedCollage.js'
 import './CollageMastersPrototype.css'
 
 // PROTOTYPE — What should the four collage master layouts feel like?
@@ -101,8 +101,9 @@ function ImageBlock({ className = '', torn = '', src, style }) {
   return <span className={`master-photo master-photo--${photoOrientation(src)} ${torn ? `master-photo--torn-${torn}` : ''} ${className}`} style={{ ...style, ...(image ? { backgroundImage: `url("${image}")` } : {}) }} />
 }
 
-function FluidPrint({ className, photo }) {
-  return <span className={`paper-print paper-print--fluid ${className}`} style={{ '--photo-aspect': photo?.aspect || .75 }}><ImageBlock src={photo} /></span>
+function FluidPrint({ className, photo, style }) {
+  const aspect = photo?.aspect || .75
+  return <span className={`paper-print paper-print--fluid ${className}`} style={{ ...style, '--photo-aspect': aspect, '--paper-aspect': polaroidAspect(photo) }}><ImageBlock src={photo} /></span>
 }
 
 function NeatGrid({ miniature = false, photos = [] }) {
@@ -137,6 +138,14 @@ function EditorialScatter({ miniature = false, photos = [] }) {
 }
 
 function NeatGrow({ miniature = false, photos = [] }) {
+  const tiles = buildGrowingCollage(photos)
+  if (tiles.length) {
+    return (
+      <div className={`master-sheet master-sheet--grow master-sheet--grow-fluid ${miniature ? 'master-sheet--mini' : ''}`}>
+        {tiles.map((tile, index) => <ImageBlock key={tile.photo.src || index} className="grow-fluid-tile" src={tile.photo} style={{ left: `${tile.x}%`, top: `${tile.y / JUSTIFIED_PAGE_HEIGHT * 100}%`, width: `${tile.width}%`, height: `${tile.height / JUSTIFIED_PAGE_HEIGHT * 100}%` }} />)}
+      </div>
+    )
+  }
   const arranged = arrangePhotosForBoard('neat-grow', photos)
   return (
     <div className={`master-sheet master-sheet--grow ${miniature ? 'master-sheet--mini' : ''}`}>
@@ -161,10 +170,11 @@ function EditorialCover({ miniature = false, photos = [] }) {
 
 function PrintWall({ miniature = false, photos = [] }) {
   const arranged = arrangePhotosForBoard('print-wall', photos)
+  const tiles = buildPolaroidWall(photos)
   if (photos.length) {
     return (
       <div className={`master-sheet master-sheet--print-wall master-sheet--print-wall-fluid ${miniature ? 'master-sheet--mini' : ''}`}>
-        <span className="print-wall-fluid-grid">{arranged.map((photo, index) => <FluidPrint key={photo.src || index} className="wall-print-fluid" photo={photo} />)}</span>
+        {tiles.map((tile, index) => <FluidPrint key={tile.photo.src || index} className="wall-print-fluid" photo={tile.photo} style={{ left: `${tile.x}%`, top: `${tile.y / JUSTIFIED_PAGE_HEIGHT * 100}%`, width: `${tile.width}%` }} />)}
       </div>
     )
   }
@@ -177,10 +187,11 @@ function PrintWall({ miniature = false, photos = [] }) {
 
 function PrintStack({ miniature = false, photos = [] }) {
   const arranged = arrangePhotosForBoard('print-stack', photos)
+  const tiles = buildPolaroidStack(photos)
   if (photos.length) {
     return (
       <div className={`master-sheet master-sheet--prints master-sheet--prints-fluid ${miniature ? 'master-sheet--mini' : ''}`}>
-        {Array.from({ length: 6 }, (_, index) => <FluidPrint key={arranged[index]?.src || index} className={`print-${index + 1}`} photo={arranged[index]} />)}
+        {tiles.map((tile, index) => <FluidPrint key={tile.photo.src || index} className="print-fluid" photo={tile.photo} style={{ left: `${tile.x}%`, top: `${tile.y / JUSTIFIED_PAGE_HEIGHT * 100}%`, width: `${tile.width}%`, zIndex: tile.zIndex, transform: `rotate(${tile.rotate}deg)` }} />)}
         <span className="print-tape print-tape-1" />
         <span className="print-tape print-tape-2" />
       </div>

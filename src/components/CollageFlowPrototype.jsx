@@ -44,7 +44,11 @@ function stackStyleFor(boardId) {
 
 function StackedPhotos({ boardId, photos = [] }) {
   const stackStyle = stackStyleFor(boardId)
-  const arranged = arrangePhotosForBoard(boardId, photos)
+  // Geometry-based boards keep upload order from the pile to the final page.
+  // Editorial and torn boards still use their fixed art-directed slot order.
+  const arranged = ['neat-grid', 'neat-grow', 'print-wall', 'print-stack'].includes(boardId)
+    ? photos
+    : arrangePhotosForBoard(boardId, photos)
   return <div className={`flow-stack flow-stack--${stackStyle}`} aria-hidden="true">{TONES.map((tone, index) => <i key={tone} className={`flow-stack__photo flow-stack__photo--${index + 1} flow-photo__image--${tone}`} style={arranged[index]?.src ? { backgroundImage: `url("${arranged[index].src}")` } : undefined} />)}</div>
 }
 
