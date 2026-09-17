@@ -156,7 +156,6 @@ export default function CollageFlowPrototype() {
         </>}
         {(screen === 'home' || screen === 'library') && <AppDock active={screen} onNavigate={setScreen} />}
       </section>
-      <aside className="flow-state"><span>原型状态</span><p>{screen === 'home' ? '底部“制作 / 作品”切换两个一级页面；右侧露出的纸页提示横滑。' : screen === 'upload' ? '第一张照片默认是主图。' : screen === 'reveal' ? '上滑完成后直接进入成品。' : screen === 'result' ? '作品已收进作品页，下载是唯一主操作。' : '作品页区分空、单张与多张状态。'}</p></aside>
     </main>
   )
 }
