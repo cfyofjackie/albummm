@@ -101,6 +101,10 @@ function ImageBlock({ className = '', torn = '', src, style }) {
   return <span className={`master-photo master-photo--${photoOrientation(src)} ${torn ? `master-photo--torn-${torn}` : ''} ${className}`} style={{ ...style, ...(image ? { backgroundImage: `url("${image}")` } : {}) }} />
 }
 
+function FluidPrint({ className, photo }) {
+  return <span className={`paper-print paper-print--fluid ${className}`} style={{ '--photo-aspect': photo?.aspect || .75 }}><ImageBlock src={photo} /></span>
+}
+
 function NeatGrid({ miniature = false, photos = [] }) {
   const mainOrientation = photoOrientation(photos[0])
   const tiles = buildJustifiedCollage(photos)
@@ -157,6 +161,13 @@ function EditorialCover({ miniature = false, photos = [] }) {
 
 function PrintWall({ miniature = false, photos = [] }) {
   const arranged = arrangePhotosForBoard('print-wall', photos)
+  if (photos.length) {
+    return (
+      <div className={`master-sheet master-sheet--print-wall master-sheet--print-wall-fluid ${miniature ? 'master-sheet--mini' : ''}`}>
+        <span className="print-wall-fluid-grid">{arranged.map((photo, index) => <FluidPrint key={photo.src || index} className="wall-print-fluid" photo={photo} />)}</span>
+      </div>
+    )
+  }
   return (
     <div className={`master-sheet master-sheet--print-wall ${miniature ? 'master-sheet--mini' : ''}`}>
       {Array.from({ length: 9 }, (_, index) => <span key={index} className={`paper-print wall-print-${index + 1}`}><ImageBlock src={arranged[index]} /></span>)}
@@ -166,6 +177,15 @@ function PrintWall({ miniature = false, photos = [] }) {
 
 function PrintStack({ miniature = false, photos = [] }) {
   const arranged = arrangePhotosForBoard('print-stack', photos)
+  if (photos.length) {
+    return (
+      <div className={`master-sheet master-sheet--prints master-sheet--prints-fluid ${miniature ? 'master-sheet--mini' : ''}`}>
+        {Array.from({ length: 6 }, (_, index) => <FluidPrint key={arranged[index]?.src || index} className={`print-${index + 1}`} photo={arranged[index]} />)}
+        <span className="print-tape print-tape-1" />
+        <span className="print-tape print-tape-2" />
+      </div>
+    )
+  }
   return (
     <div className={`master-sheet master-sheet--prints ${miniature ? 'master-sheet--mini' : ''}`}>
       {Array.from({ length: 6 }, (_, index) => <span key={index} className={`paper-print print-${index + 1}`}><ImageBlock src={arranged[index]} /></span>)}
