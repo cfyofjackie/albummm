@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { toBlob } from 'html-to-image'
 import { BOARDS } from './CollageMastersPrototype.jsx'
+import { worksStore } from '../lib/worksStore.js'
 import './CollageMastersPrototype.css'
 import './CollageFlowPrototype.css'
 import './CollageCollectionsPrototype.css'
@@ -28,9 +30,9 @@ function AppDock({ active, onNavigate }) {
   return <nav className="flow-dock" aria-label="主导航"><button type="button" className={active === 'home' ? 'is-active' : ''} aria-current={active === 'home' ? 'page' : undefined} onClick={() => onNavigate('home')}><DockIcon type="make" /><span>制作</span></button><button type="button" className={active === 'library' ? 'is-active' : ''} aria-current={active === 'library' ? 'page' : undefined} onClick={() => onNavigate('library')}><DockIcon type="works" /><span>作品</span></button></nav>
 }
 
-function BoardPreview({ boardId, className = '' }) {
+function BoardPreview({ boardId, className = '', photos = [], boardRef }) {
   const Board = BOARDS[boardId]
-  return <div className={`flow-board-preview ${className}`}><Board miniature /></div>
+  return <div ref={boardRef} className={`flow-board-preview ${className}`}><Board miniature photos={photos} /></div>
 }
 
 function stackStyleFor(boardId) {
@@ -40,13 +42,22 @@ function stackStyleFor(boardId) {
   return 'torn'
 }
 
-function StackedPhotos({ boardId }) {
+function StackedPhotos({ boardId, photos = [] }) {
   const stackStyle = stackStyleFor(boardId)
-  return <div className={`flow-stack flow-stack--${stackStyle}`} aria-hidden="true">{TONES.map((tone, index) => <i key={tone} className={`flow-stack__photo flow-stack__photo--${index + 1} flow-photo__image--${tone}`} />)}</div>
+  return <div className={`flow-stack flow-stack--${stackStyle}`} aria-hidden="true">{TONES.map((tone, index) => <i key={tone} className={`flow-stack__photo flow-stack__photo--${index + 1} flow-photo__image--${tone}`} style={photos[index] ? { backgroundImage: `url("${photos[index]}")` } : undefined} />)}</div>
 }
 
-function Artwork({ boardId, stacked = false, interactive = false, onPointerDown, onPointerUp, onPointerCancel }) {
-  return <section className={`flow-art ${stacked ? 'flow-art--stacked' : ''} ${interactive ? 'flow-art--interactive' : ''}`} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>{stacked ? <StackedPhotos boardId={boardId} /> : <BoardPreview boardId={boardId} className="flow-board-preview--art" />}</section>
+function Artwork({ boardId, photos = [], stacked = false, interactive = false, onPointerDown, onPointerUp, onPointerCancel, boardRef }) {
+  return <section className={`flow-art ${stacked ? 'flow-art--stacked' : ''} ${interactive ? 'flow-art--interactive' : ''}`} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>{stacked ? <StackedPhotos boardId={boardId} photos={photos} /> : <BoardPreview boardId={boardId} photos={photos} boardRef={boardRef} className="flow-board-preview--art" />}</section>
+}
+
+function readPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
 }
 
 function DeckCarousel({ category, activeTemplateIndex, onCycle, onChoose, showHint }) {
@@ -86,14 +97,20 @@ export default function CollageFlowPrototype() {
   const [screen, setScreen] = useState('home')
   const [categoryId, setCategoryId] = useState('prints')
   const [templateIndex, setTemplateIndex] = useState(1)
-  const [photosReady, setPhotosReady] = useState(false)
+  const [photos, setPhotos] = useState([])
   const [expanded, setExpanded] = useState(false)
   const [works, setWorks] = useState([])
-  const [downloaded, setDownloaded] = useState(false)
+  const [activeWork, setActiveWork] = useState(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [showWorkMenu, setShowWorkMenu] = useState(false)
+  const [undoWork, setUndoWork] = useState(null)
   const [deckIndexes, setDeckIndexes] = useState({})
   const [showDeckHint, setShowDeckHint] = useState(true)
   const revealStartY = useRef(null)
   const revealTimer = useRef(null)
+  const boardRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const undoTimer = useRef(null)
 
   const category = CATEGORIES.find((item) => item.id === categoryId)
   const template = category.templates[templateIndex] || category.templates[0]
@@ -101,7 +118,8 @@ export default function CollageFlowPrototype() {
   const chooseTemplate = (nextCategoryId, nextTemplateIndex) => {
     setCategoryId(nextCategoryId)
     setTemplateIndex(nextTemplateIndex)
-    setPhotosReady(false)
+    setPhotos([])
+    setActiveWork(null)
     setScreen('upload')
   }
   const cycleDeck = (categoryId, direction) => {
@@ -109,7 +127,26 @@ export default function CollageFlowPrototype() {
     setDeckIndexes((current) => ({ ...current, [categoryId]: ((current[categoryId] || 0) + direction + selectedCategory.templates.length) % selectedCategory.templates.length }))
   }
   const beginReveal = () => { setExpanded(false); setScreen('reveal') }
-  const finish = () => { setWorks((previous) => previous.length ? previous : [{ id: Date.now(), category: categoryId, template: template.name, boardId: template.id }]); setScreen('result') }
+  const finish = async () => {
+    if (!boardRef.current || isSaving) return
+    setIsSaving(true)
+    try {
+      const image = await toBlob(boardRef.current, { pixelRatio: 2, cacheBust: true, backgroundColor: '#fdfcf9' })
+      if (!image) throw new Error('图片生成失败')
+      const work = { id: Date.now(), category: categoryId, template: template.name, boardId: template.id, createdAt: new Date().toISOString(), image }
+      await worksStore.put(work)
+      const visibleWork = { ...work, previewUrl: URL.createObjectURL(image) }
+      setWorks((previous) => [visibleWork, ...previous])
+      setActiveWork(visibleWork)
+      setScreen('result')
+    } catch (error) {
+      window.alert('这张拼贴页暂时没有生成成功，请再试一次。')
+      setExpanded(false)
+      setScreen('reveal')
+    } finally {
+      setIsSaving(false)
+    }
+  }
   const completeReveal = () => { if (expanded) return; setExpanded(true); revealTimer.current = window.setTimeout(finish, 680) }
   const leaveReveal = () => { window.clearTimeout(revealTimer.current); revealTimer.current = null; setExpanded(false); setScreen('upload') }
   const beginDragReveal = (event) => { if (expanded) return; revealStartY.current = event.clientY; event.currentTarget.setPointerCapture?.(event.pointerId) }
@@ -120,6 +157,56 @@ export default function CollageFlowPrototype() {
     const timer = window.setTimeout(() => setShowDeckHint(false), 2200)
     return () => window.clearTimeout(timer)
   }, [showDeckHint])
+
+  useEffect(() => {
+    let cancelled = false
+    worksStore.list().then((storedWorks) => {
+      if (cancelled) return
+      setWorks(storedWorks.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map((work) => ({ ...work, previewUrl: URL.createObjectURL(work.image) })))
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => () => {
+    window.clearTimeout(revealTimer.current)
+    window.clearTimeout(undoTimer.current)
+  }, [])
+
+  const addPhotos = async (event) => {
+    const files = Array.from(event.target.files || []).filter((file) => file.type.startsWith('image/')).slice(0, template.count)
+    if (!files.length) return
+    const nextPhotos = await Promise.all(files.map(readPhoto))
+    setPhotos(nextPhotos)
+    event.target.value = ''
+  }
+  const downloadWork = (work) => {
+    if (!work?.image) return
+    const url = URL.createObjectURL(work.image)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `albummm-${work.template}.png`
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 300)
+  }
+  const removeActiveWork = async () => {
+    if (!activeWork) return
+    const removed = activeWork
+    setShowWorkMenu(false)
+    setWorks((previous) => previous.filter((work) => work.id !== removed.id))
+    setActiveWork(null)
+    setScreen('library')
+    await worksStore.remove(removed.id)
+    setUndoWork(removed)
+    window.clearTimeout(undoTimer.current)
+    undoTimer.current = window.setTimeout(() => setUndoWork(null), 5000)
+  }
+  const undoRemove = async () => {
+    if (!undoWork) return
+    await worksStore.put(undoWork)
+    setWorks((previous) => [undoWork, ...previous])
+    setUndoWork(null)
+    window.clearTimeout(undoTimer.current)
+  }
 
   return (
     <main className="flow-prototype">
@@ -132,29 +219,34 @@ export default function CollageFlowPrototype() {
         {screen === 'upload' && <>
           <BackBar onBack={() => setScreen('home')} />
           <section className="flow-page-title"><p>{category.name} · {template.name}</p><h1>添加 {template.count} 张照片</h1><span>第一张会成为主图。想突出哪张，就先添加它。</span></section>
-          <section className="flow-upload-grid">{Array.from({ length: template.count }, (_, index) => <span key={index} className={`flow-upload-slot ${photosReady ? 'flow-upload-slot--ready' : ''}`}>{photosReady ? <i className={`flow-photo__image flow-photo__image--${TONES[index % TONES.length]}`} /> : <b>+</b>}<small>{index === 0 ? '主图 / 01' : String(index + 1).padStart(2, '0')}</small></span>)}</section>
-          {!photosReady ? <button type="button" className="flow-primary flow-primary--page" onClick={() => setPhotosReady(true)}>添加 {template.count} 张示例照片</button> : <button type="button" className="flow-primary flow-primary--page" onClick={beginReveal}>开始排版</button>}
-          <p className="flow-prototype-note">原型使用示例照片；正式版在这里打开系统相册。</p>
+          <section className="flow-upload-grid">{Array.from({ length: template.count }, (_, index) => <span key={index} className={`flow-upload-slot ${photos[index] ? 'flow-upload-slot--ready' : ''}`}>{photos[index] ? <img src={photos[index]} alt={`已选照片 ${index + 1}`} /> : <b>+</b>}<small>{index === 0 ? '主图 / 01' : String(index + 1).padStart(2, '0')}</small></span>)}</section>
+          <input ref={fileInputRef} className="flow-file-input" type="file" accept="image/*" multiple onChange={addPhotos} />
+          {photos.length < template.count ? <button type="button" className="flow-primary flow-primary--page" onClick={() => fileInputRef.current?.click()}>{photos.length ? `还差 ${template.count - photos.length} 张照片` : `选择 ${template.count} 张照片`}</button> : <button type="button" className="flow-primary flow-primary--page" onClick={beginReveal}>开始排版</button>}
+          <p className="flow-prototype-note">照片只用于制作这张拼贴页，成品会保存在这台设备的“作品”里。</p>
         </>}
 
         {screen === 'reveal' && <>
           <BackBar onBack={leaveReveal} />
           <section className="flow-reveal-copy"><p>准备好了</p><h1>{expanded ? '照片已归位' : '向上展开照片'}</h1></section>
-          <Artwork boardId={template.id} stacked={!expanded} interactive={!expanded} onPointerDown={beginDragReveal} onPointerUp={finishDragReveal} onPointerCancel={() => { revealStartY.current = null }} />
+          <Artwork boardId={template.id} photos={photos} boardRef={boardRef} stacked={!expanded} interactive={!expanded} onPointerDown={beginDragReveal} onPointerUp={finishDragReveal} onPointerCancel={() => { revealStartY.current = null }} />
           {!expanded && <button type="button" className="flow-gesture" onClick={completeReveal}><b>↑</b>向上拖动照片堆</button>}
+          {isSaving && <p className="flow-saving">正在收好这张拼贴页…</p>}
         </>}
 
         {screen === 'result' && <>
-          <BackBar onBack={() => setScreen('home')} backLabel="完成" rightLabel="作品" onRight={() => setScreen('library')} />
-          <section className="flow-result-copy"><span>已收进作品</span><h1>{template.name}</h1></section><Artwork boardId={template.id} />
-          <section className="flow-result-actions"><button type="button" className="flow-primary" onClick={() => setDownloaded(true)}>{downloaded ? '已下载图片' : '下载图片'}</button><button type="button" onClick={() => setScreen('library')}>查看作品</button></section>
+          <BackBar onBack={() => setScreen('home')} backLabel="完成" rightLabel={activeWork ? '···' : '作品'} onRight={() => activeWork ? setShowWorkMenu(true) : setScreen('library')} />
+          <section className="flow-result-copy"><span>已收进作品</span><h1>{activeWork?.template || template.name}</h1></section>
+          {activeWork?.previewUrl ? <section className="flow-exported-art"><img src={activeWork.previewUrl} alt={`${activeWork.template} 成品预览`} /></section> : <Artwork boardId={template.id} photos={photos} />}
+          <section className="flow-result-actions"><button type="button" className="flow-primary" onClick={() => downloadWork(activeWork)}>下载图片</button><button type="button" onClick={() => setScreen('library')}>查看作品</button></section>
+          {showWorkMenu && <section className="flow-work-menu" role="dialog" aria-label="作品操作"><button type="button" onClick={() => setShowWorkMenu(false)}>取消</button><button type="button" onClick={removeActiveWork}>删除这张作品</button></section>}
         </>}
 
         {screen === 'library' && <>
           <section className="flow-page-title flow-page-title--library"><p>YOUR PAGES</p><h1>作品</h1><span>{works.length ? `已制作 ${works.length} 张拼贴页` : '第一张拼贴页会从这里开始'}</span></section>
-          {works.length ? <section className={`flow-library-grid ${works.length === 1 ? 'flow-library-grid--single' : ''}`}>{works.map((work) => <button type="button" key={work.id} onClick={() => { setCategoryId(work.category); setScreen('result') }}><BoardPreview boardId={work.boardId} /><span>{work.template}<small>刚刚创建</small></span></button>)}</section> : <section className="flow-empty"><b>+</b><span>还没有作品<br />先做一张拼贴页吧</span><button type="button" onClick={() => setScreen('home')}>开始制作</button></section>}
+          {works.length ? <section className={`flow-library-grid ${works.length === 1 ? 'flow-library-grid--single' : ''}`}>{works.map((work) => <button type="button" key={work.id} onClick={() => { setActiveWork(work); setScreen('result') }}><span className="flow-work-thumb"><img src={work.previewUrl} alt={`${work.template} 成品缩略图`} /></span><span>{work.template}<small>{new Date(work.createdAt).toLocaleDateString('zh-CN')}</small></span></button>)}</section> : <section className="flow-empty"><b>+</b><span>还没有作品<br />先做一张拼贴页吧</span><button type="button" onClick={() => setScreen('home')}>开始制作</button></section>}
         </>}
         {(screen === 'home' || screen === 'library') && <AppDock active={screen} onNavigate={setScreen} />}
+        {undoWork && <button type="button" className="flow-undo" onClick={undoRemove}>已删除　<b>撤销</b></button>}
       </section>
     </main>
   )

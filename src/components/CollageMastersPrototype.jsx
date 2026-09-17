@@ -56,35 +56,35 @@ const VARIANTS = [
   },
 ]
 
-function ImageBlock({ className = '', torn = '' }) {
-  return <span className={`master-photo ${torn ? `master-photo--torn-${torn}` : ''} ${className}`} />
+function ImageBlock({ className = '', torn = '', src }) {
+  return <span className={`master-photo ${torn ? `master-photo--torn-${torn}` : ''} ${className}`} style={src ? { backgroundImage: `url("${src}")` } : undefined} />
 }
 
-function NeatGrid({ miniature = false }) {
+function NeatGrid({ miniature = false, photos = [] }) {
   return (
     <div className={`master-sheet master-sheet--grid ${miniature ? 'master-sheet--mini' : ''}`}>
-      <ImageBlock className="grid-1" />
-      <ImageBlock className="grid-2" />
-      <ImageBlock className="grid-3" />
-      <ImageBlock className="grid-4" />
-      <ImageBlock className="grid-5" />
-      <ImageBlock className="grid-6" />
-      <ImageBlock className="grid-7" />
+      <ImageBlock className="grid-1" src={photos[0]} />
+      <ImageBlock className="grid-2" src={photos[1]} />
+      <ImageBlock className="grid-3" src={photos[2]} />
+      <ImageBlock className="grid-4" src={photos[3]} />
+      <ImageBlock className="grid-5" src={photos[4]} />
+      <ImageBlock className="grid-6" src={photos[5]} />
+      <ImageBlock className="grid-7" src={photos[6]} />
     </div>
   )
 }
 
-function EditorialScatter({ miniature = false }) {
+function EditorialScatter({ miniature = false, photos = [] }) {
   return (
     <div className={`master-sheet master-sheet--editorial ${miniature ? 'master-sheet--mini' : ''}`}>
-      <ImageBlock className="editorial-1" />
-      <ImageBlock className="editorial-2" />
-      <ImageBlock className="editorial-3" />
-      <ImageBlock className="editorial-4" />
-      <ImageBlock className="editorial-5" />
-      <ImageBlock className="editorial-6" />
-      <ImageBlock className="editorial-7" />
-      <ImageBlock className="editorial-8" />
+      <ImageBlock className="editorial-1" src={photos[0]} />
+      <ImageBlock className="editorial-2" src={photos[1]} />
+      <ImageBlock className="editorial-3" src={photos[2]} />
+      <ImageBlock className="editorial-4" src={photos[3]} />
+      <ImageBlock className="editorial-5" src={photos[4]} />
+      <ImageBlock className="editorial-6" src={photos[5]} />
+      <ImageBlock className="editorial-7" src={photos[6]} />
+      <ImageBlock className="editorial-8" src={photos[7]} />
       <span className="editorial-kicker">A SMALL ARCHIVE / 01</span>
       <h2 className="editorial-title"><span>little</span><span>moments</span></h2>
       <span className="editorial-word editorial-word--left">some</span>
@@ -93,85 +93,54 @@ function EditorialScatter({ miniature = false }) {
   )
 }
 
-function NeatGrow({ miniature = false }) {
+function NeatGrow({ miniature = false, photos = [] }) {
   return (
     <div className={`master-sheet master-sheet--grow ${miniature ? 'master-sheet--mini' : ''}`}>
       <div className="grow-cluster">
-        <ImageBlock className="grow-1" />
-        <ImageBlock className="grow-2" />
-        <ImageBlock className="grow-3" />
-        <ImageBlock className="grow-4" />
-        <ImageBlock className="grow-5" />
-        <ImageBlock className="grow-6" />
-        <ImageBlock className="grow-7" />
-        <ImageBlock className="grow-8" />
-        <ImageBlock className="grow-9" />
-        <ImageBlock className="grow-10" />
+        {Array.from({ length: 10 }, (_, index) => <ImageBlock key={index} className={`grow-${index + 1}`} src={photos[index]} />)}
       </div>
     </div>
   )
 }
 
-function EditorialCover({ miniature = false }) {
+function EditorialCover({ miniature = false, photos = [] }) {
   return (
     <div className={`master-sheet master-sheet--editorial-cover ${miniature ? 'master-sheet--mini' : ''}`}>
       <h2 className="editorial-cover-title"><span>as</span><span>we</span><span>rise</span></h2>
       <p className="editorial-cover-subtitle">photography<br />from the<br />memory archive</p>
-      <ImageBlock className="cover-1" />
-      <ImageBlock className="cover-2" />
-      <ImageBlock className="cover-3" />
-      <ImageBlock className="cover-4" />
-      <ImageBlock className="cover-5" />
-      <ImageBlock className="cover-6" />
-      <ImageBlock className="cover-7" />
-      <ImageBlock className="cover-8" />
-      <ImageBlock className="cover-9" />
-      <ImageBlock className="cover-10" />
+      {Array.from({ length: 10 }, (_, index) => <ImageBlock key={index} className={`cover-${index + 1}`} src={photos[index]} />)}
       <span className="editorial-cover-credit">APERTURE / 01</span>
     </div>
   )
 }
 
-function PrintWall({ miniature = false }) {
+function PrintWall({ miniature = false, photos = [] }) {
   return (
     <div className={`master-sheet master-sheet--print-wall ${miniature ? 'master-sheet--mini' : ''}`}>
-      <span className="paper-print wall-print-1"><ImageBlock /></span>
-      <span className="paper-print wall-print-2"><ImageBlock /></span>
-      <span className="paper-print wall-print-3"><ImageBlock /></span>
-      <span className="paper-print wall-print-4"><ImageBlock /></span>
-      <span className="paper-print wall-print-5"><ImageBlock /></span>
-      <span className="paper-print wall-print-6"><ImageBlock /></span>
-      <span className="paper-print wall-print-7"><ImageBlock /></span>
-      <span className="paper-print wall-print-8"><ImageBlock /></span>
-      <span className="paper-print wall-print-9"><ImageBlock /></span>
+      {Array.from({ length: 9 }, (_, index) => <span key={index} className={`paper-print wall-print-${index + 1}`}><ImageBlock src={photos[index]} /></span>)}
     </div>
   )
 }
 
-function PrintStack({ miniature = false }) {
+function PrintStack({ miniature = false, photos = [] }) {
   return (
     <div className={`master-sheet master-sheet--prints ${miniature ? 'master-sheet--mini' : ''}`}>
-      <span className="paper-print print-1"><ImageBlock /></span>
-      <span className="paper-print print-2"><ImageBlock /></span>
-      <span className="paper-print print-3"><ImageBlock /></span>
-      <span className="paper-print print-4"><ImageBlock /></span>
-      <span className="paper-print print-5"><ImageBlock /></span>
-      <span className="paper-print print-6"><ImageBlock /></span>
+      {Array.from({ length: 6 }, (_, index) => <span key={index} className={`paper-print print-${index + 1}`}><ImageBlock src={photos[index]} /></span>)}
       <span className="print-tape print-tape-1" />
       <span className="print-tape print-tape-2" />
     </div>
   )
 }
 
-function TornPaper({ miniature = false }) {
+function TornPaper({ miniature = false, photos = [] }) {
   return (
     <div className={`master-sheet master-sheet--torn ${miniature ? 'master-sheet--mini' : ''}`}>
-      <ImageBlock className="torn-1" torn="left" />
-      <ImageBlock className="torn-2" />
-      <ImageBlock className="torn-3" />
-      <ImageBlock className="torn-4" torn="right" />
-      <ImageBlock className="torn-5" torn="bottom" />
-      <ImageBlock className="torn-6" />
+      <ImageBlock className="torn-1" torn="left" src={photos[0]} />
+      <ImageBlock className="torn-2" src={photos[1]} />
+      <ImageBlock className="torn-3" src={photos[2]} />
+      <ImageBlock className="torn-4" torn="right" src={photos[3]} />
+      <ImageBlock className="torn-5" torn="bottom" src={photos[4]} />
+      <ImageBlock className="torn-6" src={photos[5]} />
       <span className="tape tape-1" />
       <span className="tape tape-2" />
     </div>
