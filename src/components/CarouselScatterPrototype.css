@@ -33,6 +33,12 @@
 
 .scatter-card img { max-height: none; }
 
+.scatter-strip {
+  grid-template-columns: repeat(var(--scatter-page-count, 5), minmax(178px, 1fr));
+  min-width: calc(var(--scatter-page-count, 5) * 178px);
+  aspect-ratio: calc(var(--scatter-page-count, 5) * .8) / 1;
+}
+
 .scatter-prototype--edge .scatter-strip { background-color: #e7e4dc; }
 .scatter-prototype--edge .scatter-card { box-shadow: 0 4px 9px rgba(37, 33, 26, .1) !important; }
 
@@ -62,4 +68,5 @@
 @media (max-width: 620px) {
   .scatter-prototype__state { gap: 6px 10px; font-size: 9px; }
   .scatter-prototype__state span + span { padding-left: 10px; }
+  .scatter-strip { grid-template-columns: repeat(var(--scatter-page-count, 5), 220px); min-width: calc(var(--scatter-page-count, 5) * 220px); }
 }
