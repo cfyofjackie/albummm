@@ -1,0 +1,129 @@
+# V3 开发规范：不可破坏的基线
+
+本文件优先级高于任何临时灵感或实现便利。若新想法与本文件冲突，先停下并向产品负责人确认，不要自行“优化”。
+
+## 1. 作用范围
+
+允许直接修改：
+
+```text
+src/v3-carousel/**
+docs/v3-carousel/**
+```
+
+有明确必要时才可修改：
+
+```text
+src/App.jsx       # 仅用于增加新的 V3 原型路由
+src/shared/**     # 仅用于真正跨 V1 / V2 / V3 / V4 的图片通用能力
+```
+
+默认禁止修改：
+
+```text
+src/v1-book/**
+src/v2-collage/**
+src/v4-gallery/**
+```
+
+仓库主分支同时包含其他 session 的 V2、V4 和用户文档工作。不得使用 `git reset --hard`、`git clean`、广泛的回滚或“顺手格式化”；不得暂存不在本次 V3 任务范围内的文件。
+
+## 2. 产品不变量
+
+1. V3 的成品是一组连续的 Carousel 页面，不是书、单页拼图或专业编辑器。
+2. 首次体验保持简单：上传照片 → 选 Gallery / Muse / Weekend → 自动生成 → 浏览 / 重生成。
+3. 用户不需要逐页摆放；只允许未来的轻量调整，不引入自由画布。
+4. 第一页没有强制 Hero 职责。视觉重点可以出现在任意页。
+5. 胶卷只是预览 / 动效隐喻，不是固定比例、齿孔或 35mm 仿真模板。
+
+## 3. 智能分页不变量
+
+### 数量与页数
+
+- 1–3 张：允许单独作为极少照片例外；不为了“至少两张”制造空页。
+- 4–9 张：可以少于 5 页，优先由 2 张页组成，必要时一页 3 张。
+- 10–13 张：优先输出 5 页。
+- 14 张及以上：当 3 张页会变成主导时，宁可增加页数；不要硬塞照片。
+- 正常页只能有 2、3 或 4 张照片；4 张页最多一次。
+- 2 张页必须多于 3 张页。
+- 所有输入照片默认都要进入输出；不得静默丢图。
+- 当前上传上限为 24 张。照片多时输出可以超过早期“4–8 页”的建议范围；在未重新与产品负责人确认前，不得强行封顶。
+
+### 比例与尺寸
+
+- 不拉伸照片。
+- 不为了填满空间而强裁切；极端比例优先完整展示。
+- 照片内容短边不低于页面短边的 20%。
+- 内容宽度不超过页面宽度的 80%；内容高度不超过页面高度的 78%。
+- 白边是照片装裱与碰撞缓冲，不是可随意加宽的装饰：保持 2–5px 的动态范围。
+- 照片内容区不得碰撞；只允许外卡片在风格规定范围内轻微相叠。
+
+### 随机与可复现
+
+- 随机只能发生在已被约束的分页与几何边界内部。
+- 相同照片顺序、风格与 seed 必须得到同一结果。
+- “换一组排法”只换 seed，不能改变输入照片、悄悄改变风格或丢图。
+- 分页先保留输入序列的叙事感，再优先将横图与竖图 / 方图配成自然关系。
+
+## 4. 风格不变量
+
+Gallery / Muse / Weekend 是三种**表层气质**，不是三套内容算法：
+
+| 风格 | 可变项 | 不可变项 |
+| --- | --- | --- |
+| Gallery | 暖白纸面、零旋转、零重叠、克制留白 | 分页规则、尺寸边界、完整展示 |
+| Muse | 低饱和色带、极轻错位、editorial 感 | 分页规则、尺寸边界、完整展示 |
+| Weekend | 网格 / 色带感、少量旋转与轻叠 | 分页规则、尺寸边界、完整展示 |
+
+除非产品负责人明确批准，否则不得把材质、文字、贴纸、边框或不同模板逻辑变成一个“第四风格”。
+
+## 5. 原型兼容性
+
+以下 URL 是历史基线。新增工作不能让它们白屏、报错或悄悄变样：
+
+```text
+/?prototype=carousel-smart&variant=gallery&demo=14
+/?prototype=carousel-smart&variant=muse&demo=14
+/?prototype=carousel-smart&variant=weekend&demo=14
+/?prototype=carousel-scatter&variant=weekend
+/?prototype=carousel-scale&variant=balanced
+/?prototype=carousel-rhythm&variant=gallery
+/?prototype=carousel-masters&variant=gallery
+```
+
+如需尝试一个会明显改变视觉方向的想法，新增 `?prototype=carousel-<experiment>`，而不是复写 `carousel-smart` 或 `carousel-scatter`。
+
+## 6. 提交与验证规范
+
+每次开始前：
+
+1. 运行 `git status --short`，确认是否存在其他 session 的修改。
+2. 只打开 / 编辑 V3 范围内文件。
+3. 对算法改动，使用至少一个固定 seed 和一个混合比例照片集复现前后结果。
+
+每次提交前：
+
+1. `git diff --check`
+2. `npm run build`
+3. `npm test`
+4. 手动打开本文件第 5 节的 V3 URL，至少验证 smart、scatter 和一种非主原型。
+5. 仅暂存本任务涉及的 V3 文件、必要的 `src/App.jsx` 与 V3 文档。
+
+提交信息应以 `V3:` 开头，并描述一个独立目的，例如：
+
+```text
+V3: preserve mixed-ratio pages during smart pagination
+V3: prototype Weekend torn-edge material layer
+V3: document smart pagination validation results
+```
+
+## 7. 需要产品确认的事项
+
+以下不是开发者可自行决定的参数：
+
+- 是否加入真实图片导出，及导出数量、格式与社交平台规格；
+- 是否引入 AI（当前智能分页明确是不依赖 AI 的）；
+- 是否加入文字输入、日期、标题或 caption；
+- 是否把胶卷展开做进 V3，还是拆为独立产品；
+- 是否把撕纸、胶带、曲别针从 Weekend 扩展到其他风格；
+- 是否改变最小 20% 尺寸、2–4 张页规则或上传上限。
