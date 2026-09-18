@@ -73,8 +73,8 @@
 }
 
 .rhythm-frame { background: rgba(255, 255, 255, .025); }
-.rhythm-frame--quiet { background: rgba(250, 247, 239, .26); }
-.rhythm-frame--details { background: rgba(92, 87, 73, .045); }
+.rhythm-frame--pair { background: rgba(250, 247, 239, .12); }
+.rhythm-frame--cluster { background: rgba(92, 87, 73, .045); }
 .rhythm-frame__role {
   position: absolute;
   z-index: 4;

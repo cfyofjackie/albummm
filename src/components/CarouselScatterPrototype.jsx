@@ -11,7 +11,7 @@ const FRAME_ASPECT = .8 // 4:5 output pages
 const EXPORT_WIDTH = 1080
 const EXPORT_HEIGHT = 1350
 // 当前验证已确定的视觉边界：限制照片内容，不限制带白边的外卡片。
-const SIZE_RULES = { minShortEdge: .18, maxContentWidth: .8, maxContentHeight: .78 }
+const SIZE_RULES = { minShortEdge: .2, maxContentWidth: .8, maxContentHeight: .78 }
 
 // 用户选择风格；随机的位置、尺寸与轻叠只是各风格内部的排版规则。
 const STYLES = [
@@ -25,25 +25,25 @@ const LEGACY_STYLE_BY_STRATEGY = { edge: 'gallery', soft: 'muse', cluster: 'week
 // They set page-level emphasis only; the final position of every photo stays seeded-random.
 const RHYTHMS = {
   gallery: [
-    { id: 'anchor', label: '单图锚点', anchorShort: .56, fragmentBase: .18, fragmentRange: .05 },
-    { id: 'dialogue', label: '对照组', anchorShort: .4, fragmentBase: .3, fragmentRange: .07 },
-    { id: 'anchor', label: '单图锚点', anchorShort: .53, fragmentBase: .18, fragmentRange: .05 },
-    { id: 'quiet', label: '安静区', anchorShort: .35, fragmentBase: .18, fragmentRange: .03 },
-    { id: 'dialogue', label: '对照组', anchorShort: .39, fragmentBase: .29, fragmentRange: .07 },
+    { id: 'pair', label: '双图关系', anchorShort: .37, fragmentBase: .22, fragmentRange: .06 },
+    { id: 'cluster', label: '片段组合', anchorShort: .32, fragmentBase: .2, fragmentRange: .07 },
+    { id: 'pair', label: '双图关系', anchorShort: .37, fragmentBase: .22, fragmentRange: .06 },
+    { id: 'cluster', label: '片段组合', anchorShort: .32, fragmentBase: .2, fragmentRange: .07 },
+    { id: 'pair', label: '双图收束', anchorShort: .36, fragmentBase: .22, fragmentRange: .06 },
   ],
   muse: [
-    { id: 'dialogue', label: '不对称对照', anchorShort: .41, fragmentBase: .29, fragmentRange: .09 },
-    { id: 'details', label: '片段区', anchorShort: .32, fragmentBase: .18, fragmentRange: .13 },
-    { id: 'anchor', label: '单图锚点', anchorShort: .54, fragmentBase: .18, fragmentRange: .05 },
-    { id: 'quiet', label: '安静区', anchorShort: .35, fragmentBase: .18, fragmentRange: .03 },
-    { id: 'details', label: '片段收束', anchorShort: .31, fragmentBase: .18, fragmentRange: .12 },
+    { id: 'pair', label: '不对称双图', anchorShort: .38, fragmentBase: .23, fragmentRange: .07 },
+    { id: 'cluster', label: '片段组合', anchorShort: .33, fragmentBase: .2, fragmentRange: .08 },
+    { id: 'pair', label: '双图关系', anchorShort: .38, fragmentBase: .23, fragmentRange: .07 },
+    { id: 'cluster', label: '片段组合', anchorShort: .33, fragmentBase: .2, fragmentRange: .08 },
+    { id: 'pair', label: '双图收束', anchorShort: .37, fragmentBase: .22, fragmentRange: .07 },
   ],
   weekend: [
-    { id: 'details', label: '片段开场', anchorShort: .33, fragmentBase: .18, fragmentRange: .15 },
-    { id: 'dialogue', label: '两图关系', anchorShort: .42, fragmentBase: .29, fragmentRange: .1 },
-    { id: 'details', label: '片段高点', anchorShort: .34, fragmentBase: .18, fragmentRange: .16 },
-    { id: 'anchor', label: '单图停顿', anchorShort: .52, fragmentBase: .18, fragmentRange: .05 },
-    { id: 'quiet', label: '小图收束', anchorShort: .33, fragmentBase: .18, fragmentRange: .03 },
+    { id: 'cluster', label: '片段开场', anchorShort: .33, fragmentBase: .2, fragmentRange: .09 },
+    { id: 'pair', label: '两图关系', anchorShort: .38, fragmentBase: .23, fragmentRange: .08 },
+    { id: 'cluster', label: '片段高点', anchorShort: .33, fragmentBase: .2, fragmentRange: .1 },
+    { id: 'pair', label: '双图停顿', anchorShort: .37, fragmentBase: .22, fragmentRange: .08 },
+    { id: 'cluster', label: '片段收束', anchorShort: .32, fragmentBase: .2, fragmentRange: .08 },
   ],
 }
 
@@ -106,8 +106,33 @@ function sizeFor(photo, isAnchor, random, style, recipe = null) {
   return { w: contentW + mat * 2 / EXPORT_WIDTH, h: contentH + mat * 2 / EXPORT_HEIGHT }
 }
 
+function pairedCandidate(anchor, w, h, random, style) {
+  const overlapX = style.overlap ? Math.min(anchor.w, w) * style.overlap * .28 : 0
+  const overlapY = style.overlap ? Math.min(anchor.h, h) * style.overlap * .28 : 0
+  const gapX = .022 - overlapX
+  const gapY = .022 - overlapY
+  const options = []
+  const midX = clamp(anchor.x + (anchor.w - w) / 2 + (random() - .5) * .06, .04, .96 - w)
+  const midY = clamp(anchor.y + (anchor.h - h) / 2 + (random() - .5) * .06, .06, .94 - h)
+  const right = anchor.x + anchor.w + gapX
+  const left = anchor.x - w - gapX
+  const below = anchor.y + anchor.h + gapY
+  const above = anchor.y - h - gapY
+  if (right + w <= .96) options.push({ x: right, y: midY })
+  if (left >= .04) options.push({ x: left, y: midY })
+  if (below + h <= .94) options.push({ x: midX, y: below })
+  if (above >= .06) options.push({ x: midX, y: above })
+  return options.length ? options[Math.floor(random() * options.length)] : null
+}
+
 function candidateFor(photo, isAnchor, random, style, anchor = null, recipe = null) {
   const { w, h } = sizeFor(photo, isAnchor, random, style, recipe)
+  if (anchor && recipe) {
+    const pair = pairedCandidate(anchor, w, h, random, style)
+    if (pair) {
+      return { ...pair, w, h, rotate: (random() - .5) * style.rotation * 2 }
+    }
+  }
   // 有白边时，让辅助卡片偶尔贴着第一张的外缘：视觉上有叠放，
   // 但重叠宽度小于两张白边的总缓冲，内层照片依然不会相撞。
   if (anchor && style.overlap > 0 && random() < style.overlapChance) {
@@ -121,10 +146,9 @@ function candidateFor(photo, isAnchor, random, style, anchor = null, recipe = nu
       rotate: (random() - .5) * style.rotation * 2,
     }
   }
-  const quiet = recipe?.id === 'quiet'
   return {
-    x: (quiet ? .18 : .07) + random() * Math.max(.01, (quiet ? .64 : .86) - w),
-    y: (quiet ? .2 : .11) + random() * Math.max(.01, (quiet ? .6 : .8) - h),
+    x: .07 + random() * Math.max(.01, .86 - w),
+    y: .11 + random() * Math.max(.01, .8 - h),
     w,
     h,
     rotate: (random() - .5) * style.rotation * 2,
@@ -205,14 +229,12 @@ function placeFrame(photos, random, style, recipe = null) {
 }
 
 function capacityFor(recipe) {
-  if (recipe?.id === 'details') return 3
-  if (recipe?.id === 'dialogue') return 2
-  return 1
+  return recipe ? 2 : 1
 }
 
 function overflowRecipeFor(recipes) {
-  return recipes?.find((recipe) => recipe.id === 'details') ?? {
-    id: 'details', label: '片段补充', anchorShort: .31, fragmentBase: .18, fragmentRange: .12,
+  return recipes?.find((recipe) => recipe.id === 'cluster') ?? {
+    id: 'cluster', label: '片段补充', anchorShort: .38, fragmentBase: .24, fragmentRange: .1,
   }
 }
 
@@ -225,7 +247,7 @@ function groupsFor(photos, recipes = null) {
     })).filter((frame) => frame.photos.length)
     const overflowRecipe = overflowRecipeFor(recipes)
     while (remaining.length) {
-      frames.push({ photos: remaining.splice(0, 3), recipe: overflowRecipe })
+      frames.push({ photos: remaining.splice(0, capacityFor(overflowRecipe)), recipe: overflowRecipe })
     }
     return frames
   }
@@ -382,7 +404,7 @@ export default function CarouselScatterPrototype({ rhythm = false }) {
 
       <section className="scatter-prototype__state" aria-label="排版状态">
         <span>seed {seed}</span>
-        <span>内容短边 ≥ 18%</span>
+        <span>内容短边 ≥ 20%</span>
         <span>横 ≤ 80% · 竖 ≤ 78%</span>
         <span>外层卡片覆盖 ≤ {Math.round(style.overlap * 100)}%</span>
         <span>照片内容区碰撞 {story?.contentCollisions ?? 0}</span>
