@@ -13,11 +13,13 @@ const EXPORT_HEIGHT = 1350
 // 当前验证已确定的视觉边界：限制照片内容，不限制带白边的外卡片。
 const SIZE_RULES = { minShortEdge: .18, maxContentWidth: .8, maxContentHeight: .78 }
 
-const VARIANTS = [
-  { id: 'edge', label: '01', name: '边缘碰触', overlap: 0, rotation: 0, note: '卡片彼此不覆盖；随机只来自位置、大小与留白。' },
-  { id: 'soft', label: '02', name: '白边轻叠', overlap: .1, rotation: 1, note: '外层白边可轻叠，真实照片内容区始终不重叠。' },
-  { id: 'cluster', label: '03', name: '受控片段', overlap: .16, rotation: 1.8, note: '每页最多两处卡片轻叠，适合 Weekend 的片段段落。' },
+// 用户选择风格；随机的位置、尺寸与轻叠只是各风格内部的排版规则。
+const STYLES = [
+  { id: 'gallery', label: '01', name: 'Gallery', overlap: 0, rotation: 0, overlapChance: 0, anchorShort: .47, fragmentRange: .1, maxOverlaps: 0, note: '安静纸面 · 规整留白 · 照片完整呈现。' },
+  { id: 'muse', label: '02', name: 'Muse', overlap: .08, rotation: .45, overlapChance: .45, anchorShort: .43, fragmentRange: .14, maxOverlaps: 1, note: '柔和色带 · 轻微错位 · 更有 editorial 感。' },
+  { id: 'weekend', label: '03', name: 'Weekend', overlap: .16, rotation: 1.8, overlapChance: .68, anchorShort: .41, fragmentRange: .18, maxOverlaps: 1, note: '网格片段 · 节奏更快 · 可以有少量轻叠。' },
 ]
+const LEGACY_STYLE_BY_STRATEGY = { edge: 'gallery', soft: 'muse', cluster: 'weekend' }
 
 function rngFrom(seed) {
   let value = seed >>> 0
@@ -55,11 +57,11 @@ function innerBox(box) {
   return { x: box.x + insetX, y: box.y + insetY, w: box.w - insetX * 2, h: box.h - insetY * 2 }
 }
 
-function sizeFor(photo, isAnchor, random) {
+function sizeFor(photo, isAnchor, random, style) {
   const aspect = photo.width / photo.height
   const desiredShort = isAnchor
-    ? .43 + (random() - .5) * .12
-    : SIZE_RULES.minShortEdge + random() * .18
+    ? style.anchorShort + (random() - .5) * .1
+    : SIZE_RULES.minShortEdge + random() * style.fragmentRange
   let contentW = aspect > 1 ? desiredShort * aspect : desiredShort
   let contentH = contentW * FRAME_ASPECT / aspect
   const maxScale = Math.min(SIZE_RULES.maxContentWidth / contentW, SIZE_RULES.maxContentHeight / contentH)
@@ -78,19 +80,19 @@ function sizeFor(photo, isAnchor, random) {
   return { w: contentW + mat * 2 / EXPORT_WIDTH, h: contentH + mat * 2 / EXPORT_HEIGHT }
 }
 
-function candidateFor(photo, isAnchor, random, variant, anchor = null) {
-  const { w, h } = sizeFor(photo, isAnchor, random)
+function candidateFor(photo, isAnchor, random, style, anchor = null) {
+  const { w, h } = sizeFor(photo, isAnchor, random, style)
   // 有白边时，让辅助卡片偶尔贴着第一张的外缘：视觉上有叠放，
   // 但重叠宽度小于两张白边的总缓冲，内层照片依然不会相撞。
-  if (anchor && variant.overlap > 0 && random() < .68) {
-    const overlap = .025 + random() * variant.overlap * .42
+  if (anchor && style.overlap > 0 && random() < style.overlapChance) {
+    const overlap = .025 + random() * style.overlap * .42
     const toRight = random() < .5
     return {
       x: clamp(toRight ? anchor.x + anchor.w - w * overlap : anchor.x - w + w * overlap, .07, .93 - w),
       y: clamp(anchor.y + (random() - .5) * Math.min(anchor.h, h) * .45, .11, .91 - h),
       w,
       h,
-      rotate: (random() - .5) * variant.rotation * 2,
+      rotate: (random() - .5) * style.rotation * 2,
     }
   }
   return {
@@ -98,35 +100,35 @@ function candidateFor(photo, isAnchor, random, variant, anchor = null) {
     y: .11 + random() * Math.max(.01, .8 - h),
     w,
     h,
-    rotate: (random() - .5) * variant.rotation * 2,
+    rotate: (random() - .5) * style.rotation * 2,
   }
 }
 
-function acceptable(box, placed, variant) {
+function acceptable(box, placed, style) {
   const inner = innerBox(box)
   let cardOverlaps = 0
   for (const other of placed) {
     const cardRatio = intersection(box, other) / Math.min(area(box), area(other))
-    if (cardRatio > variant.overlap) return null
+    if (cardRatio > style.overlap) return null
     if (intersection(inner, innerBox(other)) > .0001) return null
     if (cardRatio > 0) cardOverlaps += 1
   }
-  if (variant.id === 'cluster' && cardOverlaps > 1) return null
+  if (cardOverlaps > style.maxOverlaps) return null
   return cardOverlaps
 }
 
-function fallbackFor(photo, index, variant) {
-  const { w, h } = sizeFor(photo, index === 0, () => .5)
+function fallbackFor(photo, index, style) {
+  const { w, h } = sizeFor(photo, index === 0, () => .5, style)
   return { x: .1 + index * .08, y: .12 + index * .12, w, h, rotate: 0 }
 }
 
-function safeFallback(photo, index, placed, variant) {
-  const base = fallbackFor(photo, index, variant)
+function safeFallback(photo, index, placed, style) {
+  const base = fallbackFor(photo, index, style)
   const grid = [.08, .28, .48, .68]
   for (const y of grid) {
     for (const x of grid) {
       const candidate = { ...base, x: clamp(x, .04, .96 - base.w), y: clamp(y, .06, .94 - base.h) }
-      const cardOverlaps = acceptable(candidate, placed, variant)
+      const cardOverlaps = acceptable(candidate, placed, style)
       if (cardOverlaps != null) return { box: candidate, cardOverlaps }
       }
   }
@@ -139,7 +141,7 @@ function contentCollisions(placed) {
   ).length, 0)
 }
 
-function placeFrame(photos, random, variant) {
+function placeFrame(photos, random, style) {
   const placed = []
   const unplaced = []
   let rejected = 0
@@ -147,8 +149,8 @@ function placeFrame(photos, random, variant) {
   photos.forEach((photo, index) => {
     let chosen = null
     for (let attempt = 0; attempt < 80; attempt += 1) {
-      const candidate = candidateFor(photo, placed.length === 0, random, variant, placed[0])
-      const cardOverlaps = acceptable(candidate, placed, variant)
+      const candidate = candidateFor(photo, placed.length === 0, random, style, placed[0])
+      const cardOverlaps = acceptable(candidate, placed, style)
       if (cardOverlaps == null) {
         rejected += 1
         continue
@@ -160,7 +162,7 @@ function placeFrame(photos, random, variant) {
     if (chosen) {
       placed.push({ photo, ...chosen })
     } else {
-      const fallback = safeFallback(photo, index, placed, variant)
+      const fallback = safeFallback(photo, index, placed, style)
       if (fallback) {
         overlaps += fallback.cardOverlaps
         placed.push({ photo, ...fallback.box })
@@ -182,20 +184,20 @@ function groupsFor(photos) {
   return frames
 }
 
-function planStory(photos, seed, variant) {
+function planStory(photos, seed, style) {
   const random = rngFrom(seed)
   const frames = []
   let pending = []
   groupsFor(photos).forEach((group) => {
-    const frame = placeFrame([...pending, ...group], random, variant)
+    const frame = placeFrame([...pending, ...group], random, style)
     frames.push(frame)
     pending = frame.unplaced
   })
   while (pending.length) {
-    const frame = placeFrame(pending, random, variant)
+    const frame = placeFrame(pending, random, style)
     if (!frame.placed.length) {
       // 极端比例也必须保留完整展示：单独占一页，而不是突破最小尺度。
-      frames.push(placeFrame([pending[0]], random, variant))
+      frames.push(placeFrame([pending[0]], random, style))
       pending = pending.slice(1)
     } else {
       frames.push(frame)
@@ -210,7 +212,7 @@ function planStory(photos, seed, variant) {
   }
 }
 
-function ScatterFrame({ frame, index, variant }) {
+function ScatterFrame({ frame, index }) {
   return (
     <article className="carousel-master__frame scatter-frame">
       <span className="carousel-master__number">{String(index + 1).padStart(2, '0')}</span>
@@ -227,30 +229,30 @@ function ScatterFrame({ frame, index, variant }) {
   )
 }
 
-function Switcher({ activeId, onChange }) {
-  const index = VARIANTS.findIndex((variant) => variant.id === activeId)
-  const previous = VARIANTS[(index - 1 + VARIANTS.length) % VARIANTS.length]
-  const next = VARIANTS[(index + 1) % VARIANTS.length]
-  const active = VARIANTS[index]
-  if (!import.meta.env.DEV) return null
+function StyleSwitcher({ activeId, onChange }) {
+  const index = STYLES.findIndex((style) => style.id === activeId)
+  const previous = STYLES[(index - 1 + STYLES.length) % STYLES.length]
+  const next = STYLES[(index + 1) % STYLES.length]
+  const active = STYLES[index]
   return (
-    <nav className="carousel-master__switcher" aria-label="切换随机策略">
-      <button type="button" onClick={() => onChange(previous.id)} aria-label="上一个策略">←</button>
+    <nav className="carousel-master__switcher" aria-label="切换视觉风格">
+      <button type="button" onClick={() => onChange(previous.id)} aria-label="上一个风格">←</button>
       <span>{active.label} · {active.name}</span>
-      <button type="button" onClick={() => onChange(next.id)} aria-label="下一个策略">→</button>
+      <button type="button" onClick={() => onChange(next.id)} aria-label="下一个风格">→</button>
     </nav>
   )
 }
 
 export default function CarouselScatterPrototype() {
   const params = new URLSearchParams(window.location.search)
-  const initial = VARIANTS.some((variant) => variant.id === params.get('variant')) ? params.get('variant') : 'soft'
+  const requestedStyle = LEGACY_STYLE_BY_STRATEGY[params.get('variant')] ?? params.get('variant')
+  const initial = STYLES.some((style) => style.id === requestedStyle) ? requestedStyle : 'gallery'
   const [activeId, setActiveId] = useState(initial)
   const [photos, setPhotos] = useState([])
   const [seed, setSeed] = useState(4128)
   const [loading, setLoading] = useState(true)
   const inputRef = useRef(null)
-  const variant = VARIANTS.find((item) => item.id === activeId)
+  const style = STYLES.find((item) => item.id === activeId)
 
   useEffect(() => {
     let live = true
@@ -262,7 +264,7 @@ export default function CarouselScatterPrototype() {
     return () => { live = false }
   }, [])
 
-  const changeVariant = (id) => {
+  const changeStyle = (id) => {
     const next = new URLSearchParams(window.location.search)
     next.set('prototype', 'carousel-scatter')
     next.set('variant', id)
@@ -274,8 +276,8 @@ export default function CarouselScatterPrototype() {
     const onKeyDown = (event) => {
       if (event.target.matches('input, textarea, [contenteditable="true"]')) return
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-      const index = VARIANTS.findIndex((item) => item.id === activeId)
-      changeVariant(VARIANTS[event.key === 'ArrowLeft' ? (index + 2) % 3 : (index + 1) % 3].id)
+      const index = STYLES.findIndex((item) => item.id === activeId)
+      changeStyle(STYLES[event.key === 'ArrowLeft' ? (index + 2) % 3 : (index + 1) % 3].id)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -291,14 +293,14 @@ export default function CarouselScatterPrototype() {
     event.target.value = ''
   }
 
-  const story = photos.length ? planStory(photos, seed, variant) : null
+  const story = photos.length ? planStory(photos, seed, style) : null
   return (
     <main className={`carousel-master scatter-prototype scatter-prototype--${activeId}`}>
       <header className="carousel-master__header">
         <div>
           <p>PROTOTYPE · V3 受控随机片段</p>
-          <h1>{variant.name}</h1>
-          <span>{variant.note}</span>
+          <h1>{style.name}</h1>
+          <span>{style.note}</span>
         </div>
         <div className="carousel-master__actions">
           <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={addPhotos} />
@@ -311,7 +313,7 @@ export default function CarouselScatterPrototype() {
         <span>seed {seed}</span>
         <span>内容短边 ≥ 18%</span>
         <span>横 ≤ 80% · 竖 ≤ 78%</span>
-        <span>外层卡片覆盖 ≤ {Math.round(variant.overlap * 100)}%</span>
+        <span>外层卡片覆盖 ≤ {Math.round(style.overlap * 100)}%</span>
         <span>照片内容区碰撞 {story?.contentCollisions ?? 0}</span>
         <span>{story ? `已拒绝 ${story.rejected} 个候选位置 · 接受 ${story.overlaps} 处轻叠` : '正在计算'}</span>
       </section>
@@ -319,7 +321,7 @@ export default function CarouselScatterPrototype() {
       <section className="carousel-master__stage" aria-label="五页随机连续作品预览">
         {loading || !story ? <p className="carousel-master__loading">正在计算卡片位置…</p> : (
           <div className="carousel-master__strip scatter-strip" style={{ '--scatter-page-count': story.frames.length }}>
-            {story.frames.map((frame, index) => <ScatterFrame key={index} frame={frame} index={index} variant={variant} />)}
+            {story.frames.map((frame, index) => <ScatterFrame key={index} frame={frame} index={index} />)}
           </div>
         )}
       </section>
@@ -328,7 +330,7 @@ export default function CarouselScatterPrototype() {
         <span>本轮验证</span>
         <p>随机位置只能在已确定的内容尺寸范围内移动；放不下的照片自动顺延到下一页。白边是更细的装裱边，也是保护照片内容的碰撞缓冲区。</p>
       </aside>
-      <Switcher activeId={activeId} onChange={changeVariant} />
+      <StyleSwitcher activeId={activeId} onChange={changeStyle} />
     </main>
   )
 }
