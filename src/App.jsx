@@ -19,6 +19,7 @@ import CollageFlowPrototype from './components/CollageFlowPrototype.jsx'
 import CarouselMastersPrototype from './components/CarouselMastersPrototype.jsx'
 import CarouselScatterPrototype from './components/CarouselScatterPrototype.jsx'
 import CarouselRhythmPrototype from './components/CarouselRhythmPrototype.jsx'
+import CarouselSmartPrototype from './components/CarouselSmartPrototype.jsx'
 import CarouselScalePrototype from './components/CarouselScalePrototype.jsx'
 import './App.css'
 
@@ -50,6 +51,9 @@ export default function App() {
   }
   if (prototype === 'carousel-rhythm') {
     return <CarouselRhythmPrototype />
+  }
+  if (prototype === 'carousel-smart') {
+    return <CarouselSmartPrototype />
   }
   if (prototype === 'carousel-scale') {
     return <CarouselScalePrototype />

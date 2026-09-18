@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { makeDemoPhotos } from '../lib/demo.js'
 import { loadPhoto } from '../lib/photo.js'
+import { paginatePhotos } from '../lib/carouselSmartPagination.js'
 import './CarouselMastersPrototype.css'
 import './CarouselScatterPrototype.css'
 
@@ -45,6 +46,15 @@ const RHYTHMS = {
     { id: 'pair', label: '双图停顿', anchorShort: .37, fragmentBase: .22, fragmentRange: .08 },
     { id: 'cluster', label: '片段收束', anchorShort: .32, fragmentBase: .2, fragmentRange: .08 },
   ],
+}
+
+function smartRecipeFor(count) {
+  const recipes = {
+    2: { anchorShort: .43, fragmentBase: .26, fragmentRange: .09 },
+    3: { anchorShort: .38, fragmentBase: .22, fragmentRange: .06 },
+    4: { anchorShort: .34, fragmentBase: .2, fragmentRange: .035 },
+  }
+  return { id: 'smart', ...recipes[count], label: `${count} 张随机组合` }
 }
 
 function rngFrom(seed) {
@@ -228,6 +238,18 @@ function placeFrame(photos, random, style, recipe = null) {
   return { placed, unplaced, rejected, overlaps, contentCollisions: contentCollisions(placed) }
 }
 
+// 同一组照片生成多轮候选，选择完整放下且拒绝次数最低的一轮；“换一组排法”仍然只改种子。
+function placeFrameBest(photos, seed, style, recipe) {
+  let best = null
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const candidate = placeFrame(photos, rngFrom(seed + attempt * 7919), style, recipe)
+    const score = candidate.placed.length * 10000 - candidate.unplaced.length * 10000 - candidate.rejected * 2 - candidate.overlaps
+    if (!best || score > best.score) best = { ...candidate, score }
+    if (candidate.unplaced.length === 0 && candidate.rejected === 0) break
+  }
+  return best
+}
+
 function capacityFor(recipe) {
   return recipe ? 2 : 1
 }
@@ -259,19 +281,31 @@ function groupsFor(photos, recipes = null) {
   return frames
 }
 
-function planStory(photos, seed, style, rhythm = false) {
+function smartGroups(photos, random) {
+  return paginatePhotos(photos, random).map((group) => ({
+    photos: group,
+    recipe: smartRecipeFor(group.length),
+  }))
+}
+
+function planStory(photos, seed, style, rhythm = false, smart = false) {
   const random = rngFrom(seed)
   const frames = []
   let pending = []
   const recipes = rhythm ? RHYTHMS[style.id] : null
-  groupsFor(photos, recipes).forEach(({ photos: group, recipe }) => {
-    const frame = placeFrame(rhythm ? group : [...pending, ...group], random, style, recipe)
+  const groups = smart ? smartGroups(photos, random) : groupsFor(photos, recipes)
+  groups.forEach(({ photos: group, recipe }, index) => {
+    const frame = smart
+      ? placeFrameBest(group, seed + index * 104729, style, recipe)
+      : placeFrame(rhythm ? group : [...pending, ...group], random, style, recipe)
     frames.push({ ...frame, recipe })
-    if (rhythm) {
+    if (rhythm || smart) {
       let overflow = frame.unplaced
-      const overflowRecipe = overflowRecipeFor(recipes)
+      const overflowRecipe = smart ? smartRecipeFor(Math.min(4, Math.max(2, overflow.length))) : overflowRecipeFor(recipes)
       while (overflow.length) {
-        const overflowFrame = placeFrame(overflow, random, style, overflowRecipe)
+        const overflowFrame = smart
+          ? placeFrameBest(overflow, seed + frames.length * 104729, style, overflowRecipe)
+          : placeFrame(overflow, random, style, overflowRecipe)
         frames.push({ ...overflowFrame, recipe: overflowRecipe })
         if (!overflowFrame.placed.length) {
           frames.push({ ...placeFrame([overflow[0]], random, style, overflowRecipe), recipe: overflowRecipe })
@@ -298,6 +332,7 @@ function planStory(photos, seed, style, rhythm = false) {
   }
   return {
     frames,
+    pagePlan: groups.map((group) => group.photos.length),
     rejected: frames.reduce((sum, frame) => sum + frame.rejected, 0),
     overlaps: frames.reduce((sum, frame) => sum + frame.overlaps, 0),
     contentCollisions: frames.reduce((sum, frame) => sum + frame.contentCollisions, 0),
@@ -336,7 +371,7 @@ function StyleSwitcher({ activeId, onChange }) {
   )
 }
 
-export default function CarouselScatterPrototype({ rhythm = false }) {
+export default function CarouselScatterPrototype({ rhythm = false, smart = false }) {
   const params = new URLSearchParams(window.location.search)
   const requestedStyle = LEGACY_STYLE_BY_STRATEGY[params.get('variant')] ?? params.get('variant')
   const initial = STYLES.some((style) => style.id === requestedStyle) ? requestedStyle : 'gallery'
@@ -349,7 +384,9 @@ export default function CarouselScatterPrototype({ rhythm = false }) {
 
   useEffect(() => {
     let live = true
-    makeDemoPhotos(10).then((demo) => {
+    const requestedDemoCount = Number.parseInt(new URLSearchParams(window.location.search).get('demo'), 10)
+    const demoCount = Number.isFinite(requestedDemoCount) ? clamp(requestedDemoCount, 1, 24) : 10
+    makeDemoPhotos(demoCount).then((demo) => {
       if (!live) return
       setPhotos(demo)
       setLoading(false)
@@ -359,7 +396,7 @@ export default function CarouselScatterPrototype({ rhythm = false }) {
 
   const changeStyle = (id) => {
     const next = new URLSearchParams(window.location.search)
-    next.set('prototype', rhythm ? 'carousel-rhythm' : 'carousel-scatter')
+    next.set('prototype', smart ? 'carousel-smart' : rhythm ? 'carousel-rhythm' : 'carousel-scatter')
     next.set('variant', id)
     window.history.replaceState(null, '', `?${next.toString()}`)
     setActiveId(id)
@@ -377,7 +414,7 @@ export default function CarouselScatterPrototype({ rhythm = false }) {
   }, [activeId])
 
   const addPhotos = async (event) => {
-    const files = [...event.target.files].filter((file) => file.type.startsWith('image/')).slice(0, 15)
+    const files = [...event.target.files].filter((file) => file.type.startsWith('image/')).slice(0, 24)
     if (!files.length) return
     setLoading(true)
     setPhotos(await Promise.all(files.map(loadPhoto)))
@@ -386,12 +423,12 @@ export default function CarouselScatterPrototype({ rhythm = false }) {
     event.target.value = ''
   }
 
-  const story = photos.length ? planStory(photos, seed, style, rhythm) : null
+  const story = photos.length ? planStory(photos, seed, style, rhythm, smart) : null
   return (
-    <main className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} scatter-prototype--${activeId}`}>
+    <main className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} ${smart ? 'smart-prototype' : ''} scatter-prototype--${activeId}`}>
       <header className="carousel-master__header">
         <div>
-          <p>PROTOTYPE · V3 {rhythm ? '五页基准节奏' : '受控随机片段'}</p>
+          <p>PROTOTYPE · V3 {smart ? '智能分页随机' : rhythm ? '五页基准节奏' : '受控随机片段'}</p>
           <h1>{style.name}</h1>
           <span>{style.note}</span>
         </div>
@@ -409,11 +446,13 @@ export default function CarouselScatterPrototype({ rhythm = false }) {
         <span>外层卡片覆盖 ≤ {Math.round(style.overlap * 100)}%</span>
         <span>照片内容区碰撞 {story?.contentCollisions ?? 0}</span>
         <span>{story ? `已拒绝 ${story.rejected} 个候选位置 · 接受 ${story.overlaps} 处轻叠` : '正在计算'}</span>
+        {smart && story && <span>智能分页：{story.pagePlan.join(' · ')} 张 / 页</span>}
+        {smart && story && <span>{story.frames.length} 页输出</span>}
         {rhythm && story && <span>{story.frames.length} 页输出</span>}
         {rhythm && story && <span>节奏：{story.frames.slice(0, 5).map((frame) => frame.recipe?.label).filter(Boolean).join(' → ')}</span>}
       </section>
 
-      <section className="carousel-master__stage" aria-label={rhythm ? '五页节奏连续作品预览' : '五页随机连续作品预览'}>
+      <section className="carousel-master__stage" aria-label={smart ? '智能分页随机连续作品预览' : rhythm ? '五页节奏连续作品预览' : '五页随机连续作品预览'}>
         {loading || !story ? <p className="carousel-master__loading">正在计算卡片位置…</p> : (
           <div className="carousel-master__strip scatter-strip" style={{ '--scatter-page-count': story.frames.length }}>
             {story.frames.map((frame, index) => <ScatterFrame key={index} frame={frame} index={index} rhythm={rhythm} />)}
@@ -423,7 +462,9 @@ export default function CarouselScatterPrototype({ rhythm = false }) {
 
       <aside className="carousel-master__rules">
         <span>本轮验证</span>
-        <p>{rhythm
+        <p>{smart
+          ? '系统先计算每页 2–4 张照片：十张以上优先给出五页，2 张页占主导、3 张页补足数量、4 张页最多一次。之后才在每页内生成多轮随机位置方案，留下完整放下且最自然的一轮。三种风格只改变纸面气质，不改变分页规则。'
+          : rhythm
           ? '这一版只规定每页承担的观看角色；照片的具体位置、尺寸与轻叠仍由种子随机决定。请判断它是否让整组更有起伏，而没有牺牲当前的自由感。'
           : '随机位置只能在已确定的内容尺寸范围内移动；放不下的照片自动顺延到下一页。白边是更细的装裱边，也是保护照片内容的碰撞缓冲区。'}
         </p>
