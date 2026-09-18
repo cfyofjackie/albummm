@@ -18,6 +18,7 @@ import CollageInteractionPrototype from './components/CollageInteractionPrototyp
 import CollageFlowPrototype from './components/CollageFlowPrototype.jsx'
 import CarouselMastersPrototype from './components/CarouselMastersPrototype.jsx'
 import CarouselScatterPrototype from './components/CarouselScatterPrototype.jsx'
+import CarouselRhythmPrototype from './components/CarouselRhythmPrototype.jsx'
 import CarouselScalePrototype from './components/CarouselScalePrototype.jsx'
 import './App.css'
 
@@ -46,6 +47,9 @@ export default function App() {
   }
   if (prototype === 'carousel-scatter') {
     return <CarouselScatterPrototype />
+  }
+  if (prototype === 'carousel-rhythm') {
+    return <CarouselRhythmPrototype />
   }
   if (prototype === 'carousel-scale') {
     return <CarouselScalePrototype />

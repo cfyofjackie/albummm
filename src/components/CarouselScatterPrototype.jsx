@@ -21,6 +21,32 @@ const STYLES = [
 ]
 const LEGACY_STYLE_BY_STRATEGY = { edge: 'gallery', soft: 'muse', cluster: 'weekend' }
 
+// PROTOTYPE — Three five-page rhythm recipes on /?prototype=carousel-rhythm.
+// They set page-level emphasis only; the final position of every photo stays seeded-random.
+const RHYTHMS = {
+  gallery: [
+    { id: 'anchor', label: '单图锚点', anchorShort: .56, fragmentBase: .18, fragmentRange: .05 },
+    { id: 'dialogue', label: '对照组', anchorShort: .4, fragmentBase: .3, fragmentRange: .07 },
+    { id: 'anchor', label: '单图锚点', anchorShort: .53, fragmentBase: .18, fragmentRange: .05 },
+    { id: 'quiet', label: '安静区', anchorShort: .35, fragmentBase: .18, fragmentRange: .03 },
+    { id: 'dialogue', label: '对照组', anchorShort: .39, fragmentBase: .29, fragmentRange: .07 },
+  ],
+  muse: [
+    { id: 'dialogue', label: '不对称对照', anchorShort: .41, fragmentBase: .29, fragmentRange: .09 },
+    { id: 'details', label: '片段区', anchorShort: .32, fragmentBase: .18, fragmentRange: .13 },
+    { id: 'anchor', label: '单图锚点', anchorShort: .54, fragmentBase: .18, fragmentRange: .05 },
+    { id: 'quiet', label: '安静区', anchorShort: .35, fragmentBase: .18, fragmentRange: .03 },
+    { id: 'details', label: '片段收束', anchorShort: .31, fragmentBase: .18, fragmentRange: .12 },
+  ],
+  weekend: [
+    { id: 'details', label: '片段开场', anchorShort: .33, fragmentBase: .18, fragmentRange: .15 },
+    { id: 'dialogue', label: '两图关系', anchorShort: .42, fragmentBase: .29, fragmentRange: .1 },
+    { id: 'details', label: '片段高点', anchorShort: .34, fragmentBase: .18, fragmentRange: .16 },
+    { id: 'anchor', label: '单图停顿', anchorShort: .52, fragmentBase: .18, fragmentRange: .05 },
+    { id: 'quiet', label: '小图收束', anchorShort: .33, fragmentBase: .18, fragmentRange: .03 },
+  ],
+}
+
 function rngFrom(seed) {
   let value = seed >>> 0
   return () => {
@@ -57,11 +83,11 @@ function innerBox(box) {
   return { x: box.x + insetX, y: box.y + insetY, w: box.w - insetX * 2, h: box.h - insetY * 2 }
 }
 
-function sizeFor(photo, isAnchor, random, style) {
+function sizeFor(photo, isAnchor, random, style, recipe = null) {
   const aspect = photo.width / photo.height
   const desiredShort = isAnchor
-    ? style.anchorShort + (random() - .5) * .1
-    : SIZE_RULES.minShortEdge + random() * style.fragmentRange
+    ? (recipe?.anchorShort ?? style.anchorShort) + (random() - .5) * .1
+    : (recipe?.fragmentBase ?? SIZE_RULES.minShortEdge) + random() * (recipe?.fragmentRange ?? style.fragmentRange)
   let contentW = aspect > 1 ? desiredShort * aspect : desiredShort
   let contentH = contentW * FRAME_ASPECT / aspect
   const maxScale = Math.min(SIZE_RULES.maxContentWidth / contentW, SIZE_RULES.maxContentHeight / contentH)
@@ -80,8 +106,8 @@ function sizeFor(photo, isAnchor, random, style) {
   return { w: contentW + mat * 2 / EXPORT_WIDTH, h: contentH + mat * 2 / EXPORT_HEIGHT }
 }
 
-function candidateFor(photo, isAnchor, random, style, anchor = null) {
-  const { w, h } = sizeFor(photo, isAnchor, random, style)
+function candidateFor(photo, isAnchor, random, style, anchor = null, recipe = null) {
+  const { w, h } = sizeFor(photo, isAnchor, random, style, recipe)
   // 有白边时，让辅助卡片偶尔贴着第一张的外缘：视觉上有叠放，
   // 但重叠宽度小于两张白边的总缓冲，内层照片依然不会相撞。
   if (anchor && style.overlap > 0 && random() < style.overlapChance) {
@@ -95,9 +121,10 @@ function candidateFor(photo, isAnchor, random, style, anchor = null) {
       rotate: (random() - .5) * style.rotation * 2,
     }
   }
+  const quiet = recipe?.id === 'quiet'
   return {
-    x: .07 + random() * Math.max(.01, .86 - w),
-    y: .11 + random() * Math.max(.01, .8 - h),
+    x: (quiet ? .18 : .07) + random() * Math.max(.01, (quiet ? .64 : .86) - w),
+    y: (quiet ? .2 : .11) + random() * Math.max(.01, (quiet ? .6 : .8) - h),
     w,
     h,
     rotate: (random() - .5) * style.rotation * 2,
@@ -117,14 +144,16 @@ function acceptable(box, placed, style) {
   return cardOverlaps
 }
 
-function fallbackFor(photo, index, style) {
-  const { w, h } = sizeFor(photo, index === 0, () => .5, style)
+function fallbackFor(photo, index, style, recipe) {
+  const { w, h } = sizeFor(photo, index === 0, () => .5, style, recipe)
   return { x: .1 + index * .08, y: .12 + index * .12, w, h, rotate: 0 }
 }
 
-function safeFallback(photo, index, placed, style) {
-  const base = fallbackFor(photo, index, style)
-  const grid = [.08, .28, .48, .68]
+function safeFallback(photo, index, placed, style, recipe) {
+  const base = fallbackFor(photo, index, style, recipe)
+  // 节奏页面不靠缩小回退；更细的搜索网格优先给当前页找到合法空位，
+  // 避免一张陪衬图顺延后破坏下一页的“安静区”。
+  const grid = [.04, .16, .28, .4, .52, .64, .76, .88]
   for (const y of grid) {
     for (const x of grid) {
       const candidate = { ...base, x: clamp(x, .04, .96 - base.w), y: clamp(y, .06, .94 - base.h) }
@@ -141,7 +170,7 @@ function contentCollisions(placed) {
   ).length, 0)
 }
 
-function placeFrame(photos, random, style) {
+function placeFrame(photos, random, style, recipe = null) {
   const placed = []
   const unplaced = []
   let rejected = 0
@@ -149,7 +178,7 @@ function placeFrame(photos, random, style) {
   photos.forEach((photo, index) => {
     let chosen = null
     for (let attempt = 0; attempt < 80; attempt += 1) {
-      const candidate = candidateFor(photo, placed.length === 0, random, style, placed[0])
+      const candidate = candidateFor(photo, placed.length === 0, random, style, placed[0], recipe)
       const cardOverlaps = acceptable(candidate, placed, style)
       if (cardOverlaps == null) {
         rejected += 1
@@ -162,7 +191,7 @@ function placeFrame(photos, random, style) {
     if (chosen) {
       placed.push({ photo, ...chosen })
     } else {
-      const fallback = safeFallback(photo, index, placed, style)
+      const fallback = safeFallback(photo, index, placed, style, recipe)
       if (fallback) {
         overlaps += fallback.cardOverlaps
         placed.push({ photo, ...fallback.box })
@@ -175,32 +204,73 @@ function placeFrame(photos, random, style) {
   return { placed, unplaced, rejected, overlaps, contentCollisions: contentCollisions(placed) }
 }
 
-function groupsFor(photos) {
-  const frames = Array.from({ length: 5 }, () => [])
+function capacityFor(recipe) {
+  if (recipe?.id === 'details') return 3
+  if (recipe?.id === 'dialogue') return 2
+  return 1
+}
+
+function overflowRecipeFor(recipes) {
+  return recipes?.find((recipe) => recipe.id === 'details') ?? {
+    id: 'details', label: '片段补充', anchorShort: .31, fragmentBase: .18, fragmentRange: .12,
+  }
+}
+
+function groupsFor(photos, recipes = null) {
+  if (recipes) {
+    const remaining = [...photos]
+    const frames = recipes.map((recipe) => ({
+      photos: remaining.splice(0, capacityFor(recipe)),
+      recipe,
+    })).filter((frame) => frame.photos.length)
+    const overflowRecipe = overflowRecipeFor(recipes)
+    while (remaining.length) {
+      frames.push({ photos: remaining.splice(0, 3), recipe: overflowRecipe })
+    }
+    return frames
+  }
+  const frames = Array.from({ length: 5 }, () => ({ photos: [], recipe: null }))
   photos.forEach((photo, index) => {
     const frame = Math.min(4, Math.floor(index * 5 / photos.length))
-    frames[frame].push(photo)
+    frames[frame].photos.push(photo)
   })
   return frames
 }
 
-function planStory(photos, seed, style) {
+function planStory(photos, seed, style, rhythm = false) {
   const random = rngFrom(seed)
   const frames = []
   let pending = []
-  groupsFor(photos).forEach((group) => {
-    const frame = placeFrame([...pending, ...group], random, style)
-    frames.push(frame)
-    pending = frame.unplaced
+  const recipes = rhythm ? RHYTHMS[style.id] : null
+  groupsFor(photos, recipes).forEach(({ photos: group, recipe }) => {
+    const frame = placeFrame(rhythm ? group : [...pending, ...group], random, style, recipe)
+    frames.push({ ...frame, recipe })
+    if (rhythm) {
+      let overflow = frame.unplaced
+      const overflowRecipe = overflowRecipeFor(recipes)
+      while (overflow.length) {
+        const overflowFrame = placeFrame(overflow, random, style, overflowRecipe)
+        frames.push({ ...overflowFrame, recipe: overflowRecipe })
+        if (!overflowFrame.placed.length) {
+          frames.push({ ...placeFrame([overflow[0]], random, style, overflowRecipe), recipe: overflowRecipe })
+          overflow = overflow.slice(1)
+        } else {
+          overflow = overflowFrame.unplaced
+        }
+      }
+    } else {
+      pending = frame.unplaced
+    }
   })
   while (pending.length) {
-    const frame = placeFrame(pending, random, style)
+    const recipe = frames.at(-1)?.recipe ?? recipes?.[recipes.length - 1] ?? null
+    const frame = placeFrame(pending, random, style, recipe)
     if (!frame.placed.length) {
       // 极端比例也必须保留完整展示：单独占一页，而不是突破最小尺度。
-      frames.push(placeFrame([pending[0]], random, style))
+      frames.push({ ...placeFrame([pending[0]], random, style, recipe), recipe })
       pending = pending.slice(1)
     } else {
-      frames.push(frame)
+      frames.push({ ...frame, recipe })
       pending = frame.unplaced
     }
   }
@@ -212,10 +282,11 @@ function planStory(photos, seed, style) {
   }
 }
 
-function ScatterFrame({ frame, index }) {
+function ScatterFrame({ frame, index, rhythm }) {
   return (
-    <article className="carousel-master__frame scatter-frame">
+    <article className={`carousel-master__frame scatter-frame ${rhythm && frame.recipe ? `rhythm-frame rhythm-frame--${frame.recipe.id}` : ''}`}>
       <span className="carousel-master__number">{String(index + 1).padStart(2, '0')}</span>
+      {rhythm && frame.recipe && <span className="rhythm-frame__role">{frame.recipe.label}</span>}
       {frame.placed.map(({ photo, x, y, w, h, rotate }) => (
         <figure
           key={photo.id}
@@ -243,7 +314,7 @@ function StyleSwitcher({ activeId, onChange }) {
   )
 }
 
-export default function CarouselScatterPrototype() {
+export default function CarouselScatterPrototype({ rhythm = false }) {
   const params = new URLSearchParams(window.location.search)
   const requestedStyle = LEGACY_STYLE_BY_STRATEGY[params.get('variant')] ?? params.get('variant')
   const initial = STYLES.some((style) => style.id === requestedStyle) ? requestedStyle : 'gallery'
@@ -266,7 +337,7 @@ export default function CarouselScatterPrototype() {
 
   const changeStyle = (id) => {
     const next = new URLSearchParams(window.location.search)
-    next.set('prototype', 'carousel-scatter')
+    next.set('prototype', rhythm ? 'carousel-rhythm' : 'carousel-scatter')
     next.set('variant', id)
     window.history.replaceState(null, '', `?${next.toString()}`)
     setActiveId(id)
@@ -293,12 +364,12 @@ export default function CarouselScatterPrototype() {
     event.target.value = ''
   }
 
-  const story = photos.length ? planStory(photos, seed, style) : null
+  const story = photos.length ? planStory(photos, seed, style, rhythm) : null
   return (
-    <main className={`carousel-master scatter-prototype scatter-prototype--${activeId}`}>
+    <main className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} scatter-prototype--${activeId}`}>
       <header className="carousel-master__header">
         <div>
-          <p>PROTOTYPE · V3 受控随机片段</p>
+          <p>PROTOTYPE · V3 {rhythm ? '五页基准节奏' : '受控随机片段'}</p>
           <h1>{style.name}</h1>
           <span>{style.note}</span>
         </div>
@@ -316,19 +387,24 @@ export default function CarouselScatterPrototype() {
         <span>外层卡片覆盖 ≤ {Math.round(style.overlap * 100)}%</span>
         <span>照片内容区碰撞 {story?.contentCollisions ?? 0}</span>
         <span>{story ? `已拒绝 ${story.rejected} 个候选位置 · 接受 ${story.overlaps} 处轻叠` : '正在计算'}</span>
+        {rhythm && story && <span>{story.frames.length} 页输出</span>}
+        {rhythm && story && <span>节奏：{story.frames.slice(0, 5).map((frame) => frame.recipe?.label).filter(Boolean).join(' → ')}</span>}
       </section>
 
-      <section className="carousel-master__stage" aria-label="五页随机连续作品预览">
+      <section className="carousel-master__stage" aria-label={rhythm ? '五页节奏连续作品预览' : '五页随机连续作品预览'}>
         {loading || !story ? <p className="carousel-master__loading">正在计算卡片位置…</p> : (
           <div className="carousel-master__strip scatter-strip" style={{ '--scatter-page-count': story.frames.length }}>
-            {story.frames.map((frame, index) => <ScatterFrame key={index} frame={frame} index={index} />)}
+            {story.frames.map((frame, index) => <ScatterFrame key={index} frame={frame} index={index} rhythm={rhythm} />)}
           </div>
         )}
       </section>
 
       <aside className="carousel-master__rules">
         <span>本轮验证</span>
-        <p>随机位置只能在已确定的内容尺寸范围内移动；放不下的照片自动顺延到下一页。白边是更细的装裱边，也是保护照片内容的碰撞缓冲区。</p>
+        <p>{rhythm
+          ? '这一版只规定每页承担的观看角色；照片的具体位置、尺寸与轻叠仍由种子随机决定。请判断它是否让整组更有起伏，而没有牺牲当前的自由感。'
+          : '随机位置只能在已确定的内容尺寸范围内移动；放不下的照片自动顺延到下一页。白边是更细的装裱边，也是保护照片内容的碰撞缓冲区。'}
+        </p>
       </aside>
       <StyleSwitcher activeId={activeId} onChange={changeStyle} />
     </main>
