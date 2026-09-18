@@ -1,24 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { makeDemoPhotos } from '../../shared/demo.js'
 import { loadPhoto } from '../../shared/photo.js'
-import { paginatePhotos } from '../layout/carouselSmartPagination.js'
+import { clamp, matFor, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS } from '../layout/carouselPlacement.js'
 import './CarouselMastersPrototype.css'
 import './CarouselScatterPrototype.css'
 
 // PROTOTYPE — Can a seeded, geometry-only loose layout preserve photo ratios
 // while allowing small paper-card overlaps? Open /?prototype=carousel-scatter.
 
-const FRAME_ASPECT = .8 // 4:5 output pages
-const EXPORT_WIDTH = 1080
-const EXPORT_HEIGHT = 1350
-// 当前验证已确定的视觉边界：限制照片内容，不限制带白边的外卡片。
-const SIZE_RULES = { minShortEdge: .2, maxContentWidth: .8, maxContentHeight: .78 }
-
 // 用户选择风格；随机的位置、尺寸与轻叠只是各风格内部的排版规则。
+// 几何参数放在 layout/carouselPlacement.js，与分页规则一样可以用固定种子回归。
 const STYLES = [
-  { id: 'gallery', label: '01', name: 'Gallery', overlap: 0, rotation: 0, overlapChance: 0, anchorShort: .47, fragmentRange: .1, maxOverlaps: 0, note: '安静纸面 · 规整留白 · 照片完整呈现。' },
-  { id: 'muse', label: '02', name: 'Muse', overlap: .08, rotation: .45, overlapChance: .45, anchorShort: .43, fragmentRange: .14, maxOverlaps: 1, note: '柔和色带 · 轻微错位 · 更有 editorial 感。' },
-  { id: 'weekend', label: '03', name: 'Weekend', overlap: .16, rotation: 1.8, overlapChance: .68, anchorShort: .41, fragmentRange: .18, maxOverlaps: 1, note: '网格片段 · 节奏更快 · 可以有少量轻叠。' },
+  { id: 'gallery', label: '01', name: 'Gallery', ...STYLE_LAYOUTS.gallery, note: '安静纸面 · 规整留白 · 照片完整呈现。' },
+  { id: 'muse', label: '02', name: 'Muse', ...STYLE_LAYOUTS.muse, note: '柔和色带 · 轻微错位 · 更有 editorial 感。' },
+  { id: 'weekend', label: '03', name: 'Weekend', ...STYLE_LAYOUTS.weekend, note: '网格片段 · 节奏更快 · 可以有少量轻叠。' },
 ]
 const LEGACY_STYLE_BY_STRATEGY = { edge: 'gallery', soft: 'muse', cluster: 'weekend' }
 
@@ -46,208 +41,6 @@ const RHYTHMS = {
     { id: 'pair', label: '双图停顿', anchorShort: .37, fragmentBase: .22, fragmentRange: .08 },
     { id: 'cluster', label: '片段收束', anchorShort: .32, fragmentBase: .2, fragmentRange: .08 },
   ],
-}
-
-function smartRecipeFor(count) {
-  const recipes = {
-    2: { anchorShort: .43, fragmentBase: .26, fragmentRange: .09 },
-    3: { anchorShort: .38, fragmentBase: .22, fragmentRange: .06 },
-    4: { anchorShort: .34, fragmentBase: .2, fragmentRange: .035 },
-  }
-  return { id: 'smart', ...recipes[count], label: `${count} 张随机组合` }
-}
-
-function rngFrom(seed) {
-  let value = seed >>> 0
-  return () => {
-    value += 0x6d2b79f5
-    let t = value
-    t = Math.imul(t ^ (t >>> 15), t | 1)
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
-
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
-const area = (box) => box.w * box.h
-
-function intersection(a, b) {
-  const w = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x))
-  const h = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y))
-  return w * h
-}
-
-function physicalShortEdge(box) {
-  return Math.min(box.w, box.h / FRAME_ASPECT)
-}
-
-function matFor(box) {
-  // 以 1080×1350 导出画布估算：小卡片 2px，大卡片最多 5px。
-  return clamp(Math.round(physicalShortEdge(box) * EXPORT_WIDTH * .015), 2, 5)
-}
-
-function innerBox(box) {
-  const mat = matFor(box)
-  const insetX = mat / EXPORT_WIDTH
-  const insetY = mat / EXPORT_HEIGHT
-  return { x: box.x + insetX, y: box.y + insetY, w: box.w - insetX * 2, h: box.h - insetY * 2 }
-}
-
-function sizeFor(photo, isAnchor, random, style, recipe = null) {
-  const aspect = photo.width / photo.height
-  const desiredShort = isAnchor
-    ? (recipe?.anchorShort ?? style.anchorShort) + (random() - .5) * .1
-    : (recipe?.fragmentBase ?? SIZE_RULES.minShortEdge) + random() * (recipe?.fragmentRange ?? style.fragmentRange)
-  let contentW = aspect > 1 ? desiredShort * aspect : desiredShort
-  let contentH = contentW * FRAME_ASPECT / aspect
-  const maxScale = Math.min(SIZE_RULES.maxContentWidth / contentW, SIZE_RULES.maxContentHeight / contentH)
-  if (maxScale < 1) {
-    contentW *= maxScale
-    contentH *= maxScale
-  }
-  const currentShortEdge = Math.min(contentW, contentH / FRAME_ASPECT)
-  const minScale = SIZE_RULES.minShortEdge / currentShortEdge
-  if (minScale > 1 && contentW * minScale <= SIZE_RULES.maxContentWidth && contentH * minScale <= SIZE_RULES.maxContentHeight) {
-    contentW *= minScale
-    contentH *= minScale
-  }
-  // 白边在视觉上不应吃掉内容尺度，因此在内容尺寸之外增加外卡片边界。
-  const mat = matFor({ w: contentW, h: contentH })
-  return { w: contentW + mat * 2 / EXPORT_WIDTH, h: contentH + mat * 2 / EXPORT_HEIGHT }
-}
-
-function pairedCandidate(anchor, w, h, random, style) {
-  const overlapX = style.overlap ? Math.min(anchor.w, w) * style.overlap * .28 : 0
-  const overlapY = style.overlap ? Math.min(anchor.h, h) * style.overlap * .28 : 0
-  const gapX = .022 - overlapX
-  const gapY = .022 - overlapY
-  const options = []
-  const midX = clamp(anchor.x + (anchor.w - w) / 2 + (random() - .5) * .06, .04, .96 - w)
-  const midY = clamp(anchor.y + (anchor.h - h) / 2 + (random() - .5) * .06, .06, .94 - h)
-  const right = anchor.x + anchor.w + gapX
-  const left = anchor.x - w - gapX
-  const below = anchor.y + anchor.h + gapY
-  const above = anchor.y - h - gapY
-  if (right + w <= .96) options.push({ x: right, y: midY })
-  if (left >= .04) options.push({ x: left, y: midY })
-  if (below + h <= .94) options.push({ x: midX, y: below })
-  if (above >= .06) options.push({ x: midX, y: above })
-  return options.length ? options[Math.floor(random() * options.length)] : null
-}
-
-function candidateFor(photo, isAnchor, random, style, anchor = null, recipe = null) {
-  const { w, h } = sizeFor(photo, isAnchor, random, style, recipe)
-  if (anchor && recipe) {
-    const pair = pairedCandidate(anchor, w, h, random, style)
-    if (pair) {
-      return { ...pair, w, h, rotate: (random() - .5) * style.rotation * 2 }
-    }
-  }
-  // 有白边时，让辅助卡片偶尔贴着第一张的外缘：视觉上有叠放，
-  // 但重叠宽度小于两张白边的总缓冲，内层照片依然不会相撞。
-  if (anchor && style.overlap > 0 && random() < style.overlapChance) {
-    const overlap = .025 + random() * style.overlap * .42
-    const toRight = random() < .5
-    return {
-      x: clamp(toRight ? anchor.x + anchor.w - w * overlap : anchor.x - w + w * overlap, .07, .93 - w),
-      y: clamp(anchor.y + (random() - .5) * Math.min(anchor.h, h) * .45, .11, .91 - h),
-      w,
-      h,
-      rotate: (random() - .5) * style.rotation * 2,
-    }
-  }
-  return {
-    x: .07 + random() * Math.max(.01, .86 - w),
-    y: .11 + random() * Math.max(.01, .8 - h),
-    w,
-    h,
-    rotate: (random() - .5) * style.rotation * 2,
-  }
-}
-
-function acceptable(box, placed, style) {
-  const inner = innerBox(box)
-  let cardOverlaps = 0
-  for (const other of placed) {
-    const cardRatio = intersection(box, other) / Math.min(area(box), area(other))
-    if (cardRatio > style.overlap) return null
-    if (intersection(inner, innerBox(other)) > .0001) return null
-    if (cardRatio > 0) cardOverlaps += 1
-  }
-  if (cardOverlaps > style.maxOverlaps) return null
-  return cardOverlaps
-}
-
-function fallbackFor(photo, index, style, recipe) {
-  const { w, h } = sizeFor(photo, index === 0, () => .5, style, recipe)
-  return { x: .1 + index * .08, y: .12 + index * .12, w, h, rotate: 0 }
-}
-
-function safeFallback(photo, index, placed, style, recipe) {
-  const base = fallbackFor(photo, index, style, recipe)
-  // 节奏页面不靠缩小回退；更细的搜索网格优先给当前页找到合法空位，
-  // 避免一张陪衬图顺延后破坏下一页的“安静区”。
-  const grid = [.04, .16, .28, .4, .52, .64, .76, .88]
-  for (const y of grid) {
-    for (const x of grid) {
-      const candidate = { ...base, x: clamp(x, .04, .96 - base.w), y: clamp(y, .06, .94 - base.h) }
-      const cardOverlaps = acceptable(candidate, placed, style)
-      if (cardOverlaps != null) return { box: candidate, cardOverlaps }
-      }
-  }
-  return null
-}
-
-function contentCollisions(placed) {
-  return placed.reduce((sum, box, index) => sum + placed.slice(index + 1).filter(
-    (other) => intersection(innerBox(box), innerBox(other)) > .0001,
-  ).length, 0)
-}
-
-function placeFrame(photos, random, style, recipe = null) {
-  const placed = []
-  const unplaced = []
-  let rejected = 0
-  let overlaps = 0
-  photos.forEach((photo, index) => {
-    let chosen = null
-    for (let attempt = 0; attempt < 80; attempt += 1) {
-      const candidate = candidateFor(photo, placed.length === 0, random, style, placed[0], recipe)
-      const cardOverlaps = acceptable(candidate, placed, style)
-      if (cardOverlaps == null) {
-        rejected += 1
-        continue
-      }
-      chosen = candidate
-      overlaps += cardOverlaps
-      break
-    }
-    if (chosen) {
-      placed.push({ photo, ...chosen })
-    } else {
-      const fallback = safeFallback(photo, index, placed, style, recipe)
-      if (fallback) {
-        overlaps += fallback.cardOverlaps
-        placed.push({ photo, ...fallback.box })
-      } else {
-        // 不再靠缩小照片塞进去；交给下一页处理。
-        unplaced.push(photo)
-      }
-    }
-  })
-  return { placed, unplaced, rejected, overlaps, contentCollisions: contentCollisions(placed) }
-}
-
-// 同一组照片生成多轮候选，选择完整放下且拒绝次数最低的一轮；“换一组排法”仍然只改种子。
-function placeFrameBest(photos, seed, style, recipe) {
-  let best = null
-  for (let attempt = 0; attempt < 16; attempt += 1) {
-    const candidate = placeFrame(photos, rngFrom(seed + attempt * 7919), style, recipe)
-    const score = candidate.placed.length * 10000 - candidate.unplaced.length * 10000 - candidate.rejected * 2 - candidate.overlaps
-    if (!best || score > best.score) best = { ...candidate, score }
-    if (candidate.unplaced.length === 0 && candidate.rejected === 0) break
-  }
-  return best
 }
 
 function capacityFor(recipe) {
@@ -281,31 +74,22 @@ function groupsFor(photos, recipes = null) {
   return frames
 }
 
-function smartGroups(photos, random) {
-  return paginatePhotos(photos, random).map((group) => ({
-    photos: group,
-    recipe: smartRecipeFor(group.length),
-  }))
-}
-
+// smart 的整组规划已移到 layout/carouselPlacement.js；这里只保留 scatter / rhythm 两条历史路径。
 function planStory(photos, seed, style, rhythm = false, smart = false) {
+  if (smart) return planSmartStory(photos, seed, style)
   const random = rngFrom(seed)
   const frames = []
   let pending = []
   const recipes = rhythm ? RHYTHMS[style.id] : null
-  const groups = smart ? smartGroups(photos, random) : groupsFor(photos, recipes)
-  groups.forEach(({ photos: group, recipe }, index) => {
-    const frame = smart
-      ? placeFrameBest(group, seed + index * 104729, style, recipe)
-      : placeFrame(rhythm ? group : [...pending, ...group], random, style, recipe)
+  const groups = groupsFor(photos, recipes)
+  groups.forEach(({ photos: group, recipe }) => {
+    const frame = placeFrame(rhythm ? group : [...pending, ...group], random, style, recipe)
     frames.push({ ...frame, recipe })
-    if (rhythm || smart) {
+    if (rhythm) {
       let overflow = frame.unplaced
-      const overflowRecipe = smart ? smartRecipeFor(Math.min(4, Math.max(2, overflow.length))) : overflowRecipeFor(recipes)
+      const overflowRecipe = overflowRecipeFor(recipes)
       while (overflow.length) {
-        const overflowFrame = smart
-          ? placeFrameBest(overflow, seed + frames.length * 104729, style, overflowRecipe)
-          : placeFrame(overflow, random, style, overflowRecipe)
+        const overflowFrame = placeFrame(overflow, random, style, overflowRecipe)
         frames.push({ ...overflowFrame, recipe: overflowRecipe })
         if (!overflowFrame.placed.length) {
           frames.push({ ...placeFrame([overflow[0]], random, style, overflowRecipe), recipe: overflowRecipe })
@@ -448,6 +232,11 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
         <span>{story ? `已拒绝 ${story.rejected} 个候选位置 · 接受 ${story.overlaps} 处轻叠` : '正在计算'}</span>
         {smart && story && <span>智能分页：{story.pagePlan.join(' · ')} 张 / 页</span>}
         {smart && story && <span>{story.frames.length} 页输出</span>}
+        {smart && story && story.frames.some((frame) => (frame.fittingScale ?? 1) < 1) && (
+          <span>
+            自动缩放 {story.frames.filter((frame) => (frame.fittingScale ?? 1) < 1).length} 页 · 最小 {Math.round(Math.min(...story.frames.map((frame) => frame.fittingScale ?? 1)) * 100)}%
+          </span>
+        )}
         {rhythm && story && <span>{story.frames.length} 页输出</span>}
         {rhythm && story && <span>节奏：{story.frames.slice(0, 5).map((frame) => frame.recipe?.label).filter(Boolean).join(' → ')}</span>}
       </section>

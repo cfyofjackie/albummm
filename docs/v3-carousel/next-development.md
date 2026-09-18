@@ -97,6 +97,9 @@ paginatePhotos(photos, random)    // => Photo[][]
 src/v3-carousel/
   layout/
     carouselSmartPagination.js     # 纯分页与横竖照片配对：V3 核心
+    carouselSmartPagination.test.js # 1–24 张的分页规则、守恒与确定性
+    carouselPlacement.js           # 纯几何层：尺寸边界、放置、碰撞、轻叠、smart 整组规划
+    carouselPlacement.test.js      # 几何硬边界与整组规划（含已复现的单图页偏差）
   prototypes/
     CarouselSmartPrototype.jsx     # 主入口包装
     CarouselScatterPrototype.jsx   # 随机几何、放置、碰撞保护；smart/scatter/rhythm 共用
@@ -105,7 +108,13 @@ src/v3-carousel/
     CarouselMastersPrototype.*     # 早期母板参考
 ```
 
-`CarouselScatterPrototype.jsx` 当前同时承载 smart / scatter / rhythm 三个历史模式。修改共享逻辑前，必须回归检查三个入口；如果新功能只属于 smart，优先新建 smart 专用函数或模块，避免污染 scatter 基线。
+`CarouselScatterPrototype.jsx` 当前只承载 scatter / rhythm 两条历史模式与 UI；几何逻辑已抽到
+`layout/carouselPlacement.js`，smart 的整组规划是 `planSmartStory()`。修改 `carouselPlacement.js`
+会影响三个入口（scatter / rhythm / smart），必须回归检查三个入口；如果新功能只属于 smart，
+优先新增 smart 专用函数，避免污染 scatter 基线。
+
+已完成的验证结果见 `validation-log.md`：单图页只出现在超宽 / 超长照片上（需要产品确认是否豁免），
+以及 20% 最小短边与 80%/78% 上限在超出 1:4–4:1 时互斥。
 
 ## 6. 接手后的第一个可交付成果
 
