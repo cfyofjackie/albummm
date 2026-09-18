@@ -11,7 +11,7 @@ const FRAME_ASPECT = .8 // 4:5 output pages
 const EXPORT_WIDTH = 1080
 const EXPORT_HEIGHT = 1350
 // 当前验证已确定的视觉边界：限制照片内容，不限制带白边的外卡片。
-const SIZE_RULES = { minShortEdge: .15, maxContentWidth: .8, maxContentHeight: .78 }
+const SIZE_RULES = { minShortEdge: .18, maxContentWidth: .8, maxContentHeight: .78 }
 
 const VARIANTS = [
   { id: 'edge', label: '01', name: '边缘碰触', overlap: 0, rotation: 0, note: '卡片彼此不覆盖；随机只来自位置、大小与留白。' },
@@ -309,7 +309,7 @@ export default function CarouselScatterPrototype() {
 
       <section className="scatter-prototype__state" aria-label="排版状态">
         <span>seed {seed}</span>
-        <span>内容短边 ≥ 15%</span>
+        <span>内容短边 ≥ 18%</span>
         <span>横 ≤ 80% · 竖 ≤ 78%</span>
         <span>外层卡片覆盖 ≤ {Math.round(variant.overlap * 100)}%</span>
         <span>照片内容区碰撞 {story?.contentCollisions ?? 0}</span>

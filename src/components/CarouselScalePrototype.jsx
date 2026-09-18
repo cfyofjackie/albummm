@@ -8,9 +8,9 @@ import './CarouselScalePrototype.css'
 // photos randomly? Open /?prototype=carousel-scale&variant=balanced.
 
 const VARIANTS = [
-  { id: 'compact', label: '01', name: '紧凑', min: 13, maxWidth: 76, maxHeight: 74, note: '碎片更多，整体更轻。' },
-  { id: 'balanced', label: '02', name: '平衡', min: 15, maxWidth: 80, maxHeight: 78, note: '让小图可读，也为大图留出呼吸。' },
-  { id: 'generous', label: '03', name: '舒展', min: 17, maxWidth: 84, maxHeight: 82, note: '照片更有存在感，留给碎片的空间更少。' },
+  { id: 'compact', label: '01', name: '紧凑', min: 16, maxWidth: 76, maxHeight: 74, note: '碎片更多，整体更轻。' },
+  { id: 'balanced', label: '02', name: '平衡', min: 18, maxWidth: 80, maxHeight: 78, note: '让小图可读，也为大图留出呼吸。' },
+  { id: 'generous', label: '03', name: '舒展', min: 20, maxWidth: 84, maxHeight: 82, note: '照片更有存在感，留给碎片的空间更少。' },
 ]
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
