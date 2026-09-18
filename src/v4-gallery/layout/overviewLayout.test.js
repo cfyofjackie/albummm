@@ -12,7 +12,9 @@ describe('V4 Gallery overview 母板', () => {
     const layout = buildGalleryOverview(makePhotos(aspects), 'nanchang-road')
     expect(layout).toHaveLength(aspects.length)
     for (const tile of layout) {
-      expect(tile.width / tile.height).toBeCloseTo(aspectOf(tile.photo), 8)
+      // The board is 4:5, so the raw layout height is not a physical height.
+      // Validate the ratio users actually see after the board is rendered.
+      expect(tile.width / (tile.height * (BOARD_WIDTH / BOARD_HEIGHT))).toBeCloseTo(aspectOf(tile.photo), 8)
       expect(tile.x).toBeGreaterThanOrEqual(0)
       expect(tile.y).toBeGreaterThanOrEqual(0)
       expect(tile.x + tile.width).toBeLessThanOrEqual(BOARD_WIDTH)
@@ -34,12 +36,39 @@ describe('V4 Gallery overview 母板', () => {
     expect(layout.filter((tile) => tile.role === 'detail').some((tile) => overlaps(tile, layout[0]))).toBe(false)
   })
 
+  it('照片从主图向外长成一个相连且不重叠的整体', () => {
+    const layout = buildGalleryOverview(makePhotos([.75, 1.33, .7, 1.5, .8, 1.4, .7, 1.5]), 'growth-check')
+
+    layout.forEach((tile, index) => {
+      layout.slice(index + 1).forEach((other) => {
+        expect(overlaps(tile, other)).toBe(false)
+      })
+    })
+
+    const connected = new Set([layout[0].id])
+    while (connected.size < layout.length) {
+      const next = layout.find((tile) => {
+        if (connected.has(tile.id)) return false
+        return layout.some((anchor) => {
+          if (!connected.has(anchor.id)) return false
+          const xGap = Math.max(anchor.x - (tile.x + tile.width), tile.x - (anchor.x + anchor.width), 0)
+          const yGap = Math.max(anchor.y - (tile.y + tile.height), tile.y - (anchor.y + anchor.height), 0)
+          return xGap <= 3 && yGap <= 3
+        })
+      })
+      if (!next) break
+      connected.add(next.id)
+    }
+
+    expect(connected.size).toBe(layout.length)
+  })
+
   it('原位聚焦只移动视口，让目标照片的中心进入画布中心', () => {
     const [main, , , detail] = buildGalleryOverview(makePhotos([.75, 1.33, .7, 1.5]), 'focus-camera')
     for (const tile of [main, detail]) {
       const camera = focusCameraFor(tile)
       const centeredX = (tile.x + tile.width / 2) * camera.scale + camera.translateX
-      const centeredY = (tile.y + tile.height / 2) * camera.scale + camera.translateY
+      const centeredY = (tile.y + tile.height / 2) * camera.scale + camera.translateY / 100 * BOARD_HEIGHT
       expect(centeredX).toBeCloseTo(50, 8)
       expect(centeredY).toBeCloseTo(BOARD_HEIGHT / 2, 8)
       expect(camera.scale).toBeGreaterThanOrEqual(1.35)

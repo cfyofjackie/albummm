@@ -1,21 +1,27 @@
 // PROTOTYPE — V4 Gallery overview layout.
-// The board owns hierarchy and quiet areas; this module only makes bounded,
-// repeatable placement choices inside that editorial system.
+// The board establishes one quiet, outward-growing photo group. The algorithm
+// only adapts its frames to real image ratios and makes bounded seed variations.
 
 export const BOARD_WIDTH = 100
 export const BOARD_HEIGHT = 125
 
-const ZONES = [
-  { role: 'main', x: 26, y: 30, w: 55, h: 54, jitterX: 3, jitterY: 3, overlap: 0 },
-  { role: 'secondary', x: 61, y: 10, w: 31, h: 30, jitterX: 5, jitterY: 4, overlap: 12 },
-  { role: 'secondary', x: 7, y: 76, w: 33, h: 30, jitterX: 4, jitterY: 4, overlap: 8 },
-  { role: 'detail', x: 5, y: 32, w: 25, h: 26, jitterX: 3, jitterY: 4, overlap: 3 },
-  { role: 'detail', x: 67, y: 88, w: 27, h: 23, jitterX: 4, jitterY: 3, overlap: 2 },
-  { role: 'detail', x: 82, y: 46, w: 14, h: 21, jitterX: 2, jitterY: 3, overlap: 2 },
-  { role: 'detail', x: 38, y: 106, w: 30, h: 13, jitterX: 5, jitterY: 2, overlap: 2 },
-  { role: 'detail', x: 4, y: 58, w: 21, h: 20, jitterX: 3, jitterY: 3, overlap: 5 },
-  { role: 'detail', x: 38, y: 5, w: 22, h: 18, jitterX: 3, jitterY: 2, overlap: 2 },
-  { role: 'detail', x: 80, y: 108, w: 14, h: 12, jitterX: 2, jitterY: 1, overlap: 2 },
+// Layout coordinates use percentage points of the board's width. Converting a
+// physical height back to the board's 4:5 coordinate space needs this factor.
+const FRAME_ASPECT = BOARD_WIDTH / BOARD_HEIGHT
+const SAFE_WIDTH = 86
+const SAFE_HEIGHT = 86
+
+const GROWTH_PLAN = [
+  { role: 'main', shortSide: 35 },
+  { role: 'secondary', shortSide: 19, parent: 0, side: 'right', align: .2 },
+  { role: 'secondary', shortSide: 19, parent: 0, side: 'left', align: .72 },
+  { role: 'detail', shortSide: 13, parent: 0, side: 'top', align: .18 },
+  { role: 'detail', shortSide: 14, parent: 0, side: 'bottom', align: .65 },
+  { role: 'detail', shortSide: 11, parent: 1, side: 'top', align: .68 },
+  { role: 'detail', shortSide: 12, parent: 2, side: 'bottom', align: .2 },
+  { role: 'detail', shortSide: 10, parent: 3, side: 'left', align: .66 },
+  { role: 'detail', shortSide: 11, parent: 4, side: 'right', align: .24 },
+  { role: 'detail', shortSide: 10, parent: 5, side: 'right', align: .42 },
 ]
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
@@ -61,77 +67,87 @@ export function intersectionOf(a, b) {
   }
 }
 
-function fitNativeFrame(photo, zone, scale = 1) {
+function nativeFrame(photo, shortSide) {
   const aspect = aspectOf(photo)
-  const width = Math.min(zone.w * scale, zone.h * aspect * scale)
-  return { width, height: width / aspect }
+  return aspect >= 1
+    ? { width: shortSide * aspect, height: shortSide }
+    : { width: shortSide, height: shortSide / aspect }
 }
 
-function candidateFor(photo, zone, random, attempt) {
-  const shrink = attempt > 8 ? .9 : attempt > 4 ? .96 : 1
-  const { width, height } = fitNativeFrame(photo, zone, shrink)
-  const xRange = Math.max(0, zone.w - width)
-  const yRange = Math.max(0, zone.h - height)
-  const nudgeX = (random() - .5) * zone.jitterX * 2
-  const nudgeY = (random() - .5) * zone.jitterY * 2
-  return {
-    x: clamp(zone.x + xRange * random() + nudgeX, 3, BOARD_WIDTH - width - 3),
-    y: clamp(zone.y + yRange * random() + nudgeY, 4, BOARD_HEIGHT - height - 4),
-    width,
-    height,
+function attachFrame(parent, frame, plan, random) {
+  const gap = 1 + (random() - .5) * .3
+  const alignment = clamp(plan.align + (random() - .5) * .12, 0, 1)
+  if (plan.side === 'right') {
+    return { ...frame, x: parent.x + parent.width + gap, y: parent.y + (parent.height - frame.height) * alignment }
   }
+  if (plan.side === 'left') {
+    return { ...frame, x: parent.x - frame.width - gap, y: parent.y + (parent.height - frame.height) * alignment }
+  }
+  if (plan.side === 'bottom') {
+    return { ...frame, x: parent.x + (parent.width - frame.width) * alignment, y: parent.y + parent.height + gap }
+  }
+  return { ...frame, x: parent.x + (parent.width - frame.width) * alignment, y: parent.y - frame.height - gap }
 }
 
-function collisionScore(candidate, previous, allowedOverlap) {
-  return previous.reduce((score, placed) => {
-    const area = overlapArea(candidate, placed)
-    if (!area) return score
-    const smaller = Math.min(candidate.width * candidate.height, placed.width * placed.height)
-    const ratio = area / smaller * 100
-    return score + (ratio > allowedOverlap ? 10000 + ratio : ratio)
-  }, 0)
+function physicalBounds(frames) {
+  const left = Math.min(...frames.map((frame) => frame.x))
+  const top = Math.min(...frames.map((frame) => frame.y))
+  const right = Math.max(...frames.map((frame) => frame.x + frame.width))
+  const bottom = Math.max(...frames.map((frame) => frame.y + frame.height))
+  return { left, top, width: right - left, height: bottom - top }
 }
 
-// Each photo receives its native aspect-ratio frame.  The zones make the
-// hierarchy stable while the seed moves frames only within their permitted area.
+// Start at the main image and attach every next frame to an existing edge.
+// This is deliberately not freeform packing: the plan preserves hierarchy,
+// whitespace, and a readable centre of gravity for every seed.
 export function buildGalleryOverview(photos, seed = 'gallery-01') {
+  const selected = photos.slice(0, GROWTH_PLAN.length)
   const random = seededRandom(seed)
-  return photos.slice(0, ZONES.length).map((photo, index, placed) => {
-    const zone = ZONES[index]
-    let winner
-    let winnerScore = Infinity
-    for (let attempt = 0; attempt < 16; attempt += 1) {
-      const candidate = candidateFor(photo, zone, random, attempt)
-      const score = collisionScore(candidate, placed, zone.overlap) + attempt * .002
-      if (score < winnerScore) {
-        winner = candidate
-        winnerScore = score
-      }
+  const frames = []
+  selected.forEach((photo, index) => {
+    const plan = GROWTH_PLAN[index]
+    const frame = nativeFrame(photo, plan.shortSide)
+    if (index === 0) {
+      frames.push({ ...frame, x: 0, y: 0, photo, plan })
+      return
     }
-    return {
-      ...winner,
-      photo,
-      id: photo.id,
-      role: zone.role,
-      zIndex: index + 1,
-    }
+    frames.push({ ...attachFrame(frames[plan.parent], frame, plan, random), photo, plan })
   })
+  if (!frames.length) return []
+
+  const bounds = physicalBounds(frames)
+  const scale = Math.min(SAFE_WIDTH / bounds.width, SAFE_HEIGHT / bounds.height, 1)
+  const offsetX = (BOARD_WIDTH - bounds.width * scale) / 2
+  const offsetY = (BOARD_WIDTH - bounds.height * scale) / 2
+
+  return frames.map((frame, index) => ({
+    photo: frame.photo,
+    id: frame.photo.id,
+    role: frame.plan.role,
+    zIndex: index + 1,
+    x: offsetX + (frame.x - bounds.left) * scale,
+    y: (offsetY + (frame.y - bounds.top) * scale) / FRAME_ASPECT,
+    width: frame.width * scale,
+    height: frame.height * scale / FRAME_ASPECT,
+  }))
 }
 
 export function obscurersFor(selected, layout) {
   return layout.filter((tile) => tile.zIndex > selected.zIndex && overlaps(tile, selected))
 }
 
-// The viewport, not the photo, moves.  This keeps every paper edge, shadow,
-// and overlap in the same coordinate system while bringing the target closer.
+// The viewport, not the photo, moves. This keeps every image in the same
+// collage coordinate system while bringing the selected frame closer.
 export function focusCameraFor(tile) {
-  const visualSize = Math.max(tile.width, tile.height * BOARD_WIDTH / BOARD_HEIGHT)
+  const visualSize = Math.max(tile.width, tile.height * FRAME_ASPECT)
   const scale = clamp(68 / visualSize, 1.35, 2.6)
   const centerX = tile.x + tile.width / 2
   const centerY = tile.y + tile.height / 2
   return {
     scale,
     translateX: 50 - scale * centerX,
-    translateY: BOARD_HEIGHT / 2 - scale * centerY,
+    // CSS translateY(%) is measured against the element's full 125-unit
+    // height, unlike translateX(%) which is measured against its 100-unit width.
+    translateY: (BOARD_HEIGHT / 2 - scale * centerY) / BOARD_HEIGHT * 100,
   }
 }

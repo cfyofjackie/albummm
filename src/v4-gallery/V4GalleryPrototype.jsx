@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { makeDemoPhotos } from '../shared/demo.js'
-import { buildGalleryOverview, focusCameraFor } from './layout/overviewLayout.js'
+import { aspectOf, buildGalleryOverview, focusCameraFor } from './layout/overviewLayout.js'
 import { loadV4Photo, releaseV4PhotoSources, sourceForV4Photo } from './lib/photoSources.js'
 import './v4-gallery.css'
 
@@ -37,7 +37,7 @@ function OverviewTile({ tile, index, focused, onPick }) {
   return (
     <figure
       className={`v4-gallery__tile v4-gallery__tile--${tile.role} ${isFocused ? 'is-selected' : ''}`}
-      style={{ left: `${tile.x}%`, top: `${tile.y}%`, width: `${tile.width}%`, height: `${tile.height}%`, zIndex: tile.zIndex }}
+      style={{ left: `${tile.x}%`, top: `${tile.y}%`, width: `${tile.width}%`, aspectRatio: aspectOf(tile.photo), zIndex: tile.zIndex }}
     >
       <button type="button" className="v4-gallery__tile-button" onClick={() => onPick(tile)} aria-label={`原位聚焦 ${photoAlt(tile.photo, index)}`}>
         <img src={sourceForV4Photo(tile.photo, isFocused)} alt={photoAlt(tile.photo, index)} />
@@ -75,11 +75,9 @@ function Overview({ layout, focused, focusedIndex, onPick, onExit, onStep }) {
       <div className="v4-gallery__zoom-viewport">
         <div className="v4-gallery__overview" style={{ transform }}>
           <header className="v4-gallery__masthead">
-            <span>GALLERY / 01</span>
-            <h1>small<br />archive</h1>
-            <p>AN EDITED GROUP OF {String(layout.length).padStart(2, '0')} PHOTOGRAPHS</p>
+            <span>GALLERY · PHOTO STUDY</span>
           </header>
-          <span className="v4-gallery__edition">OVERVIEW · 4:5</span>
+          <span className="v4-gallery__edition">{String(layout.length).padStart(2, '0')} PHOTOS · 4:5</span>
           {layout.map((tile, index) => <OverviewTile key={tile.id} tile={tile} index={index} focused={focused} onPick={onPick} />)}
         </div>
         {focused && <ZoomControls focusedIndex={focusedIndex} count={layout.length} onExit={onExit} onStep={onStep} />}
@@ -155,7 +153,7 @@ export default function V4GalleryPrototype() {
       </header>
       <section className="v4-gallery__state" aria-label="原型状态"><span>GALLERY</span><span>4:5 OUTPUT</span><span>{photos.length || MIN_PHOTOS} PHOTOS</span><span>SEED · {seed}</span><span>{focused ? 'IN-PLACE ZOOM' : 'OVERVIEW'}</span></section>
       {loading ? <p className="v4-gallery__loading">正在准备混合比例演示照片…</p> : <Overview layout={layout} focused={focused} focusedIndex={focusedIndex} onPick={(tile) => setFocusedId(tile.id)} onExit={() => setFocusedId(null)} onStep={step} />}
-      <aside className="v4-gallery__notes"><span>本轮验证</span><p>点击照片后，整张拼贴画布会原位缩放并平移到目标图；全部照片的相对位置、留白和遮挡顺序保持不变。透明遮挡效果将在下一阶段加入。</p></aside>
+      <aside className="v4-gallery__notes"><span>本轮验证</span><p>照片从主图向外生长为一个完整的拼贴母板。点击后，整张画布原位缩放并平移到目标图；照片仍保持真实比例和相对位置。透明遮挡效果将在下一阶段加入。</p></aside>
     </main>
   )
 }
