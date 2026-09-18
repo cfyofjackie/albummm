@@ -7,6 +7,7 @@ import CarouselScatterPrototype from './v3-carousel/prototypes/CarouselScatterPr
 import CarouselRhythmPrototype from './v3-carousel/prototypes/CarouselRhythmPrototype.jsx'
 import CarouselSmartPrototype from './v3-carousel/prototypes/CarouselSmartPrototype.jsx'
 import CarouselScalePrototype from './v3-carousel/prototypes/CarouselScalePrototype.jsx'
+import V4GalleryPrototype from './v4-gallery/V4GalleryPrototype.jsx'
 
 // Application seam: this file only selects a version. Each version owns its own implementation.
 const PROTOTYPES = {
@@ -18,6 +19,7 @@ const PROTOTYPES = {
   'carousel-rhythm': CarouselRhythmPrototype,
   'carousel-smart': CarouselSmartPrototype,
   'carousel-scale': CarouselScalePrototype,
+  'v4-gallery': V4GalleryPrototype,
 }
 
 export default function App() {
