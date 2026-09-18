@@ -88,6 +88,23 @@
 @media (max-width: 620px) {
   .scatter-prototype__state { gap: 6px 10px; font-size: 9px; }
   .scatter-prototype__state span + span { padding-left: 10px; }
-  .scatter-strip { grid-template-columns: repeat(var(--scatter-page-count, 5), 220px); min-width: calc(var(--scatter-page-count, 5) * 220px); }
+  /* 手机上一页一屏：每页 86vw，左右各留 7vw 露出相邻页的边，横滑时按页吸附。
+     页宽定成 86vw 之后，页高直接由 4:5 推出（86vw / .8 = 107.5vw），
+     所以要显式覆盖母板里写死的 height: 275px —— 否则 4:5 会被压扁。
+     显式写 height 而不是用 aspect-ratio，是因为全局 box-sizing: border-box 下
+     两者的取整基准不同，显式高度可避免页高被算成 109vw 那类偏差。 */
+  .scatter-prototype .carousel-master__stage { scroll-snap-type: x mandatory; scroll-padding-left: 7vw; }
+  .scatter-strip {
+    grid-template-columns: repeat(var(--scatter-page-count, 5), 86vw);
+    min-width: calc(var(--scatter-page-count, 5) * 86vw);
+    height: calc(86vw / .8);
+    aspect-ratio: auto;
+    /* 母板给带子设了 overflow: hidden，那会让带子自己变成滚动容器，
+       于是 .scatter-frame 的吸附点被绑到带子上（而带子没有 snap-type），吸附就失效。
+       每页自己的卡片已经由 .carousel-master__frame 的 overflow: hidden 裁掉了，
+       这里放开不会让卡片串页。 */
+    overflow: visible;
+  }
+  .scatter-frame { scroll-snap-align: start; }
   .rhythm-frame__role { font-size: 8px; }
 }
