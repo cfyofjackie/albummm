@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { buildGrowingCollage, buildJustifiedCollage, buildPolaroidStack, buildPolaroidWall, JUSTIFIED_PAGE_HEIGHT, polaroidAspect } from '../lib/justifiedCollage.js'
+import { buildGrowingCollage, buildJustifiedCollage, buildPolaroidStack, buildPolaroidWall, JUSTIFIED_PAGE_HEIGHT, polaroidAspect } from '../layout/justifiedCollage.js'
 import './CollageMastersPrototype.css'
 
 // PROTOTYPE — What should the four collage master layouts feel like?

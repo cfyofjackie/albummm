@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { toBlob } from 'html-to-image'
 import { arrangePhotosForBoard, BOARDS } from './CollageMastersPrototype.jsx'
-import { worksStore } from '../lib/worksStore.js'
+import { worksStore } from '../layout/worksStore.js'
 import './CollageMastersPrototype.css'
 import './CollageFlowPrototype.css'
 import './CollageCollectionsPrototype.css'

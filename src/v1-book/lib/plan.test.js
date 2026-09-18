@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classify } from './photo.js'
+import { classify } from '../../shared/photo.js'
 import { MIN_PHOTOS, MAX_PHOTOS, planPages } from './plan.js'
 import { isFullBleedCompatible, isSpreadBleedCompatible } from './pageFormat.js'
 

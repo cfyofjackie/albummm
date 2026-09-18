@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { makeDemoPhotos } from '../lib/demo.js'
-import { loadPhoto } from '../lib/photo.js'
+import { makeDemoPhotos } from '../../shared/demo.js'
+import { loadPhoto } from '../../shared/photo.js'
 import './CarouselMastersPrototype.css'
 import './CarouselScalePrototype.css'
 

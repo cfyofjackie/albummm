@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { makeDemoPhotos } from '../lib/demo.js'
-import { loadPhoto } from '../lib/photo.js'
-import { paginatePhotos } from '../lib/carouselSmartPagination.js'
+import { makeDemoPhotos } from '../../shared/demo.js'
+import { loadPhoto } from '../../shared/photo.js'
+import { paginatePhotos } from '../layout/carouselSmartPagination.js'
 import './CarouselMastersPrototype.css'
 import './CarouselScatterPrototype.css'
 
