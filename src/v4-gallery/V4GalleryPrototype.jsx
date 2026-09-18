@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { makeDemoPhotos } from '../shared/demo.js'
-import { loadPhoto } from '../shared/photo.js'
 import { buildGalleryOverview, focusCameraFor } from './layout/overviewLayout.js'
+import { loadV4Photo, releaseV4PhotoSources, sourceForV4Photo } from './lib/photoSources.js'
 import './v4-gallery.css'
 
 // PROTOTYPE — V4 Gallery: can a focus state stay inside the editorial collage
@@ -39,8 +39,8 @@ function OverviewTile({ tile, index, focused, onPick }) {
       className={`v4-gallery__tile v4-gallery__tile--${tile.role} ${isFocused ? 'is-selected' : ''}`}
       style={{ left: `${tile.x}%`, top: `${tile.y}%`, width: `${tile.width}%`, height: `${tile.height}%`, zIndex: tile.zIndex }}
     >
-      <button type="button" className="v4-gallery__tile-button" onClick={() => onPick(tile)} aria-label={`原位聚焦 ${photoAlt(tile.photo, index)} `}>
-        <img src={tile.photo.previewSrc} alt={photoAlt(tile.photo, index)} />
+      <button type="button" className="v4-gallery__tile-button" onClick={() => onPick(tile)} aria-label={`原位聚焦 ${photoAlt(tile.photo, index)}`}>
+        <img src={sourceForV4Photo(tile.photo, isFocused)} alt={photoAlt(tile.photo, index)} />
       </button>
     </figure>
   )
@@ -58,12 +58,20 @@ function ZoomControls({ focusedIndex, count, onExit, onStep }) {
 }
 
 function Overview({ layout, focused, focusedIndex, onPick, onExit, onStep }) {
+  const overviewRef = useRef(null)
   const camera = focused ? focusCameraFor(focused) : null
   const transform = camera
     ? `translate(${camera.translateX}%, ${camera.translateY}%) scale(${camera.scale})`
     : 'translate(0, 0) scale(1)'
+  useEffect(() => {
+    if (!focused) return undefined
+    const timer = window.setTimeout(() => {
+      overviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 80)
+    return () => window.clearTimeout(timer)
+  }, [focused?.id])
   return (
-    <section className={`v4-gallery__overview-wrap ${focused ? 'is-zoomed' : ''}`} aria-label="Gallery Overview 总览">
+    <section ref={overviewRef} className={`v4-gallery__overview-wrap ${focused ? 'is-zoomed' : ''}`} aria-label="Gallery Overview 总览">
       <div className="v4-gallery__zoom-viewport">
         <div className="v4-gallery__overview" style={{ transform }}>
           <header className="v4-gallery__masthead">
@@ -98,6 +106,8 @@ export default function V4GalleryPrototype() {
     return () => { live = false }
   }, [])
 
+  useEffect(() => () => releaseV4PhotoSources(photos), [photos])
+
   const layout = useMemo(() => buildGalleryOverview(photos, seed), [photos, seed])
   const focused = layout.find((tile) => tile.id === focusedId) || null
   const focusedIndex = focused ? photos.findIndex((photo) => photo.id === focused.id) : -1
@@ -126,7 +136,7 @@ export default function V4GalleryPrototype() {
     const files = [...event.target.files].filter((file) => file.type.startsWith('image/')).slice(0, MAX_PHOTOS)
     if (!files.length) return
     setLoading(true)
-    const next = await Promise.all(files.map(loadPhoto))
+    const next = await Promise.all(files.map(loadV4Photo))
     setPhotos(next)
     setFocusedId(null)
     setLoading(false)
