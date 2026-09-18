@@ -86,6 +86,89 @@ function rowFrames(photos, indices, targetWidth, x, y) {
   })
 }
 
+function orderedDetails(photos, excluded) {
+  const preferred = [3, 5, 2, 1, 9, 6, 7, 8, 4]
+  return preferred
+    .filter((index) => index < photos.length && !excluded.has(index))
+    .concat(photos.map((_, index) => index).filter((index) => !excluded.has(index) && !preferred.includes(index)))
+}
+
+function weaveFrames(photos, random) {
+  const portrait = photos
+    .map((photo, index) => ({ index, aspect: aspectOf(photo) }))
+    .filter(({ index, aspect }) => index !== 0 && aspect < .92)
+    .sort((a, b) => a.aspect - b.aspect)[0]
+  if (!portrait || photos.length < 8) return null
+
+  const spineIndex = portrait.index
+  const remaining = orderedDetails(photos, new Set([0, spineIndex]))
+  const top = remaining.splice(0, 2)
+  const middle = remaining.splice(0, 2)
+  const rightTop = remaining.shift()
+  const rightBottom = remaining.shift()
+  if (top.length < 2 || middle.length < 2 || rightTop == null || rightBottom == null) return null
+
+  const topHeight = 15
+  const topWidth = top.reduce((width, index) => width + aspectOf(photos[index]) * topHeight, GUTTER)
+  const middleHeight = (topWidth - GUTTER) / middle.reduce((sum, index) => sum + aspectOf(photos[index]), 0)
+  const spineHeight = topHeight + GUTTER + middleHeight
+  const spineWidth = spineHeight * aspectOf(photos[spineIndex])
+  const frames = [
+    ...rowFrames(photos, top, topWidth, 0, 0),
+    ...rowFrames(photos, middle, topWidth, 0, topHeight + GUTTER),
+    {
+      x: topWidth + GUTTER,
+      y: 0,
+      width: spineWidth,
+      height: spineHeight,
+      photo: photos[spineIndex],
+      index: spineIndex,
+      role: roleFor(spineIndex),
+    },
+  ]
+
+  const rightX = topWidth + GUTTER + spineWidth + GUTTER
+  frames.push({
+    x: rightX,
+    y: 0,
+    width: aspectOf(photos[rightTop]) * topHeight,
+    height: topHeight,
+    photo: photos[rightTop],
+    index: rightTop,
+    role: roleFor(rightTop),
+  })
+  frames.push({
+    x: rightX,
+    y: topHeight + GUTTER,
+    width: aspectOf(photos[rightBottom]) * middleHeight,
+    height: middleHeight,
+    photo: photos[rightBottom],
+    index: rightBottom,
+    role: roleFor(rightBottom),
+  })
+
+  let y = spineHeight + GUTTER
+  const lower = remaining.splice(0, 2)
+  if (lower.length) {
+    const lowerWidth = lower.length === 1 ? 28 : 54
+    const row = rowFrames(photos, lower, lowerWidth, 6 + (random() - .5) * 2, y)
+    frames.push(...row)
+    y += row[0].height + GUTTER
+  }
+
+  const mainWidth = clamp(aspectOf(photos[0]) * 34, 31, 46)
+  frames.push({
+    x: 13 + (random() - .5) * 3,
+    y,
+    width: mainWidth,
+    height: mainWidth / aspectOf(photos[0]),
+    photo: photos[0],
+    index: 0,
+    role: 'main',
+  })
+  return frames
+}
+
 function physicalBounds(frames) {
   const left = Math.min(...frames.map((frame) => frame.x))
   const top = Math.min(...frames.map((frame) => frame.y))
@@ -101,30 +184,22 @@ export function buildGalleryOverview(photos, seed = 'gallery-01') {
   const selected = photos.slice(0, 10)
   if (!selected.length) return []
   const random = seededRandom(seed)
-  const frames = []
-  const detailOrder = [3, 4, 5, 2, 1, 9, 6, 7, 8]
-    .filter((index) => index < selected.length)
-    .concat(selected.map((_, index) => index).filter((index) => index !== 0 && ![3, 4, 5, 2, 1, 9, 6, 7, 8].includes(index)))
-  let y = 0
-  photoRows(detailOrder).forEach((indices, rowIndex) => {
-    const targetWidth = indices.length === 2 ? 56 : 68
-    const baseInset = rowIndex % 3 === 1 ? 0 : rowIndex % 3 === 2 ? 8 : 10
-    const x = baseInset + (random() - .5) * 2
-    const row = rowFrames(selected, indices, targetWidth, x, y)
-    frames.push(...row)
-    y += row[0].height + GUTTER
-  })
-  const main = selected[0]
-  const mainWidth = clamp(aspectOf(main) * 34, 31, 46)
-  frames.push({
-    x: 13 + (random() - .5) * 3,
-    y,
-    width: mainWidth,
-    height: mainWidth / aspectOf(main),
-    photo: main,
-    index: 0,
-    role: 'main',
-  })
+  const frames = weaveFrames(selected, random) || []
+  if (!frames.length) {
+    const detailOrder = orderedDetails(selected, new Set([0]))
+    let y = 0
+    photoRows(detailOrder).forEach((indices, rowIndex) => {
+      const targetWidth = indices.length === 2 ? 56 : 68
+      const baseInset = rowIndex % 3 === 1 ? 0 : rowIndex % 3 === 2 ? 8 : 10
+      const x = baseInset + (random() - .5) * 2
+      const row = rowFrames(selected, indices, targetWidth, x, y)
+      frames.push(...row)
+      y += row[0].height + GUTTER
+    })
+    const main = selected[0]
+    const mainWidth = clamp(aspectOf(main) * 34, 31, 46)
+    frames.push({ x: 13 + (random() - .5) * 3, y, width: mainWidth, height: mainWidth / aspectOf(main), photo: main, index: 0, role: 'main' })
+  }
 
   const bounds = physicalBounds(frames)
   const scale = Math.min(SAFE_WIDTH / bounds.width, SAFE_HEIGHT / bounds.height, 1)
