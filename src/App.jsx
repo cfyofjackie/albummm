@@ -16,6 +16,7 @@ import { loadBooks, saveBook } from './lib/storage.js'
 import CollageMastersPrototype from './components/CollageMastersPrototype.jsx'
 import CollageInteractionPrototype from './components/CollageInteractionPrototype.jsx'
 import CollageFlowPrototype from './components/CollageFlowPrototype.jsx'
+import CarouselMastersPrototype from './components/CarouselMastersPrototype.jsx'
 import './App.css'
 
 const STYLES = [
@@ -37,6 +38,9 @@ export default function App() {
   }
   if (prototype === 'collage-flow') {
     return <CollageFlowPrototype />
+  }
+  if (prototype === 'carousel-masters') {
+    return <CarouselMastersPrototype />
   }
 
   const [photos, setPhotos] = useState([])
