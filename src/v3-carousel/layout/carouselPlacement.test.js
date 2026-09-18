@@ -93,6 +93,25 @@ describe('V3 受控随机几何：硬边界', () => {
     expect(maxDelta).toBeLessThanOrEqual(1)
   })
 
+  it('预览与导出同一尺度：按页宽写百分比白边，就等于 innerBox() 的内缩量', () => {
+    // 预览把白边写成 matFor()/1080 的百分比（CSS padding 的百分比以父级宽度为基准），
+    // 这个规则保证预览在 216–335px 的页宽下也画出与 1080×1350 导出完全一致的内缩比例：
+    // 水平内缩 = mat/1080（与 innerBox 相同），垂直内缩 = (mat/1080)×(1080/1350) = mat/1350（同样相同）。
+    for (const { story } of demoRuns()) {
+      for (const frame of story.frames) {
+        for (const card of frame.placed) {
+          const mat = matFor({ w: card.w, h: card.h })
+          const paddingFraction = mat / EXPORT_WIDTH
+          const inner = innerBox(card)
+          expect(card.x + paddingFraction).toBeCloseTo(inner.x, 12)
+          expect(card.y + paddingFraction * EXPORT_WIDTH / EXPORT_HEIGHT).toBeCloseTo(inner.y, 12)
+          expect(card.w - paddingFraction * 2).toBeCloseTo(inner.w, 12)
+          expect(card.h - paddingFraction * 2 * EXPORT_WIDTH / EXPORT_HEIGHT).toBeCloseTo(inner.h, 12)
+        }
+      }
+    }
+  })
+
   it('内容短边 ≥ 20%、宽 ≤ 80%、高 ≤ 78%（demo 比例全部落在可行区间内）', () => {
     for (const { count, styleId, seed, story } of demoRuns()) {
       for (const frame of story.frames) {

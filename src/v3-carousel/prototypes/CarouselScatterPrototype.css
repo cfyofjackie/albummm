@@ -43,14 +43,14 @@
 .scatter-prototype--gallery .scatter-card { box-shadow: 0 4px 9px rgba(37, 33, 26, .1) !important; }
 
 .scatter-prototype--muse .scatter-strip { background: linear-gradient(90deg, #e5ddd2 0%, #d9cabd 46%, #b5aa97 72%, #dfd7cb 100%); }
-.scatter-prototype--muse .scatter-frame:nth-child(2)::before,
-.scatter-prototype--muse .scatter-frame:nth-child(4)::before {
+.scatter-prototype--muse .scatter-strip > .scatter-frame:nth-child(2)::before,
+.scatter-prototype--muse .scatter-strip > .scatter-frame:nth-child(4)::before {
   position: absolute;
   inset: 0;
   background: rgba(255, 251, 244, .25);
   content: '';
 }
-.scatter-prototype--muse .scatter-frame:nth-child(3)::after {
+.scatter-prototype--muse .scatter-strip > .scatter-frame:nth-child(3)::after {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -61,8 +61,96 @@
 }
 
 .scatter-prototype--weekend .scatter-strip { background-color: #d1cec5; }
-.scatter-prototype--weekend .scatter-frame:nth-child(2)::after,
-.scatter-prototype--weekend .scatter-frame:nth-child(5)::after {
+.scatter-prototype--weekend .scatter-strip > .scatter-frame:nth-child(2)::after,
+.scatter-prototype--weekend .scatter-strip > .scatter-frame:nth-child(5)::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 30%;
+  background: rgba(245, 241, 231, .42);
+  content: '';
+}
+
+/* ---- 离屏导出画布 ----------------------------------------------------------
+   背景在预览里挂在整条带子上，所以导出单页时必须把同一张背景平移到本页的位置：
+   网格用 background-position-x 位移（位相与连续带子完全一致，接缝无错位），
+   Muse 的渐变则把背景尺寸放大到整组宽度再位移，取到的就是那一格。
+   页面装饰（muse/weekend 的第 2、3、4、5 页色块）在导出画布里没有兄弟节点，
+   所以另外按 data-scatter-page 挂一遍。 */
+.scatter-export-holder {
+  position: fixed;
+  top: 0;
+  left: -20000px;
+  pointer-events: none;
+}
+
+/* 被截图的节点本身不能带 fixed/偏移：html-to-image 会连定位一起克隆，
+   离屏坐标会让 foreignObject 里画到画布之外。偏移交给外层 holder。 */
+.scatter-export {
+  position: relative;
+  overflow: hidden;
+}
+
+.scatter-export__paper {
+  position: absolute;
+  inset: 0;
+  background-position-x: calc(var(--scatter-page-index, 0) * -1080px);
+}
+
+.scatter-export--gallery .scatter-export__paper {
+  background-color: #e7e4dc;
+  background-image: linear-gradient(rgba(69, 66, 58, .045) 1px, transparent 1px), linear-gradient(90deg, rgba(69, 66, 58, .045) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.scatter-export--weekend .scatter-export__paper {
+  background-color: #d1cec5;
+  background-image: linear-gradient(rgba(74, 71, 63, .08) 1px, transparent 1px), linear-gradient(90deg, rgba(74, 71, 63, .08) 1px, transparent 1px);
+  background-size: 13px 13px;
+}
+
+.scatter-export--muse .scatter-export__paper {
+  background-image: linear-gradient(90deg, #e5ddd2 0%, #d9cabd 46%, #b5aa97 72%, #dfd7cb 100%);
+  background-size: calc(var(--scatter-page-count, 5) * 1080px) 100%;
+}
+
+/* 4:5 作品居中放在导出画布上：9:16 多出来的上下两条是延伸的纸面。 */
+.scatter-export__art {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1080px;
+  height: var(--scatter-art-height, 1350px);
+  transform: translateY(-50%);
+}
+
+/* 预览里每页的高度来自带子的 grid 拉伸；导出画布里它是个普通块，
+   里面的卡片都是绝对定位、不撑高度，不显式给高度就会是 0 —— 再叠加 overflow: hidden，
+   整页会被裁成空白（只剩纸面背景）。 */
+.scatter-export .carousel-master__frame { height: 100%; border-right: 0; }
+.scatter-export .carousel-master__photo img { max-height: none; }
+/* 页码在 1080 宽的页面上要按比例放大：预览里 8px / 335px ≈ 导出的 26px / 1080px。 */
+.scatter-export .carousel-master__number { font-size: 26px; }
+
+.scatter-export[data-scatter-page="2"] .scatter-frame::before,
+.scatter-export[data-scatter-page="4"] .scatter-frame::before {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 251, 244, .25);
+  content: '';
+}
+.scatter-export[data-scatter-page="3"] .scatter-frame::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 28%;
+  background: rgba(144, 139, 116, .24);
+  content: '';
+}
+.scatter-export[data-scatter-page="2"] .scatter-frame::after,
+.scatter-export[data-scatter-page="5"] .scatter-frame::after {
   position: absolute;
   top: 0;
   bottom: 0;
