@@ -1,0 +1,74 @@
+.scale-prototype { min-height: 100dvh; background: #e9e6df; }
+
+.scale-prototype__state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 14px;
+  width: min(100%, 1080px);
+  margin: 0 auto 20px;
+  color: #6e6a61;
+  font-size: 10px;
+  letter-spacing: .03em;
+}
+
+.scale-prototype__state span + span { padding-left: 14px; border-left: 1px solid #c4c0b6; }
+
+.scale-prototype__comparison {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: clamp(14px, 2.8vw, 36px);
+  width: min(100%, 1080px);
+  margin: 12px auto 30px;
+}
+
+.scale-frame { min-width: 0; }
+.scale-frame > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; color: #5e5a52; }
+.scale-frame > header span { font-family: Georgia, 'Songti SC', serif; font-size: 18px; }
+.scale-frame > header p { margin: 0; text-align: right; font-size: 10px; letter-spacing: .03em; }
+
+.scale-frame__page {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border: 1px solid rgba(73, 68, 59, .13);
+  background-color: #d8d5cc;
+  background-image: linear-gradient(rgba(79, 75, 65, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(79, 75, 65, .07) 1px, transparent 1px);
+  background-size: 16px 16px;
+  box-shadow: 0 13px 24px rgba(51, 46, 37, .11);
+}
+
+.scale-frame--max .scale-frame__page { background-color: #d2cfc5; }
+
+.scale-card {
+  position: absolute;
+  margin: 0;
+  background: #fffefa;
+  box-shadow: 0 7px 14px rgba(44, 39, 30, .15);
+}
+
+.scale-card img { display: block; width: 100%; height: auto; }
+.scale-card--min { padding: 2px; }
+.scale-card--max { padding: 5px; }
+
+.scale-card figcaption {
+  display: grid;
+  gap: 1px;
+  margin-top: 4px;
+  color: #5b564e;
+  font-size: 8px;
+  line-height: 1.18;
+  letter-spacing: .02em;
+}
+
+.scale-card figcaption strong { font-weight: 600; }
+.scale-card figcaption span { color: #8a857a; }
+
+@media (max-width: 720px) {
+  .scale-prototype__comparison { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 15px; }
+  .scale-frame--min { grid-column: 1 / -1; width: calc(50% - 7.5px); justify-self: center; }
+  .scale-frame > header { display: block; }
+  .scale-frame > header p { margin-top: 4px; text-align: left; }
+  .scale-prototype__state { gap: 6px 10px; font-size: 9px; }
+  .scale-prototype__state span + span { padding-left: 10px; }
+}

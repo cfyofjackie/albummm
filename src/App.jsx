@@ -17,6 +17,8 @@ import CollageMastersPrototype from './components/CollageMastersPrototype.jsx'
 import CollageInteractionPrototype from './components/CollageInteractionPrototype.jsx'
 import CollageFlowPrototype from './components/CollageFlowPrototype.jsx'
 import CarouselMastersPrototype from './components/CarouselMastersPrototype.jsx'
+import CarouselScatterPrototype from './components/CarouselScatterPrototype.jsx'
+import CarouselScalePrototype from './components/CarouselScalePrototype.jsx'
 import './App.css'
 
 const STYLES = [
@@ -41,6 +43,12 @@ export default function App() {
   }
   if (prototype === 'carousel-masters') {
     return <CarouselMastersPrototype />
+  }
+  if (prototype === 'carousel-scatter') {
+    return <CarouselScatterPrototype />
+  }
+  if (prototype === 'carousel-scale') {
+    return <CarouselScalePrototype />
   }
 
   const [photos, setPhotos] = useState([])
