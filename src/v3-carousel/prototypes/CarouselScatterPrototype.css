@@ -105,6 +105,9 @@
        这里放开不会让卡片串页。 */
     overflow: visible;
   }
-  .scatter-frame { scroll-snap-align: start; }
+  /* scroll-snap-stop: always —— 一次甩动最多越过一个吸附点，也就是「一次滑动最多翻一页」。
+     只写 snap-type: mandatory 时，手指甩动的惯性可以冲过好几个吸附点（滚轮模拟下实测会从
+     第 1 页直接冲到最后一页）。注意这个属性只约束触摸甩动，滚轮/程序化滚动不受它约束。 */
+  .scatter-frame { scroll-snap-align: start; scroll-snap-stop: always; }
   .rhythm-frame__role { font-size: 8px; }
 }
