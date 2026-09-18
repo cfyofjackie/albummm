@@ -1,5 +1,5 @@
 // PROTOTYPE — V4 Gallery overview layout.
-// The board establishes one quiet, outward-growing photo group. The algorithm
+// The board establishes one compact, band-built photo group. The algorithm
 // only adapts its frames to real image ratios and makes bounded seed variations.
 
 export const BOARD_WIDTH = 100
@@ -8,21 +8,9 @@ export const BOARD_HEIGHT = 125
 // Layout coordinates use percentage points of the board's width. Converting a
 // physical height back to the board's 4:5 coordinate space needs this factor.
 const FRAME_ASPECT = BOARD_WIDTH / BOARD_HEIGHT
-const SAFE_WIDTH = 86
-const SAFE_HEIGHT = 86
-
-const GROWTH_PLAN = [
-  { role: 'main', shortSide: 35 },
-  { role: 'secondary', shortSide: 19, parent: 0, side: 'right', align: .2 },
-  { role: 'secondary', shortSide: 19, parent: 0, side: 'left', align: .72 },
-  { role: 'detail', shortSide: 13, parent: 0, side: 'top', align: .18 },
-  { role: 'detail', shortSide: 14, parent: 0, side: 'bottom', align: .65 },
-  { role: 'detail', shortSide: 11, parent: 1, side: 'top', align: .68 },
-  { role: 'detail', shortSide: 12, parent: 2, side: 'bottom', align: .2 },
-  { role: 'detail', shortSide: 10, parent: 3, side: 'left', align: .66 },
-  { role: 'detail', shortSide: 11, parent: 4, side: 'right', align: .24 },
-  { role: 'detail', shortSide: 10, parent: 5, side: 'right', align: .42 },
-]
+const SAFE_WIDTH = 76
+const SAFE_HEIGHT = 78
+const GUTTER = 1.25
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 
@@ -67,26 +55,35 @@ export function intersectionOf(a, b) {
   }
 }
 
-function nativeFrame(photo, shortSide) {
-  const aspect = aspectOf(photo)
-  return aspect >= 1
-    ? { width: shortSide * aspect, height: shortSide }
-    : { width: shortSide, height: shortSide / aspect }
+function roleFor(index) {
+  if (index === 0) return 'main'
+  if (index < 3) return 'secondary'
+  return 'detail'
 }
 
-function attachFrame(parent, frame, plan, random) {
-  const gap = 1 + (random() - .5) * .3
-  const alignment = clamp(plan.align + (random() - .5) * .12, 0, 1)
-  if (plan.side === 'right') {
-    return { ...frame, x: parent.x + parent.width + gap, y: parent.y + (parent.height - frame.height) * alignment }
+function photoRows(indices) {
+  if (indices.length <= 3) return [indices]
+  const rows = []
+  let cursor = 0
+  while (cursor < indices.length) {
+    const remaining = indices.length - cursor
+    const count = remaining === 4 ? 2 : Math.min(3, remaining)
+    rows.push(indices.slice(cursor, cursor + count))
+    cursor += count
   }
-  if (plan.side === 'left') {
-    return { ...frame, x: parent.x - frame.width - gap, y: parent.y + (parent.height - frame.height) * alignment }
-  }
-  if (plan.side === 'bottom') {
-    return { ...frame, x: parent.x + (parent.width - frame.width) * alignment, y: parent.y + parent.height + gap }
-  }
-  return { ...frame, x: parent.x + (parent.width - frame.width) * alignment, y: parent.y - frame.height - gap }
+  return rows
+}
+
+function rowFrames(photos, indices, targetWidth, x, y) {
+  const aspectTotal = indices.reduce((total, index) => total + aspectOf(photos[index]), 0)
+  const height = (targetWidth - GUTTER * (indices.length - 1)) / aspectTotal
+  let cursor = x
+  return indices.map((index) => {
+    const width = height * aspectOf(photos[index])
+    const frame = { x: cursor, y, width, height, photo: photos[index], index, role: roleFor(index) }
+    cursor += width + GUTTER
+    return frame
+  })
 }
 
 function physicalBounds(frames) {
@@ -97,39 +94,53 @@ function physicalBounds(frames) {
   return { left, top, width: right - left, height: bottom - top }
 }
 
-// Start at the main image and attach every next frame to an existing edge.
-// This is deliberately not freeform packing: the plan preserves hierarchy,
-// whitespace, and a readable centre of gravity for every seed.
+// Tight justified photo bands create one continuous, irregular collage block.
+// Each band's height is derived from the selected photos' real proportions, so
+// there are no fixed-ratio boxes, crop windows, or masonry holes.
 export function buildGalleryOverview(photos, seed = 'gallery-01') {
-  const selected = photos.slice(0, GROWTH_PLAN.length)
+  const selected = photos.slice(0, 10)
+  if (!selected.length) return []
   const random = seededRandom(seed)
   const frames = []
-  selected.forEach((photo, index) => {
-    const plan = GROWTH_PLAN[index]
-    const frame = nativeFrame(photo, plan.shortSide)
-    if (index === 0) {
-      frames.push({ ...frame, x: 0, y: 0, photo, plan })
-      return
-    }
-    frames.push({ ...attachFrame(frames[plan.parent], frame, plan, random), photo, plan })
+  const detailOrder = [3, 4, 5, 2, 1, 9, 6, 7, 8]
+    .filter((index) => index < selected.length)
+    .concat(selected.map((_, index) => index).filter((index) => index !== 0 && ![3, 4, 5, 2, 1, 9, 6, 7, 8].includes(index)))
+  let y = 0
+  photoRows(detailOrder).forEach((indices, rowIndex) => {
+    const targetWidth = indices.length === 2 ? 56 : 68
+    const baseInset = rowIndex % 3 === 1 ? 0 : rowIndex % 3 === 2 ? 8 : 10
+    const x = baseInset + (random() - .5) * 2
+    const row = rowFrames(selected, indices, targetWidth, x, y)
+    frames.push(...row)
+    y += row[0].height + GUTTER
   })
-  if (!frames.length) return []
+  const main = selected[0]
+  const mainWidth = clamp(aspectOf(main) * 34, 31, 46)
+  frames.push({
+    x: 13 + (random() - .5) * 3,
+    y,
+    width: mainWidth,
+    height: mainWidth / aspectOf(main),
+    photo: main,
+    index: 0,
+    role: 'main',
+  })
 
   const bounds = physicalBounds(frames)
   const scale = Math.min(SAFE_WIDTH / bounds.width, SAFE_HEIGHT / bounds.height, 1)
   const offsetX = (BOARD_WIDTH - bounds.width * scale) / 2
   const offsetY = (BOARD_WIDTH - bounds.height * scale) / 2
 
-  return frames.map((frame, index) => ({
+  return frames.map((frame) => ({
     photo: frame.photo,
     id: frame.photo.id,
-    role: frame.plan.role,
-    zIndex: index + 1,
+    role: frame.role,
+    zIndex: frame.index + 1,
     x: offsetX + (frame.x - bounds.left) * scale,
-    y: (offsetY + (frame.y - bounds.top) * scale) / FRAME_ASPECT,
+    y: (offsetY + (frame.y - bounds.top) * scale) * FRAME_ASPECT,
     width: frame.width * scale,
-    height: frame.height * scale / FRAME_ASPECT,
-  }))
+    height: frame.height * scale * FRAME_ASPECT,
+  })).sort((a, b) => a.zIndex - b.zIndex)
 }
 
 export function obscurersFor(selected, layout) {
@@ -139,15 +150,13 @@ export function obscurersFor(selected, layout) {
 // The viewport, not the photo, moves. This keeps every image in the same
 // collage coordinate system while bringing the selected frame closer.
 export function focusCameraFor(tile) {
-  const visualSize = Math.max(tile.width, tile.height * FRAME_ASPECT)
+  const visualSize = Math.max(tile.width, tile.height / FRAME_ASPECT)
   const scale = clamp(68 / visualSize, 1.35, 2.6)
   const centerX = tile.x + tile.width / 2
   const centerY = tile.y + tile.height / 2
   return {
     scale,
     translateX: 50 - scale * centerX,
-    // CSS translateY(%) is measured against the element's full 125-unit
-    // height, unlike translateX(%) which is measured against its 100-unit width.
-    translateY: (BOARD_HEIGHT / 2 - scale * centerY) / BOARD_HEIGHT * 100,
+    translateY: 50 - scale * centerY,
   }
 }

@@ -153,7 +153,7 @@ export default function V4GalleryPrototype() {
       </header>
       <section className="v4-gallery__state" aria-label="原型状态"><span>GALLERY</span><span>4:5 OUTPUT</span><span>{photos.length || MIN_PHOTOS} PHOTOS</span><span>SEED · {seed}</span><span>{focused ? 'IN-PLACE ZOOM' : 'OVERVIEW'}</span></section>
       {loading ? <p className="v4-gallery__loading">正在准备混合比例演示照片…</p> : <Overview layout={layout} focused={focused} focusedIndex={focusedIndex} onPick={(tile) => setFocusedId(tile.id)} onExit={() => setFocusedId(null)} onStep={step} />}
-      <aside className="v4-gallery__notes"><span>本轮验证</span><p>照片从主图向外生长为一个完整的拼贴母板。点击后，整张画布原位缩放并平移到目标图；照片仍保持真实比例和相对位置。透明遮挡效果将在下一阶段加入。</p></aside>
+      <aside className="v4-gallery__notes"><span>本轮验证</span><p>照片以紧凑的连续拼贴组成一个整体，主图作为群组内部的锚点。点击后，整张画布原位缩放并平移到目标图；照片仍保持真实比例和相对位置。透明遮挡效果将在下一阶段加入。</p></aside>
     </main>
   )
 }

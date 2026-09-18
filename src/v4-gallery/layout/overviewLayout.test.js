@@ -14,7 +14,7 @@ describe('V4 Gallery overview 母板', () => {
     for (const tile of layout) {
       // The board is 4:5, so the raw layout height is not a physical height.
       // Validate the ratio users actually see after the board is rendered.
-      expect(tile.width / (tile.height * (BOARD_WIDTH / BOARD_HEIGHT))).toBeCloseTo(aspectOf(tile.photo), 8)
+      expect(tile.width / (tile.height / (BOARD_WIDTH / BOARD_HEIGHT))).toBeCloseTo(aspectOf(tile.photo), 8)
       expect(tile.x).toBeGreaterThanOrEqual(0)
       expect(tile.y).toBeGreaterThanOrEqual(0)
       expect(tile.x + tile.width).toBeLessThanOrEqual(BOARD_WIDTH)
@@ -68,9 +68,9 @@ describe('V4 Gallery overview 母板', () => {
     for (const tile of [main, detail]) {
       const camera = focusCameraFor(tile)
       const centeredX = (tile.x + tile.width / 2) * camera.scale + camera.translateX
-      const centeredY = (tile.y + tile.height / 2) * camera.scale + camera.translateY / 100 * BOARD_HEIGHT
+      const centeredY = (tile.y + tile.height / 2) * camera.scale + camera.translateY
       expect(centeredX).toBeCloseTo(50, 8)
-      expect(centeredY).toBeCloseTo(BOARD_HEIGHT / 2, 8)
+      expect(centeredY).toBeCloseTo(50, 8)
       expect(camera.scale).toBeGreaterThanOrEqual(1.35)
       expect(camera.scale).toBeLessThanOrEqual(2.6)
     }
