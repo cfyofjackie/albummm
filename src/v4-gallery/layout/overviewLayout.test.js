@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOARD_HEIGHT, BOARD_WIDTH, aspectOf, buildGalleryOverview, overlaps } from './overviewLayout.js'
+import { BOARD_HEIGHT, BOARD_WIDTH, aspectOf, buildGalleryOverview, focusCameraFor, overlaps } from './overviewLayout.js'
 
 const makePhotos = (aspects) => aspects.map((aspect, index) => ({ id: `photo-${index}`, aspect }))
 
@@ -32,5 +32,18 @@ describe('V4 Gallery overview 母板', () => {
     expect(area(layout[0])).toBeGreaterThan(area(layout[1]))
     expect(area(layout[0])).toBeGreaterThan(area(layout[2]))
     expect(layout.filter((tile) => tile.role === 'detail').some((tile) => overlaps(tile, layout[0]))).toBe(false)
+  })
+
+  it('原位聚焦只移动视口，让目标照片的中心进入画布中心', () => {
+    const [main, , , detail] = buildGalleryOverview(makePhotos([.75, 1.33, .7, 1.5]), 'focus-camera')
+    for (const tile of [main, detail]) {
+      const camera = focusCameraFor(tile)
+      const centeredX = (tile.x + tile.width / 2) * camera.scale + camera.translateX
+      const centeredY = (tile.y + tile.height / 2) * camera.scale + camera.translateY
+      expect(centeredX).toBeCloseTo(50, 8)
+      expect(centeredY).toBeCloseTo(BOARD_HEIGHT / 2, 8)
+      expect(camera.scale).toBeGreaterThanOrEqual(1.35)
+      expect(camera.scale).toBeLessThanOrEqual(2.6)
+    }
   })
 })

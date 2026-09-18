@@ -121,3 +121,17 @@ export function buildGalleryOverview(photos, seed = 'gallery-01') {
 export function obscurersFor(selected, layout) {
   return layout.filter((tile) => tile.zIndex > selected.zIndex && overlaps(tile, selected))
 }
+
+// The viewport, not the photo, moves.  This keeps every paper edge, shadow,
+// and overlap in the same coordinate system while bringing the target closer.
+export function focusCameraFor(tile) {
+  const visualSize = Math.max(tile.width, tile.height * BOARD_WIDTH / BOARD_HEIGHT)
+  const scale = clamp(68 / visualSize, 1.35, 2.6)
+  const centerX = tile.x + tile.width / 2
+  const centerY = tile.y + tile.height / 2
+  return {
+    scale,
+    translateX: 50 - scale * centerX,
+    translateY: BOARD_HEIGHT / 2 - scale * centerY,
+  }
+}
