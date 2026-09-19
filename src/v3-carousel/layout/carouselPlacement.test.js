@@ -123,10 +123,12 @@ describe('V3 受控随机几何：硬边界', () => {
   it('内容短边 ≥ 20%、宽 ≤ 80%、高 ≤ 78%（demo 比例全部落在可行区间内）', () => {
     for (const { count, styleId, seed, story } of demoRuns()) {
       for (const frame of story.frames) {
+        // 整页自动缩放的页按缩放比例放宽下限（20% 是优先下限，见 guardrails 第 3 节）。
+        const allowedFloor = SIZE_RULES.minShortEdge * (frame.fittingScale ?? 1)
         for (const card of frame.placed) {
           const inner = innerBox(card)
-          const label = `count=${count} style=${styleId} seed=${seed} ${card.photo.name}`
-          expect(physicalShortEdge(inner), label).toBeGreaterThanOrEqual(SIZE_RULES.minShortEdge - 1e-9)
+          const label = `count=${count} style=${styleId} seed=${seed} ${card.photo.name} scale=${frame.fittingScale ?? 1}`
+          expect(physicalShortEdge(inner), label).toBeGreaterThanOrEqual(allowedFloor - 1e-9)
           expect(inner.w, label).toBeLessThanOrEqual(SIZE_RULES.maxContentWidth + 1e-9)
           expect(inner.h, label).toBeLessThanOrEqual(SIZE_RULES.maxContentHeight + 1e-9)
         }
@@ -350,10 +352,13 @@ describe('V3 页面规格：每个规格都按自己的比例重新构图', () =
       const floor = shortEdgeFloor(format)
       for (const { count, styleId, seed, story } of runsFor(format)) {
         for (const frame of story.frames) {
+          // 整页自动缩放会把该页所有卡片按比例压小，短边下限随之放宽（20% 是「优先下限」，
+          // 见 development-guardrails 第 3 节与 validation-log 第 7 节）。
+          const allowedFloor = floor * (frame.fittingScale ?? 1)
           for (const card of frame.placed) {
             const inner = innerBox(card, format)
-            const label = `${format.label} count=${count} style=${styleId} seed=${seed} ${card.photo.name}`
-            expect(physicalShortEdge(inner, format), label).toBeGreaterThanOrEqual(floor - 1e-9)
+            const label = `${format.label} count=${count} style=${styleId} seed=${seed} ${card.photo.name} scale=${frame.fittingScale ?? 1}`
+            expect(physicalShortEdge(inner, format), label).toBeGreaterThanOrEqual(allowedFloor - 1e-9)
             expect(inner.w, label).toBeLessThanOrEqual(SIZE_RULES.maxContentWidth + 1e-9)
             expect(inner.h, label).toBeLessThanOrEqual(SIZE_RULES.maxContentHeight + 1e-9)
             // 不拉伸：误差同样只来自白边在内容盒/外盒上的 1px 取整（实测 < 1%）。
@@ -381,6 +386,85 @@ describe('V3 页面规格：每个规格都按自己的比例重新构图', () =
       }
       expect(compared, format.label).toBeGreaterThan(0)
       expect(different, `${format.label} 的构图应与 4:5 不同`).toBe(compared)
+    }
+  })
+})
+
+describe('V3 三种风格必须真的可以分辨', () => {
+  // 背景：修复前 smart 模式下 recipe 会遮蔽 style 的尺寸参数、轻叠分支也永远走不到，
+  // 三种风格实测只差「旋转 0 / 0.45 / 1.8 度」，尺寸差只有 0.03%（见 validation-log.md §11）。
+  // 这组测试把「风格必须可分辨」变成可执行的规格，防止再次退化成死参数。
+  const STYLE_SEEDS = Array.from({ length: 20 }, (_, index) => index * 137 + 11)
+  const metricsCache = new Map()
+
+  const metricsFor = (styleId) => {
+    if (metricsCache.has(styleId)) return metricsCache.get(styleId)
+    const layout = STYLE_LAYOUTS[styleId]
+    const rotations = []
+    const spreads = []
+    let overlapPages = 0
+    let pages = 0
+    let collisions = 0
+    let placed = 0
+    for (const seed of STYLE_SEEDS) {
+      const photos = photosOf(DEMO_DIMS, 10)
+      const story = planSmartStory(photos, seed, layout)
+      collisions += story.contentCollisions
+      for (const frame of story.frames) {
+        pages += 1
+        placed += frame.placed.length
+        const cards = frame.placed
+        for (const card of cards) rotations.push(Math.abs(card.rotate))
+        if (cards.length >= 2) {
+          const areas = cards.map((card) => card.w * card.h)
+          spreads.push(Math.max(...areas) / Math.min(...areas))
+        }
+        if (cards.some((a, i) => cards.some((b, j) => j > i && a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y))) overlapPages += 1
+      }
+    }
+    const average = (values) => values.reduce((sum, value) => sum + value, 0) / values.length
+    const metrics = {
+      avgRotation: average(rotations),
+      maxRotation: Math.max(...rotations),
+      avgSpread: average(spreads),
+      overlapPages,
+      pages,
+      collisions,
+      placed,
+    }
+    metricsCache.set(styleId, metrics)
+    return metrics
+  }
+
+  it('旋转幅度分档：gallery 完全水平 < muse 极小 < weekend 明显', () => {
+    const gallery = metricsFor('gallery')
+    const muse = metricsFor('muse')
+    const weekend = metricsFor('weekend')
+    expect(gallery.maxRotation).toBe(0)
+    expect(muse.maxRotation).toBeGreaterThan(0)
+    expect(muse.maxRotation).toBeLessThanOrEqual(.25)
+    expect(weekend.avgRotation).toBeGreaterThan(muse.avgRotation * 4)
+    expect(weekend.maxRotation).toBeGreaterThanOrEqual(2)
+  })
+
+  it('尺度对比分档：gallery 最平 < muse < weekend 变化最快', () => {
+    const gallery = metricsFor('gallery')
+    const muse = metricsFor('muse')
+    const weekend = metricsFor('weekend')
+    expect(gallery.avgSpread).toBeLessThan(muse.avgSpread)
+    expect(muse.avgSpread).toBeLessThan(weekend.avgSpread * .85)
+  })
+
+  it('轻叠：gallery 一张都不叠，muse / weekend 会出现相叠的页', () => {
+    expect(metricsFor('gallery').overlapPages).toBe(0)
+    expect(metricsFor('muse').overlapPages).toBeGreaterThan(0)
+  })
+
+  it('风格差异不会牺牲硬边界：不丢图、旋转后内容区仍不碰撞', () => {
+    for (const styleId of Object.keys(STYLE_LAYOUTS)) {
+      const metrics = metricsFor(styleId)
+      expect(metrics.placed, styleId).toBe(metrics.pages * 2)
+      expect(metrics.collisions, `${styleId} 旋转后内容区碰撞`).toBe(0)
     }
   })
 })

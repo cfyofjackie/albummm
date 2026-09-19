@@ -33,19 +33,50 @@ export function shortEdgeFloor(format = DEFAULT_FORMAT) {
 export const FITTING_SCALES = [1, .93, .86, .8, .74, .69, .64, .6, .56, .52, .48]
 
 // 三种风格只改变纸面气质与几何参数，不改变分页规则；UI 文案与编号留在组件里。
+//
+// 注意 smart 模式下每页都有自己的 recipe，recipe 的尺寸字段会覆盖 style 的对应字段，
+// 所以「风格差异」必须通过下面三个系数参与进去，否则风格参数就是死代码（曾经如此：
+// 三种风格的卡片尺寸差只有 0.03%，见 validation-log.md §11）。语义：
+//   anchorScale    锚点（每页第一张）大小系数
+//   fragmentScale  陪衬卡片大小系数
+//   fragmentRangeScale  陪衬卡片的大小变化幅度（Weekend「尺度变化更快」就靠它）
+//   overlapUse     实际吃掉多少「白边预算」作为相叠（白边是碰撞缓冲，所以相叠不会顶到内容区）
+//   rotation       旋转幅度（±度）
+// anchorShort / fragmentRange 只在没有 recipe 的历史路径（carousel-scatter）里当基准值用。
 export const STYLE_LAYOUTS = {
-  gallery: { overlap: 0, rotation: 0, overlapChance: 0, anchorShort: .47, fragmentRange: .1, maxOverlaps: 0 },
-  muse: { overlap: .08, rotation: .45, overlapChance: .45, anchorShort: .43, fragmentRange: .14, maxOverlaps: 1 },
-  weekend: { overlap: .16, rotation: 1.8, overlapChance: .68, anchorShort: .41, fragmentRange: .18, maxOverlaps: 1 },
+  gallery: {
+    overlap: 0, overlapUse: 0, overlapChance: 0, rotation: 0, maxOverlaps: 0,
+    anchorScale: .92, fragmentScale: 1, fragmentRangeScale: .5,
+    anchorShort: .47, fragmentRange: .1,
+  },
+  muse: {
+    overlap: .08, overlapUse: .5, overlapChance: .5, rotation: .2, maxOverlaps: 1,
+    anchorScale: 1, fragmentScale: 1, fragmentRangeScale: 1,
+    anchorShort: .43, fragmentRange: .14,
+  },
+  weekend: {
+    overlap: .16, overlapUse: .85, overlapChance: .8, rotation: 2.6, maxOverlaps: 2,
+    anchorScale: 1.08, fragmentScale: .9, fragmentRangeScale: 1.5,
+    anchorShort: .41, fragmentRange: .18,
+  },
 }
 
-function smartRecipeFor(count) {
-  const recipes = {
-    2: { anchorShort: .43, fragmentBase: .26, fragmentRange: .09 },
-    3: { anchorShort: .38, fragmentBase: .22, fragmentRange: .06 },
-    4: { anchorShort: .34, fragmentBase: .2, fragmentRange: .035 },
+// 每页张数决定锚点与碎片的基础尺度；风格再在这个基础上做系数。
+const BASE_RECIPES = {
+  2: { anchorShort: .43, fragmentBase: .26, fragmentRange: .09 },
+  3: { anchorShort: .38, fragmentBase: .22, fragmentRange: .06 },
+  4: { anchorShort: .34, fragmentBase: .2, fragmentRange: .035 },
+}
+
+function smartRecipeFor(count, style = STYLE_LAYOUTS.muse) {
+  const base = BASE_RECIPES[count] ?? BASE_RECIPES[3]
+  return {
+    id: 'smart',
+    label: `${count} 张随机组合`,
+    anchorShort: base.anchorShort * (style.anchorScale ?? 1),
+    fragmentBase: base.fragmentBase * (style.fragmentScale ?? 1),
+    fragmentRange: base.fragmentRange * (style.fragmentRangeScale ?? 1),
   }
-  return { id: 'smart', ...recipes[count], label: `${count} 张随机组合` }
 }
 
 export function rngFrom(seed) {
@@ -84,6 +115,34 @@ export function innerBox(box, format = DEFAULT_FORMAT) {
   return { x: box.x + insetX, y: box.y + insetY, w: box.w - insetX * 2, h: box.h - insetY * 2 }
 }
 
+// 旋转会让卡片扫出轴对齐包围盒之外，所以「内容区不得碰撞」必须按旋转后的外扩量判断。
+const rotationTheta = (rotate = 0) => Math.abs(rotate) * Math.PI / 180
+
+// 旋转后轴对齐包围盒在水平方向多出来的半宽（页宽单位）。
+function marginX(box, rotate, format) {
+  const theta = rotationTheta(rotate)
+  if (!theta) return 0
+  return Math.max(0, (box.w * (Math.cos(theta) - 1) + (box.h / format.aspect) * Math.sin(theta)) / 2)
+}
+
+// 碰撞判定用的安全盒 = 内容区 + 旋转外扩；判据仍是「两个安全盒不相交」。
+function safetyBox(box, format = DEFAULT_FORMAT, rotate = 0) {
+  const inner = innerBox(box, format)
+  const theta = rotationTheta(rotate)
+  if (!theta) return inner
+  const cos = Math.cos(theta)
+  const sin = Math.sin(theta)
+  const heightInWidthUnits = box.h / format.aspect
+  const extraX = Math.max(0, (box.w * (cos - 1) + heightInWidthUnits * sin) / 2)
+  const extraY = Math.max(0, (box.w * sin + heightInWidthUnits * (cos - 1)) / 2) * format.aspect
+  return {
+    x: inner.x - extraX,
+    y: inner.y - extraY,
+    w: inner.w + extraX * 2,
+    h: inner.h + extraY * 2,
+  }
+}
+
 function sizeFor(photo, isAnchor, random, style, recipe = null, scale = 1, format = DEFAULT_FORMAT) {
   const aspect = photo.width / photo.height
   const floor = shortEdgeFloor(format)
@@ -111,11 +170,13 @@ function sizeFor(photo, isAnchor, random, style, recipe = null, scale = 1, forma
   return { w: contentW + mat * 2 / format.width, h: contentH + mat * 2 / format.height }
 }
 
-function pairedCandidate(anchor, w, h, random, style) {
+function pairedCandidate(anchor, w, h, random, style, format, rotate) {
+  // 旋转会让卡片扫出包围盒，位置候选的间隙要把这部分让出来，否则候选几乎总被拒。
+  const sweep = marginX({ w, h }, rotate, format) + marginX(anchor, anchor.rotate ?? 0, format)
   const overlapX = style.overlap ? Math.min(anchor.w, w) * style.overlap * .28 : 0
   const overlapY = style.overlap ? Math.min(anchor.h, h) * style.overlap * .28 : 0
-  const gapX = .022 - overlapX
-  const gapY = .022 - overlapY
+  const gapX = .022 + sweep - overlapX
+  const gapY = .022 + sweep - overlapY
   const options = []
   const midX = clamp(anchor.x + (anchor.w - w) / 2 + (random() - .5) * .06, .04, .96 - w)
   const midY = clamp(anchor.y + (anchor.h - h) / 2 + (random() - .5) * .06, .06, .94 - h)
@@ -132,41 +193,44 @@ function pairedCandidate(anchor, w, h, random, style) {
 
 function candidateFor(photo, isAnchor, random, style, anchor = null, recipe = null, scale = 1, format = DEFAULT_FORMAT) {
   const { w, h } = sizeFor(photo, isAnchor, random, style, recipe, scale, format)
-  if (anchor && recipe) {
-    const pair = pairedCandidate(anchor, w, h, random, style)
-    if (pair) {
-      return { ...pair, w, h, rotate: (random() - .5) * style.rotation * 2 }
-    }
-  }
-  // 有白边时，让辅助卡片偶尔贴着第一张的外缘：视觉上有叠放，
-  // 但重叠宽度小于两张白边的总缓冲，内层照片依然不会相撞。
-  if (anchor && style.overlap > 0 && random() < style.overlapChance) {
-    const overlap = .025 + random() * style.overlap * .42
+  const rotate = (random() - .5) * style.rotation * 2
+  // 先决定这一轮用哪种「贴法」：风格想轻叠时优先试相叠，否则用留缝并排。
+  // 旧写法把相叠放在并排之后、只有并排无解时才轮到它，于是实测三种风格的轻叠数都是 0。
+  const wantsOverlap = anchor && style.overlapUse > 0 && random() < style.overlapChance
+  if (wantsOverlap) {
+    // 白边是碰撞缓冲：只在「两张白边的总宽」内相叠，视觉上有叠放，内容区永远不接触。
+    const budget = (matFor(anchor, format) + matFor({ w, h }, format)) / format.width
+    const overlap = budget * style.overlapUse * (.5 + random() * .5)
     const toRight = random() < .5
     return {
-      x: clamp(toRight ? anchor.x + anchor.w - w * overlap : anchor.x - w + w * overlap, .07, .93 - w),
+      x: clamp(toRight ? anchor.x + anchor.w - overlap : anchor.x - w + overlap, .07, .93 - w),
       y: clamp(anchor.y + (random() - .5) * Math.min(anchor.h, h) * .45, .11, .91 - h),
       w,
       h,
-      rotate: (random() - .5) * style.rotation * 2,
+      rotate,
     }
+  }
+  if (anchor && recipe) {
+    const pair = pairedCandidate(anchor, w, h, random, style, format, rotate)
+    if (pair) return { ...pair, w, h, rotate }
   }
   return {
     x: .07 + random() * Math.max(.01, .86 - w),
     y: .11 + random() * Math.max(.01, .8 - h),
     w,
     h,
-    rotate: (random() - .5) * style.rotation * 2,
+    rotate,
   }
 }
 
 function acceptable(box, placed, style, format = DEFAULT_FORMAT) {
-  const inner = innerBox(box, format)
+  // 用「内容区 + 旋转外扩」的安全盒判断碰撞：即使卡片带旋转，内容区也不会互相压到。
+  const safety = safetyBox(box, format, box.rotate ?? 0)
   let cardOverlaps = 0
   for (const other of placed) {
     const cardRatio = intersection(box, other) / Math.min(area(box), area(other))
     if (cardRatio > style.overlap) return null
-    if (intersection(inner, innerBox(other, format)) > .0001) return null
+    if (intersection(safety, safetyBox(other, format, other.rotate ?? 0)) > .0001) return null
     if (cardRatio > 0) cardOverlaps += 1
   }
   if (cardOverlaps > style.maxOverlaps) return null
@@ -195,7 +259,7 @@ function safeFallback(photo, index, placed, style, recipe, scale = 1, format = D
 
 function contentCollisions(placed, format = DEFAULT_FORMAT) {
   return placed.reduce((sum, box, index) => sum + placed.slice(index + 1).filter(
-    (other) => intersection(innerBox(box, format), innerBox(other, format)) > .0001,
+    (other) => intersection(safetyBox(box, format, box.rotate ?? 0), safetyBox(other, format, other.rotate ?? 0)) > .0001,
   ).length, 0)
 }
 
@@ -259,14 +323,14 @@ export function planSmartStory(photos, seed, style, format = DEFAULT_FORMAT) {
   const random = rngFrom(seed)
   const groups = paginatePhotos(photos, random).map((group) => ({
     photos: group,
-    recipe: smartRecipeFor(group.length),
+    recipe: smartRecipeFor(group.length, style),
   }))
   const frames = []
   groups.forEach(({ photos: group, recipe }, index) => {
     const frame = placeFrameBest(group, seed + index * 104729, style, recipe, format)
     frames.push({ ...frame, recipe })
     let overflow = frame.unplaced
-    const overflowRecipe = smartRecipeFor(Math.min(4, Math.max(2, overflow.length)))
+    const overflowRecipe = smartRecipeFor(Math.min(4, Math.max(2, overflow.length)), style)
     while (overflow.length) {
       const overflowFrame = placeFrameBest(overflow, seed + frames.length * 104729, style, overflowRecipe, format)
       frames.push({ ...overflowFrame, recipe: overflowRecipe })
