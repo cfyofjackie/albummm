@@ -4,6 +4,7 @@ import { toBlob } from 'html-to-image'
 import { makeDemoPhotos } from '../../shared/demo.js'
 import { loadPhoto } from '../../shared/photo.js'
 import { BORDER_STYLES, DEFAULT_BORDER, DEFAULT_EDGE, DEFAULT_FORMAT, DEFAULT_TAPE, EDGE_STYLES, PAGE_FORMATS, TAPE_STYLES, clamp, matInsets, materialOf, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS, tornContours } from '../layout/carouselPlacement.js'
+import { backgroundFor, backgroundsForStyle } from '../layout/paperBackgrounds.js'
 import './CarouselMastersPrototype.css'
 import './CarouselScatterPrototype.css'
 
@@ -224,11 +225,14 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const [borderId, setBorderId] = useState(DEFAULT_BORDER.id)
   const [edgeId, setEdgeId] = useState(DEFAULT_EDGE.id)
   const [tapeId, setTapeId] = useState(DEFAULT_TAPE.id)
+  const [backgroundId, setBackgroundId] = useState(null)
   const [showNumbers, setShowNumbers] = useState(true)
   const inputRef = useRef(null)
   const style = STYLES.find((item) => item.id === activeId)
   const previewFormat = formatById(previewFormatId)
   const material = materialOf({ border: BORDER_STYLES[borderId], edge: EDGE_STYLES[edgeId], tape: TAPE_STYLES[tapeId] })
+  // 背景属于风格：切风格后原来选的背景若不属于新风格，就回落到该风格的第一个。
+  const background = backgroundFor(activeId, backgroundId)
 
   useEffect(() => {
     let live = true
@@ -300,7 +304,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
       await Promise.all([...node.querySelectorAll('img')].map((img) => (
         img.complete ? Promise.resolve() : new Promise((resolve) => { img.onload = resolve; img.onerror = resolve })
       )))
-      const blob = await toBlob(node, { pixelRatio: 1, cacheBust: false, backgroundColor: PAPER_COLORS[activeId] })
+      const blob = await toBlob(node, { pixelRatio: 1, cacheBust: false, backgroundColor: background.paper.color })
       if (blob) downloadBlob(blob, `albummm-v3-${format.id}-${String(index + 1).padStart(2, '0')}.png`)
       await new Promise((resolve) => setTimeout(resolve, 150))
     }
@@ -311,7 +315,11 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const exportFormat = exportJob ? formatById(exportJob.formatId) : null
   const exportStory = exportJob && photos.length ? planStory(photos, seed, style, rhythm, smart, exportFormat, material) : null
   return (
-    <main className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} ${smart ? 'smart-prototype' : ''} scatter-prototype--${activeId}`}>
+    <main
+      className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} ${smart ? 'smart-prototype' : ''} scatter-prototype--${activeId}`}
+      /* 背景只换这三个变量：预览与导出共用，所以换背景不需要改导出逻辑。 */
+      style={{ '--paper-color': background.paper.color, '--paper-image': background.paper.image, '--paper-size': background.paper.size }}
+    >
       <header className="carousel-master__header">
         <div>
           <p>PROTOTYPE · V3 {smart ? '智能分页随机' : rhythm ? '五页基准节奏' : '受控随机片段'}</p>
@@ -399,6 +407,15 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
             </button>
           </span>
         )}
+        {/* 背景属于风格：只列当前风格的背景，切换风格时自动回落到该风格的背景。 */}
+        <span className="scatter-prototype__control">
+          背景
+          {backgroundsForStyle(activeId).map((item) => (
+            <button key={item.id} type="button" className={item.id === background.id ? 'is-active' : ''} onClick={() => setBackgroundId(item.id)}>
+              {item.label}
+            </button>
+          ))}
+        </span>
       </section>
 
       <section className="carousel-master__stage" aria-label={smart ? '智能分页随机连续作品预览' : rhythm ? '五页节奏连续作品预览' : '五页随机连续作品预览'}>
