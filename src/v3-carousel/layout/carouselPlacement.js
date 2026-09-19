@@ -32,19 +32,44 @@ export function shortEdgeFloor(format = DEFAULT_FORMAT) {
 // 所以这里不再额外设短边下限，只记录实际缩到了多少。
 export const FITTING_SCALES = [1, .93, .86, .8, .74, .69, .64, .6, .56, .52, .48]
 
-// 材质 / 边框规格：白边不只是装饰，它是照片内容与「外层卡片相叠」之间的缓冲，
-// 所以边框厚度必须同时进入几何计算（下面的 matInsets / innerBox），否则渲染出来的
-// 边框和碰撞判定用的边框不是同一套，「内容区不得碰撞」的保证就失效了。
-//   side    左右/上边的厚度 = 基础白边 × side
-//   bottom  下边厚度 = 基础白边 × bottom（拍立得的宽下边靠它）
-//   tear    撕边深度占边框厚度的比例（必须 < 1，否则会啃到照片内容）
-//   tape    该材质是否带胶带（每组作品最多 1–2 处，由页号决定）
-export const FRAME_STYLES = {
-  plain: { id: 'plain', label: '无', side: 1, bottom: 1, tear: 0, tape: false },
-  polaroid: { id: 'polaroid', label: '拍立得', side: 2.2, bottom: 5.5, tear: 0, tape: false },
-  torn: { id: 'torn', label: '撕纸', side: 3, bottom: 3, tear: .38, tape: true },
+// 材质拆成三条独立的轴（产品设定），任意组合都要成立：
+//   边框 BORDER_STYLES —— 相纸白边厚度（none = 原来的缓冲白边；polaroid = 明显宽白边，下边更宽）
+//   边缘 EDGE_STYLES   —— 直边或毛边（毛边自带最小出血带：没有纸就撕不出毛边，只能啃照片）
+//   胶带 TAPE_STYLES   —— 和纸胶带，每页条数 = 页内照片数 − 1，占位要算进碰撞几何
+//
+// 三条轴都是**几何参数**，不是 CSS 装饰：白边与胶带都是「照片内容」与「外层卡片相叠」之间的缓冲，
+// 厚度 / 占位一变，同一页放得下的东西就变了。数值以 1080 宽的导出尺度为准。
+export const BORDER_STYLES = {
+  none: { id: 'none', label: '无', side: 1, bottom: 1, chinMax: 0 },
+  // chinMax：下边比左右多出来的部分，最多占卡片短边的这个比例 —— 超宽图（长图）不会被套上过厚的下巴。
+  polaroid: { id: 'polaroid', label: '拍立得', side: 5, bottom: 12, chinMax: .08 },
 }
-export const DEFAULT_FRAME = FRAME_STYLES.plain
+export const EDGE_STYLES = {
+  straight: { id: 'straight', label: '直边', tear: 0, minBand: 0 },
+  torn: { id: 'torn', label: '毛边', tear: .55, minBand: 10 },
+}
+export const TAPE_STYLES = {
+  off: { id: 'off', label: '无', enabled: false, lengthScale: 0, thickness: 0, protrude: 0 },
+  washi: { id: 'washi', label: '和纸胶带', enabled: true, lengthScale: .44, thickness: .019, protrude: .5 },
+}
+export const DEFAULT_BORDER = BORDER_STYLES.none
+export const DEFAULT_EDGE = EDGE_STYLES.straight
+export const DEFAULT_TAPE = TAPE_STYLES.off
+
+// 一份材质设定 = 三条轴的组合；组件与几何层之间传的就是这个对象。
+export const DEFAULT_MATERIAL = { border: DEFAULT_BORDER, edge: DEFAULT_EDGE, tape: DEFAULT_TAPE }
+export const materialOf = (material = {}) => ({
+  border: material.border ?? DEFAULT_BORDER,
+  edge: material.edge ?? DEFAULT_EDGE,
+  tape: material.tape ?? DEFAULT_TAPE,
+})
+
+// 每页胶带条数：页内照片数 − 1（2 张 1 条、3 张 2 条、4 张 3 条），至少 1 条。
+export function tapeCountFor(photoCount, material = DEFAULT_MATERIAL) {
+  const spec = materialOf(material).tape
+  if (!spec.enabled || photoCount <= 0) return 0
+  return Math.max(1, photoCount - 1)
+}
 
 // 三种风格只改变纸面气质与几何参数，不改变分页规则；UI 文案与编号留在组件里。
 //
@@ -117,25 +142,44 @@ function physicalShortEdge(box, aspect = FRAME_ASPECT) {
   return Math.min(box.w, box.h / aspect)
 }
 
-export function matFor(box, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
-  return matInsets(box, format, frame).x
+export function matFor(box, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
+  return matInsets(box, format, material).x
 }
 
-// 卡片内缩（px，按 format.width 的导出尺度）：左右上下可以不同（拍立得的宽下边）。
-// 基础白边仍是 2–5px（guardrails 第 3 节），材质只是在它上面乘系数。
-export function matInsets(box, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
-  const base = clamp(Math.round(physicalShortEdge(box, format.aspect) * EXPORT_WIDTH * .015), 2, 5)
+// 卡片内缩（px，按 format.width 的导出尺度）：左右/上可以不同（拍立得的下边更宽）。
+// 基础白边仍是 2–5px（缓冲），三条材质轴在它上面给系数：
+//   - 毛边自带最小出血带 minBand，否则没有纸可撕，只能啃照片；
+//   - 拍立得的下巴（bottom − side）按卡片短边封顶，避免超宽图被套上过厚的下边。
+export function matInsets(box, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
+  const { border, edge } = materialOf(material)
+  const shortEdgePx = physicalShortEdge(box, format.aspect) * EXPORT_WIDTH
+  const base = clamp(Math.round(shortEdgePx * .015), 2, 5)
+  const side = Math.max(1, Math.round(Math.max(base * border.side, edge.minBand)))
+  const chin = Math.max(0, Math.min(base * (border.bottom - border.side), shortEdgePx * (border.chinMax ?? 0)))
+  return { x: side, top: side, bottom: side + Math.round(chin) }
+}
+
+// 胶带的实际矩形（页面坐标）：长度按卡片宽度、居中贴在卡片上缘；
+// **下端恰好停在照片内容的上边界**（不遮内容），上端越出卡片外框。
+// 越出多少取决于白边厚度：白边越厚，胶带越少越出，看起来就像"压住相纸边缘"。
+export function tapeRect(card, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
+  const spec = materialOf(material).tape
+  if (!spec.enabled || !card?.tape) return null
+  const matTop = (card.mat?.top ?? matInsets(card, format, material).top) / format.width
+  const height = spec.thickness
+  const out = Math.max(0, height - matTop)
   return {
-    x: Math.max(1, Math.round(base * frame.side)),
-    top: Math.max(1, Math.round(base * frame.side)),
-    bottom: Math.max(1, Math.round(base * frame.bottom)),
+    x: card.x + card.w / 2 - card.w * spec.lengthScale / 2,
+    y: card.y - out,
+    w: card.w * spec.lengthScale,
+    h: height,
   }
 }
 
-export function innerBox(box, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
-  // 优先用几何层存在卡片上的边框：材质会把边框乘上 2.2-5.5 的系数，若这里按外框重算，
-  // 1px 的取整误差会被放大成约 0.5% 页高的偏差，渲染与碰撞判定就不再是同一套边框。
-  const mat = box.mat ?? matInsets(box, format, frame)
+export function innerBox(box, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
+  // 优先用几何层存在卡片上的边框：材质会把边框乘上几倍，若这里按外框重算，
+  // 1px 的取整误差会被放大成约 0.5% 页高的偏差，渲染与判定就不再是同一套边框。
+  const mat = box.mat ?? matInsets(box, format, material)
   return {
     x: box.x + mat.x / format.width,
     y: box.y + mat.top / format.height,
@@ -154,25 +198,32 @@ function marginX(box, rotate, format) {
   return Math.max(0, (box.w * (Math.cos(theta) - 1) + (box.h / format.aspect) * Math.sin(theta)) / 2)
 }
 
-// 碰撞判定用的安全盒 = 内容区 + 旋转外扩；判据仍是「两个安全盒不相交」。
-function safetyBox(box, format = DEFAULT_FORMAT, rotate = 0, frame = DEFAULT_FRAME) {
-  const inner = innerBox(box, format, frame)
+// 碰撞判定用的安全盒 = 内容区 + 旋转外扩 + 胶带占位；判据仍是「两个安全盒不相交」。
+// 胶带压在卡片上缘、越出卡片外框，所以带上胶带的卡片会把安全盒向上向外撑开 ——
+// 这样胶带永远不会落在别的照片内容上（硬边界「内容区不得碰撞」仍然成立）。
+function safetyBox(box, format = DEFAULT_FORMAT, rotate = 0, material = DEFAULT_MATERIAL) {
+  const inner = innerBox(box, format, material)
   const theta = rotationTheta(rotate)
-  if (!theta) return inner
-  const cos = Math.cos(theta)
-  const sin = Math.sin(theta)
-  const heightInWidthUnits = box.h / format.aspect
-  const extraX = Math.max(0, (box.w * (cos - 1) + heightInWidthUnits * sin) / 2)
-  const extraY = Math.max(0, (box.w * sin + heightInWidthUnits * (cos - 1)) / 2) * format.aspect
-  return {
-    x: inner.x - extraX,
-    y: inner.y - extraY,
-    w: inner.w + extraX * 2,
-    h: inner.h + extraY * 2,
+  let box0 = inner
+  if (theta) {
+    const cos = Math.cos(theta)
+    const sin = Math.sin(theta)
+    const heightInWidthUnits = box.h / format.aspect
+    const extraX = Math.max(0, (box.w * (cos - 1) + heightInWidthUnits * sin) / 2)
+    const extraY = Math.max(0, (box.w * sin + heightInWidthUnits * (cos - 1)) / 2) * format.aspect
+    box0 = { x: inner.x - extraX, y: inner.y - extraY, w: inner.w + extraX * 2, h: inner.h + extraY * 2 }
   }
+  const tape = tapeRect(box, format, material)
+  if (!tape) return box0
+  // 胶带占位并进安全盒（取并集，不是外扩）：这样别的照片内容不会落在胶带底下。
+  const x0 = Math.min(box0.x, tape.x)
+  const y0 = Math.min(box0.y, tape.y)
+  const x1 = Math.max(box0.x + box0.w, tape.x + tape.w)
+  const y1 = Math.max(box0.y + box0.h, tape.y + tape.h)
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
-function sizeFor(photo, isAnchor, random, style, recipe = null, scale = 1, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
+function sizeFor(photo, isAnchor, random, style, recipe = null, scale = 1, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
   const aspect = photo.width / photo.height
   const floor = shortEdgeFloor(format)
   const desiredShort = isAnchor
@@ -195,7 +246,7 @@ function sizeFor(photo, isAnchor, random, style, recipe = null, scale = 1, forma
   contentW *= scale
   contentH *= scale
   // 白边在视觉上不应吃掉内容尺度，因此在内容尺寸之外增加外卡片边界。
-  const mat = matInsets({ w: contentW, h: contentH }, format, frame)
+  const mat = matInsets({ w: contentW, h: contentH }, format, material)
   return { w: contentW + mat.x * 2 / format.width, h: contentH + (mat.top + mat.bottom) / format.height, mat }
 }
 
@@ -220,15 +271,15 @@ function pairedCandidate(anchor, w, h, random, style, format, rotate) {
   return options.length ? options[Math.floor(random() * options.length)] : null
 }
 
-function candidateFor(photo, isAnchor, random, style, anchor = null, recipe = null, scale = 1, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
-  const { w, h, mat } = sizeFor(photo, isAnchor, random, style, recipe, scale, format, frame)
+function candidateFor(photo, isAnchor, random, style, anchor = null, recipe = null, scale = 1, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
+  const { w, h, mat } = sizeFor(photo, isAnchor, random, style, recipe, scale, format, material)
   const rotate = (random() - .5) * style.rotation * 2
   // 先决定这一轮用哪种「贴法」：风格想轻叠时优先试相叠，否则用留缝并排。
   // 旧写法把相叠放在并排之后、只有并排无解时才轮到它，于是实测三种风格的轻叠数都是 0。
   const wantsOverlap = anchor && style.overlapUse > 0 && random() < style.overlapChance
   if (wantsOverlap) {
     // 白边是碰撞缓冲：只在「两张白边的总宽」内相叠，视觉上有叠放，内容区永远不接触。
-    const budget = ((anchor.mat?.x ?? matInsets(anchor, format, frame).x) + mat.x) / format.width
+    const budget = ((anchor.mat?.x ?? matInsets(anchor, format, material).x) + mat.x) / format.width
     const overlap = budget * style.overlapUse * (.5 + random() * .5)
     const toRight = random() < .5
     return {
@@ -254,56 +305,62 @@ function candidateFor(photo, isAnchor, random, style, anchor = null, recipe = nu
   }
 }
 
-function acceptable(box, placed, style, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
+function acceptable(box, placed, style, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
   // 用「内容区 + 旋转外扩」的安全盒判断碰撞：即使卡片带旋转，内容区也不会互相压到。
-  const safety = safetyBox(box, format, box.rotate ?? 0, frame)
+  const safety = safetyBox(box, format, box.rotate ?? 0, material)
   let cardOverlaps = 0
   for (const other of placed) {
     const cardRatio = intersection(box, other) / Math.min(area(box), area(other))
     if (cardRatio > style.overlap) return null
-    if (intersection(safety, safetyBox(other, format, other.rotate ?? 0, frame)) > .0001) return null
+    if (intersection(safety, safetyBox(other, format, other.rotate ?? 0, material)) > .0001) return null
     if (cardRatio > 0) cardOverlaps += 1
   }
   if (cardOverlaps > style.maxOverlaps) return null
   return cardOverlaps
 }
 
-function fallbackFor(photo, index, style, recipe, scale = 1, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
-  const { w, h, mat } = sizeFor(photo, index === 0, () => .5, style, recipe, scale, format, frame)
-  return { x: .1 + index * .08, y: .12 + index * .12, w, h, mat, rotate: 0 }
+function fallbackFor(photo, index, style, recipe, scale = 1, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL, tape = false) {
+  const { w, h, mat } = sizeFor(photo, index === 0, () => .5, style, recipe, scale, format, material)
+  return { x: .1 + index * .08, y: .12 + index * .12, w, h, mat, tape, rotate: 0 }
 }
 
-function safeFallback(photo, index, placed, style, recipe, scale = 1, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
-  const base = fallbackFor(photo, index, style, recipe, scale, format, frame)
+function safeFallback(photo, index, placed, style, recipe, scale = 1, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL, tape = false) {
+  const base = fallbackFor(photo, index, style, recipe, scale, format, material, tape)
   // 节奏页面不靠缩小回退；更细的搜索网格优先给当前页找到合法空位，
   // 避免一张陪衬图顺延后破坏下一页的“安静区”。
   const grid = [.04, .16, .28, .4, .52, .64, .76, .88]
   for (const y of grid) {
     for (const x of grid) {
       const candidate = { ...base, x: clamp(x, .04, .96 - base.w), y: clamp(y, .06, .94 - base.h) }
-      const cardOverlaps = acceptable(candidate, placed, style, format, frame)
+      const cardOverlaps = acceptable(candidate, placed, style, format, material)
       if (cardOverlaps != null) return { box: candidate, cardOverlaps }
     }
   }
   return null
 }
 
-function contentCollisions(placed, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
+function contentCollisions(placed, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
   return placed.reduce((sum, box, index) => sum + placed.slice(index + 1).filter(
-    (other) => intersection(safetyBox(box, format, box.rotate ?? 0, frame), safetyBox(other, format, other.rotate ?? 0, frame)) > .0001,
+    (other) => intersection(safetyBox(box, format, box.rotate ?? 0, material), safetyBox(other, format, other.rotate ?? 0, material)) > .0001,
   ).length, 0)
 }
 
-export function placeFrame(photos, random, style, recipe = null, scale = 1, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
+export function placeFrame(photos, random, style, recipe = null, scale = 1, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
   const placed = []
   const unplaced = []
   let rejected = 0
   let overlaps = 0
+  // 胶带条数 = 页内照片数 − 1（至少 1 条），贴在最先放下的那几张卡片上。
+  // 带胶带的卡片在碰撞判定里会多占一块位置（safetyBox 把胶带占位撑进去），
+  // 所以胶带永远不会压到别的照片内容上。
+  const tapeCount = tapeCountFor(photos.length, material)
   photos.forEach((photo, index) => {
+    const taped = index < tapeCount
     let chosen = null
     for (let attempt = 0; attempt < 80; attempt += 1) {
-      const candidate = candidateFor(photo, placed.length === 0, random, style, placed[0], recipe, scale, format, frame)
-      const cardOverlaps = acceptable(candidate, placed, style, format, frame)
+      const base = candidateFor(photo, placed.length === 0, random, style, placed[0], recipe, scale, format, material)
+      const candidate = taped ? { ...base, tape: true } : base
+      const cardOverlaps = acceptable(candidate, placed, style, format, material)
       if (cardOverlaps == null) {
         rejected += 1
         continue
@@ -315,7 +372,7 @@ export function placeFrame(photos, random, style, recipe = null, scale = 1, form
     if (chosen) {
       placed.push({ photo, ...chosen })
     } else {
-      const fallback = safeFallback(photo, index, placed, style, recipe, scale, format, frame)
+      const fallback = safeFallback(photo, index, placed, style, recipe, scale, format, material, taped)
       if (fallback) {
         overlaps += fallback.cardOverlaps
         placed.push({ photo, ...fallback.box })
@@ -325,19 +382,25 @@ export function placeFrame(photos, random, style, recipe = null, scale = 1, form
       }
     }
   })
-  return { placed, unplaced, rejected, overlaps, contentCollisions: contentCollisions(placed, format, frame) }
+  // 胶带条数按「这一页最后真正放下的照片数」结算：有照片顺延到下一页时，多出来的胶带要去掉 ——
+  // 规格是每页 = 页内照片数 − 1，不是「计划照片数 − 1」。
+  const finalTapeCount = tapeCountFor(placed.length, material)
+  placed.forEach((card, index) => {
+    if (card.tape && index >= finalTapeCount) delete card.tape
+  })
+  return { placed, unplaced, rejected, overlaps, contentCollisions: contentCollisions(placed, format, material) }
 }
 
 // 同一组照片生成多轮候选，选择完整放下且拒绝次数最低的一轮；“换一组排法”仍然只改种子。
 // 整页放不下时（超宽 + 超长配成一页的典型情况），按 FITTING_SCALES 统一下调尺寸重排，
 // 取「整页都放得下」的最大缩放——这取代了以前「让一张照片顺延成单图页」的行为。
 // 阶梯试到底仍有照片放不下时，才顺延成补充页，由 planSmartStory 兜住，不丢图。
-export function placeFrameBest(photos, seed, style, recipe, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
+export function placeFrameBest(photos, seed, style, recipe, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
   let best = null
   for (const scale of FITTING_SCALES) {
     let candidate = null
     for (let attempt = 0; attempt < 16; attempt += 1) {
-      const run = placeFrame(photos, rngFrom(seed + attempt * 7919), style, recipe, scale, format, frame)
+      const run = placeFrame(photos, rngFrom(seed + attempt * 7919), style, recipe, scale, format, material)
       const score = run.placed.length * 10000 - run.unplaced.length * 10000 - run.rejected * 2 - run.overlaps
       if (!candidate || score > candidate.score) candidate = { ...run, score, fittingScale: scale }
       if (run.unplaced.length === 0 && run.rejected === 0) break
@@ -350,7 +413,7 @@ export function placeFrameBest(photos, seed, style, recipe, format = DEFAULT_FOR
 
 // smart 模式：分页先定，再在每页内做受控随机。放不下的照片顺延为补充页，
 // 而不是缩小照片硬塞；补充页仍需通过同一套尺寸与碰撞规则。
-export function planSmartStory(photos, seed, style, format = DEFAULT_FORMAT, frame = DEFAULT_FRAME) {
+export function planSmartStory(photos, seed, style, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
   const random = rngFrom(seed)
   const groups = paginatePhotos(photos, random).map((group) => ({
     photos: group,
@@ -358,15 +421,15 @@ export function planSmartStory(photos, seed, style, format = DEFAULT_FORMAT, fra
   }))
   const frames = []
   groups.forEach(({ photos: group, recipe }, index) => {
-    const placedFrame = placeFrameBest(group, seed + index * 104729, style, recipe, format, frame)
+    const placedFrame = placeFrameBest(group, seed + index * 104729, style, recipe, format, material)
     frames.push({ ...placedFrame, recipe })
     let overflow = placedFrame.unplaced
     const overflowRecipe = smartRecipeFor(Math.min(4, Math.max(2, overflow.length)), style)
     while (overflow.length) {
-      const overflowFrame = placeFrameBest(overflow, seed + frames.length * 104729, style, overflowRecipe, format, frame)
+      const overflowFrame = placeFrameBest(overflow, seed + frames.length * 104729, style, overflowRecipe, format, material)
       frames.push({ ...overflowFrame, recipe: overflowRecipe })
       if (!overflowFrame.placed.length) {
-        frames.push({ ...placeFrame([overflow[0]], random, style, overflowRecipe, 1, format, frame), recipe: overflowRecipe })
+        frames.push({ ...placeFrame([overflow[0]], random, style, overflowRecipe, 1, format, material), recipe: overflowRecipe })
         overflow = overflow.slice(1)
       } else {
         overflow = overflowFrame.unplaced

@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { toBlob } from 'html-to-image'
 import { makeDemoPhotos } from '../../shared/demo.js'
 import { loadPhoto } from '../../shared/photo.js'
-import { DEFAULT_FORMAT, DEFAULT_FRAME, FRAME_STYLES, PAGE_FORMATS, clamp, matInsets, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS } from '../layout/carouselPlacement.js'
+import { BORDER_STYLES, DEFAULT_BORDER, DEFAULT_EDGE, DEFAULT_FORMAT, DEFAULT_TAPE, EDGE_STYLES, PAGE_FORMATS, TAPE_STYLES, clamp, matInsets, materialOf, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS } from '../layout/carouselPlacement.js'
 import './CarouselMastersPrototype.css'
 import './CarouselScatterPrototype.css'
 
@@ -84,7 +84,7 @@ function groupsFor(photos, recipes = null) {
 }
 
 // smart 的整组规划已移到 layout/carouselPlacement.js；这里只保留 scatter / rhythm 两条历史路径。
-function planStory(photos, seed, style, rhythm = false, smart = false, format = DEFAULT_FORMAT, material = DEFAULT_FRAME) {
+function planStory(photos, seed, style, rhythm = false, smart = false, format = DEFAULT_FORMAT, material = undefined) {
   if (smart) return planSmartStory(photos, seed, style, format, material)
   const random = rngFrom(seed)
   const frames = []
@@ -146,35 +146,46 @@ function matPercents(box, format, material) {
   }
 }
 
-// 撕边：在卡片自身上裁一个锯齿外轮廓。锯齿深度 = 边框厚度 × tear，只啃边框、不碰照片内容。
-// 每个卡片按照片 id 做一次确定性抖动，所以同一 seed 每次渲染都一样。
+// 毛边：在「相纸层」上裁一个不规则轮廓。做法是沿四条边叠三层不同频率的确定性噪声
+// （大起伏 + 中起伏 + 细齿），再按 photoId 抖动，所以每张都不一样但同一 seed 可复现。
+// 撕边深度 = 边框厚度 × tear，只啃相纸边框、不碰照片内容。
 function tornClipPath(card, format, material, photoId) {
-  if (!material.tear) return undefined
-  const mat = matInsets(card, format, material)
-  const tearX = mat.x * material.tear / (card.w * format.width) * 100
-  const tearY = (mat.top * material.tear) / (card.h * format.height) * 100
-  const hash = [...photoId].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 997, 7)
+  const tear = material.edge?.tear ?? 0
+  if (!tear) return undefined
+  const mat = card.mat ?? matInsets(card, format, material)
+  const tearX = mat.x * tear / (card.w * format.width) * 100
+  const tearY = (mat.top * tear) / (card.h * format.height) * 100
+  const seed = [...photoId].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 9973, 7)
+  const noise = (index, salt) => {
+    const a = Math.sin((seed + salt) * .37 + index * 1.7) * .5
+    const b = Math.sin((seed + salt * 3) * .11 + index * 4.3) * .3
+    const c = ((seed * (index + salt + 5)) % 13) / 13 - .5
+    return .5 + a * .5 + b * .45 + c * .35
+  }
+  const depth = (value) => Math.max(0, value)
+  const steps = 10
   const points = []
-  const jitter = (index, scale) => (((hash + index * 37) % 11) / 10 - .5) * scale
-  const steps = 5
-  for (let index = 0; index <= steps; index += 1) points.push(`${(index / steps * 100).toFixed(2)}% ${Math.max(0, tearY * (.35 + jitter(index, 1.3))).toFixed(2)}%`)
-  for (let index = 1; index <= steps; index += 1) points.push(`${(100 - Math.max(0, tearX * (.35 + jitter(index + 7, 1.3)))).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
-  for (let index = steps - 1; index >= 0; index -= 1) points.push(`${(index / steps * 100).toFixed(2)}% ${(100 - Math.max(0, tearY * (.35 + jitter(index + 13, 1.3)))).toFixed(2)}%`)
-  for (let index = steps - 1; index >= 1; index -= 1) points.push(`${Math.max(0, tearX * (.35 + jitter(index + 19, 1.3))).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
+  for (let index = 0; index <= steps; index += 1) points.push(`${(index / steps * 100).toFixed(2)}% ${depth(tearY * noise(index, 1)).toFixed(2)}%`)
+  for (let index = 1; index <= steps; index += 1) points.push(`${(100 - depth(tearX * noise(index, 7))).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
+  for (let index = steps - 1; index >= 0; index -= 1) points.push(`${(index / steps * 100).toFixed(2)}% ${(100 - depth(tearY * noise(index, 13))).toFixed(2)}%`)
+  for (let index = steps - 1; index >= 1; index -= 1) points.push(`${depth(tearX * noise(index, 19)).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
   return `polygon(${points.join(', ')})`
 }
 
-function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAULT_FORMAT, material = DEFAULT_FRAME, withTape = false }) {
+function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAULT_FORMAT, material = undefined }) {
+  const spec = materialOf(material)
+  // 胶带的位置：从卡片上缘越出，一半在卡片上、一半贴纸底；由几何层决定哪几张带胶带。
+  const tapeHeight = (spec.tape.thickness * format.width) / format.height * 100
   return (
     <article className={`carousel-master__frame scatter-frame ${rhythm && frame.recipe ? `rhythm-frame rhythm-frame--${frame.recipe.id}` : ''}`}>
       {showNumber && <span className="carousel-master__number">{String(index + 1).padStart(2, '0')}</span>}
       {rhythm && frame.recipe && <span className="rhythm-frame__role">{frame.recipe.label}</span>}
-      {frame.placed.map(({ photo, x, y, w, h, rotate, mat: cardMat }, cardIndex) => {
-        const mat = matPercents({ w, h, mat: cardMat }, format, material)
+      {frame.placed.map(({ photo, x, y, w, h, rotate, mat: cardMat, tape }, cardIndex) => {
+        const mat = matPercents({ w, h, mat: cardMat }, format, spec)
         return (
           <figure
             key={photo.id}
-            className={`carousel-master__photo scatter-card scatter-card--${material.id}`}
+            className={`carousel-master__photo scatter-card${spec.edge.id === 'torn' ? ' scatter-card--torn' : ''}`}
             style={{
               left: `${x * 100}%`,
               top: `${y * 100}%`,
@@ -183,11 +194,24 @@ function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAUL
               '--scatter-mat': `${mat.x}%`,
               '--scatter-mat-top': `${mat.top}%`,
               '--scatter-mat-bottom': `${mat.bottom}%`,
-              clipPath: tornClipPath({ w, h }, format, material, photo.id),
+              '--scatter-tape-w': `${(spec.tape.lengthScale ?? 0) * 100}%`,
+              '--scatter-tape-h': `${tapeHeight}%`,
             }}
           >
+            {/* 相纸层单独裁毛边（不是裁整个卡片），这样胶带才能越出卡片而不被裁断。 */}
+            <span className="scatter-card__paper" style={{ clipPath: tornClipPath({ w, h, mat: cardMat }, format, spec, photo.id) }} aria-hidden="true" />
             <img src={photo.previewSrc} alt="随机排版中的照片" />
-            {withTape && cardIndex === 0 && <span className="scatter-tape" aria-hidden="true" />}
+            {spec.tape.enabled && tape && (
+              <span
+                className="scatter-tape"
+                style={{
+                  // 与几何层 tapeRect 同一套算法：下端停在照片内容上边界，上端越出卡片。
+                  top: `${-Math.max(0, spec.tape.thickness - mat.px.top / format.width) / h * 100}%`,
+                  rotate: `${cardIndex % 2 ? 4.5 : -3.5}deg`,
+                }}
+                aria-hidden="true"
+              />
+            )}
           </figure>
         )
       })}
@@ -218,12 +242,14 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const [seed, setSeed] = useState(4128)
   const [loading, setLoading] = useState(true)
   const [previewFormatId, setPreviewFormatId] = useState(DEFAULT_FORMAT.id)
-  const [materialId, setMaterialId] = useState(DEFAULT_FRAME.id)
+  const [borderId, setBorderId] = useState(DEFAULT_BORDER.id)
+  const [edgeId, setEdgeId] = useState(DEFAULT_EDGE.id)
+  const [tapeId, setTapeId] = useState(DEFAULT_TAPE.id)
   const [showNumbers, setShowNumbers] = useState(true)
   const inputRef = useRef(null)
   const style = STYLES.find((item) => item.id === activeId)
   const previewFormat = formatById(previewFormatId)
-  const material = FRAME_STYLES[materialId] ?? DEFAULT_FRAME
+  const material = materialOf({ border: BORDER_STYLES[borderId], edge: EDGE_STYLES[edgeId], tape: TAPE_STYLES[tapeId] })
 
   useEffect(() => {
     let live = true
@@ -359,14 +385,29 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
         )}
         {smart && (
           <span className="scatter-prototype__control">
-            材质
-            {Object.values(FRAME_STYLES).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={item.id === material.id ? 'is-active' : ''}
-                onClick={() => setMaterialId(item.id)}
-              >
+            边框
+            {Object.values(BORDER_STYLES).map((item) => (
+              <button key={item.id} type="button" className={item.id === borderId ? 'is-active' : ''} onClick={() => setBorderId(item.id)}>
+                {item.label}
+              </button>
+            ))}
+          </span>
+        )}
+        {smart && (
+          <span className="scatter-prototype__control">
+            边缘
+            {Object.values(EDGE_STYLES).map((item) => (
+              <button key={item.id} type="button" className={item.id === edgeId ? 'is-active' : ''} onClick={() => setEdgeId(item.id)}>
+                {item.label}
+              </button>
+            ))}
+          </span>
+        )}
+        {smart && (
+          <span className="scatter-prototype__control">
+            胶带
+            {Object.values(TAPE_STYLES).map((item) => (
+              <button key={item.id} type="button" className={item.id === tapeId ? 'is-active' : ''} onClick={() => setTapeId(item.id)}>
                 {item.label}
               </button>
             ))}
@@ -388,7 +429,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
             style={{ '--scatter-page-count': story.frames.length, '--scatter-page-aspect': previewFormat.aspect }}
           >
             {story.frames.map((frame, index) => (
-              <ScatterFrame key={index} frame={frame} index={index} rhythm={rhythm} showNumber={showNumbers} format={previewFormat} material={material} withTape={material.tape && index < 2} />
+              <ScatterFrame key={index} frame={frame} index={index} rhythm={rhythm} showNumber={showNumbers} format={previewFormat} material={material} />
             ))}
           </div>
         )}
@@ -422,7 +463,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
           >
             <div className="scatter-export__paper" />
             <div className="scatter-export__art">
-              <ScatterFrame frame={exportStory.frames[exportJob.index]} index={exportJob.index} rhythm={false} showNumber={showNumbers} format={exportFormat} material={material} withTape={material.tape && exportJob.index < 2} />
+              <ScatterFrame frame={exportStory.frames[exportJob.index]} index={exportJob.index} rhythm={false} showNumber={showNumbers} format={exportFormat} material={material} />
             </div>
           </div>
         </div>

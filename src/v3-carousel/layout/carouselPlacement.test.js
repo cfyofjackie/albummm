@@ -1,21 +1,40 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BORDER_STYLES,
   DEFAULT_FORMAT,
+  EDGE_STYLES,
   EXPORT_HEIGHT,
   EXPORT_WIDTH,
   FITTING_SCALES,
-  FRAME_STYLES,
   PAGE_FORMATS,
   SIZE_RULES,
   STYLE_LAYOUTS,
+  TAPE_STYLES,
   innerBox,
   matFor,
   matInsets,
+  materialOf,
   placeFrame,
   planSmartStory,
   rngFrom,
   shortEdgeFloor,
+  tapeCountFor,
+  tapeRect,
 } from './carouselPlacement.js'
+
+// 矩形相交面积：测试里独立复算，不用被测代码的实现。
+const intersectionOf = (a, b) => {
+  const w = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x))
+  const h = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y))
+  return w * h
+}
+
+// 材质三轴的抽样组合（完整 8 种组合在下面的材质 describe 里跑）。
+const MATERIAL_SAMPLES = [
+  materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off }),
+  materialOf({ border: BORDER_STYLES.polaroid, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.washi }),
+  materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.torn, tape: TAPE_STYLES.washi }),
+].map((material) => ({ ...material, label: `${material.border.label}+${material.edge.label}+${material.tape.label}` }))
 
 const STYLES = Object.entries(STYLE_LAYOUTS)
 const FRAME_ASPECT = .8
@@ -89,12 +108,12 @@ describe('V3 受控随机几何：硬边界', () => {
     // 材质会把边框乘上 2.2–5.5 的系数：若渲染/判定按「外框」重算一次边框，
     // 1px 的取整误差会被放大成约 0.5% 页高的偏差（实测曾经让内容短边掉到 19.5%）。
     // 所以几何层把边框存在卡片上，innerBox 与渲染都直接用它。
-    for (const material of Object.values(FRAME_STYLES)) {
+    for (const material of MATERIAL_SAMPLES) {
       for (const format of Object.values(PAGE_FORMATS)) {
         for (const { story } of runsFor(format)) {
           for (const frame of story.frames) {
             for (const card of frame.placed) {
-              const label = `${material.id} ${format.label} ${card.photo.name}`
+              const label = `${material.label} ${format.label} ${card.photo.name}`
               expect(card.mat, label).toBeTruthy()
               const inner = innerBox(card, format, material)
               expect(inner.x, label).toBeCloseTo(card.x + card.mat.x / format.width, 12)
@@ -400,39 +419,101 @@ describe('V3 页面规格：每个规格都按自己的比例重新构图', () =
   })
 })
 
-describe('V3 材质 / 边框：边框是几何的一部分', () => {
-  const MATERIALS = Object.values(FRAME_STYLES)
+describe('V3 材质三轴：边框 / 边缘 / 胶带', () => {
+  // 三条轴独立组合（2 × 2 × 2 = 8 种），全部要满足硬边界。
+  const COMBOS = []
+  for (const border of Object.values(BORDER_STYLES)) {
+    for (const edge of Object.values(EDGE_STYLES)) {
+      for (const tape of Object.values(TAPE_STYLES)) {
+        COMBOS.push({ label: `${border.label}+${edge.label}+${tape.label}`, material: materialOf({ border, edge, tape }) })
+      }
+    }
+  }
   const MATERIAL_COUNTS = [6, 10, 13, 24]
 
-  it('拍立得有更宽的下边，撕纸的锯齿只啃边框', () => {
-    expect(FRAME_STYLES.polaroid.bottom).toBeGreaterThan(FRAME_STYLES.polaroid.side * 2)
-    expect(FRAME_STYLES.plain.bottom).toBe(FRAME_STYLES.plain.side)
-    for (const material of MATERIALS) {
-      // 撕边深度必须小于边框厚度，否则会切到照片内容（撕纸材质靠这条保证不啃内容）。
-      expect(material.tear, material.id).toBeLessThan(1)
-      expect(material.tear, material.id).toBeGreaterThanOrEqual(0)
+  it('拍立得有更宽的下边，且下巴按卡片短边封顶（超宽图不会被套上厚下巴）', () => {
+    const polaroid = materialOf({ border: BORDER_STYLES.polaroid, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off })
+    const none = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off })
+    const normal = matInsets({ w: .4, h: .5 }, DEFAULT_FORMAT, polaroid)
+    const pano = matInsets({ w: .8, h: .13 }, DEFAULT_FORMAT, polaroid)
+    expect(normal.bottom).toBeGreaterThan(normal.x * 2)
+    // 超宽图（矮）的下巴比同样白边下的大卡片明显更小
+    expect(pano.bottom).toBeLessThan(normal.bottom)
+    expect(none.bottom).toBe(none.x)
+  })
+
+  it('毛边自带最小出血带，且撕边深度只啃边框', () => {
+    for (const edge of Object.values(EDGE_STYLES)) {
+      expect(edge.tear, edge.id).toBeLessThan(1)
+      expect(edge.tear, edge.id).toBeGreaterThanOrEqual(0)
+    }
+    const torn = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.torn, tape: TAPE_STYLES.off })
+    const band = matInsets({ w: .3, h: .4 }, DEFAULT_FORMAT, torn)
+    // 没有出血带就撕不出毛边（只能啃照片），所以毛边必须自带一个最小带宽。
+    expect(band.x).toBeGreaterThanOrEqual(EDGE_STYLES.torn.minBand)
+    expect(band.x * EDGE_STYLES.torn.tear).toBeGreaterThanOrEqual(5)
+  })
+
+  it('胶带条数 = 页内照片数 − 1，至少 1 条', () => {
+    const washi = materialOf({ tape: TAPE_STYLES.washi })
+    expect(tapeCountFor(2, washi)).toBe(1)
+    expect(tapeCountFor(3, washi)).toBe(2)
+    expect(tapeCountFor(4, washi)).toBe(3)
+    expect(tapeCountFor(4, materialOf({ tape: TAPE_STYLES.off }))).toBe(0)
+    for (const count of [2, 3, 4]) {
+      for (const seed of SEEDS) {
+        const story = planSmartStory(photosOf(DEMO_DIMS, 10), seed, STYLE_LAYOUTS.muse, DEFAULT_FORMAT, washi)
+        for (const frame of story.frames) {
+          expect(frame.placed.filter((card) => card.tape), `count=${frame.placed.length}`).toHaveLength(tapeCountFor(frame.placed.length, washi))
+        }
+      }
     }
   })
 
-  it('三种材质下硬边界都成立：不丢图、内容区不碰撞、尺寸边界不越界', () => {
-    for (const material of MATERIALS) {
+  it('胶带占位进了碰撞判定：胶带底下不会有别的照片内容', () => {
+    const washi = materialOf({ border: BORDER_STYLES.polaroid, edge: EDGE_STYLES.torn, tape: TAPE_STYLES.washi })
+    let taped = 0
+    for (const [styleId, style] of STYLES) {
+      for (const count of MATERIAL_COUNTS) {
+        for (const seed of SEEDS) {
+          const story = planSmartStory(photosOf(DEMO_DIMS, count), seed, style, DEFAULT_FORMAT, washi)
+          for (const frame of story.frames) {
+            for (const card of frame.placed) {
+              const tape = tapeRect(card, DEFAULT_FORMAT, washi)
+              if (!tape) continue
+              taped += 1
+              for (const other of frame.placed) {
+                if (other === card) continue
+                const inner = innerBox(other, DEFAULT_FORMAT, washi)
+                const overlap = intersectionOf(tape, inner)
+                expect(overlap, `${styleId} count=${count} seed=${seed} 胶带压到了 ${other.photo.name}`).toBeLessThanOrEqual(1e-9)
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(taped).toBeGreaterThan(0)
+  })
+
+  it('八种组合下硬边界都成立：不丢图、内容区不碰撞、尺寸边界不越界', () => {
+    for (const { label, material } of COMBOS) {
       for (const [styleId, style] of STYLES) {
         for (const count of MATERIAL_COUNTS) {
           for (const seed of SEEDS) {
             const photos = photosOf(DEMO_DIMS, count)
             const story = planSmartStory(photos, seed, style, DEFAULT_FORMAT, material)
-            const label = `${material.id} ${styleId} count=${count} seed=${seed}`
-            const cards = story.frames.flatMap((frame) => frame.placed)
-            expect(cards, label).toHaveLength(count)
-            expect(story.contentCollisions, label).toBe(0)
-            expect(story.frames.length, label).toBe(story.pagePlan.length)
+            const tag = `${label} ${styleId} count=${count} seed=${seed}`
+            expect(story.frames.flatMap((frame) => frame.placed), tag).toHaveLength(count)
+            expect(story.contentCollisions, tag).toBe(0)
+            expect(story.frames.length, tag).toBe(story.pagePlan.length)
             for (const frame of story.frames) {
               const allowedFloor = SIZE_RULES.minShortEdge * (frame.fittingScale ?? 1)
               for (const card of frame.placed) {
                 const inner = innerBox(card, DEFAULT_FORMAT, material)
-                expect(physicalShortEdge(inner), label).toBeGreaterThanOrEqual(allowedFloor - 1e-9)
-                expect(inner.w, label).toBeLessThanOrEqual(SIZE_RULES.maxContentWidth + 1e-9)
-                expect(inner.h, label).toBeLessThanOrEqual(SIZE_RULES.maxContentHeight + 1e-9)
+                expect(physicalShortEdge(inner), tag).toBeGreaterThanOrEqual(allowedFloor - 1e-9)
+                expect(inner.w, tag).toBeLessThanOrEqual(SIZE_RULES.maxContentWidth + 1e-9)
+                expect(inner.h, tag).toBeLessThanOrEqual(SIZE_RULES.maxContentHeight + 1e-9)
               }
             }
           }
@@ -441,20 +522,23 @@ describe('V3 材质 / 边框：边框是几何的一部分', () => {
     }
   })
 
-  it('换材质会改变构图（因为边框占了间隙），不是纯装饰', () => {
-    const geometry = (story) => JSON.stringify(story.frames.map((frame) => frame.placed.map((card) => [card.photo.id, +(card.w).toFixed(3), +(card.h).toFixed(3)])))
-    let compared = 0
-    let different = 0
+  it('材质不是纯装饰：加厚边框与毛边都会改变卡片外框尺寸', () => {
+    const bare = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off })
+    const polaroid = materialOf({ border: BORDER_STYLES.polaroid, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off })
+    const torn = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.torn, tape: TAPE_STYLES.off })
+    // 外框 = 内容 + 边框：边框一变，同一页放得下的东西就变了（这正是它必须进几何的原因）。
+    const outerArea = (story) => {
+      const cards = story.frames.flatMap((frame) => frame.placed)
+      return cards.reduce((sum, card) => sum + card.w * card.h, 0) / cards.length
+    }
     for (const seed of SEEDS) {
       const photos = photosOf(DEMO_DIMS, 10)
-      const plain = geometry(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, FRAME_STYLES.plain))
-      for (const material of MATERIALS.filter((item) => item.id !== 'plain')) {
-        compared += 1
-        if (geometry(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, material)) !== plain) different += 1
-      }
+      const base = outerArea(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, bare))
+      const thick = outerArea(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, polaroid))
+      const ragged = outerArea(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, torn))
+      expect(thick, `seed=${seed}`).toBeGreaterThan(base)
+      expect(ragged, `seed=${seed}`).toBeGreaterThan(base)
     }
-    expect(compared).toBeGreaterThan(0)
-    expect(different).toBe(compared)
   })
 })
 

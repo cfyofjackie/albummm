@@ -65,30 +65,54 @@
 }
 
 .scatter-card {
-  /* 边框厚度由几何层给出（按页宽百分比），并且左右/上下可以不同：
-     拍立得的宽下边就是 --scatter-mat-bottom 单独放大。 */
+  /* 边框厚度由几何层给出（按页宽百分比），左右/上/下可以不同：拍立得的下边更宽。 */
   padding: var(--scatter-mat-top, var(--scatter-mat)) var(--scatter-mat) var(--scatter-mat-bottom, var(--scatter-mat)) !important;
-  box-shadow: 0 8px 16px rgba(37, 33, 26, .16) !important;
+  /* 背景与阴影都交给下面的相纸层：毛边轮廓要是唯一的不透明形状，
+     否则卡片自带的方角白底会把毛边盖住。 */
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
-.scatter-card img { max-height: none; }
+/* 照片必须压在相纸层之上：相纸层是绝对定位的，静态的 img 会被它盖住（曾经照片整张消失）。 */
+.scatter-card img {
+  position: relative;
+  z-index: 1;
+  max-height: none;
+}
 
-/* 撕纸材质：底色仍是纸白，边缘由 clip-path 裁出锯齿（幅度只吃边框，不碰照片内容）。 */
-.scatter-card--torn { background: rgba(252, 250, 244, .97); }
+/* 相纸层：卡片自己的白色相纸（含边框），毛边的轮廓裁在它身上而不是整个卡片上 ——
+   这样胶带作为卡片子元素可以越出卡片而不会被一起裁断。
+   阴影用 drop-shadow 跟随裁切后的轮廓，毛边才会投出毛边的影子。 */
+.scatter-card__paper {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(253, 252, 248, .97);
+  filter: drop-shadow(0 5px 9px rgba(37, 33, 26, .18));
+  pointer-events: none;
+}
 
-/* 胶带：贴在卡片上缘的边框带之内（不越出卡片外框），所以永远不会遮到照片内容，
-   也不会压到相邻卡片；每组作品最多出现 1–2 处（由页号决定）。 */
+/* 毛边：相纸边缘比直边略暖、带一点纤维感（细密斜纹）。 */
+.scatter-card--torn .scatter-card__paper {
+  background-image:
+    repeating-linear-gradient(84deg, rgba(120, 112, 96, .05) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(-79deg, rgba(255, 255, 255, .5) 0 1px, transparent 1px 4px);
+}
+
+/* 和纸胶带：半透明、两端毛糙、微微歪斜。下端停在照片内容上边界（位置由几何层算好），
+   上端越出卡片压到纸面上 —— 所以它永远不会遮住照片内容。 */
 .scatter-tape {
   position: absolute;
   z-index: 3;
-  top: 0;
   left: 50%;
-  width: 30%;
-  height: 2.6%;
-  min-height: 7px;
-  background: linear-gradient(100deg, rgba(236, 228, 203, .9), rgba(224, 214, 186, .7));
-  box-shadow: 0 1px 2px rgba(60, 54, 40, .16);
-  transform: translateX(-50%) rotate(-2.5deg);
+  width: var(--scatter-tape-w, 38%);
+  height: var(--scatter-tape-h, 2%);
+  min-height: 6px;
+  background:
+    repeating-linear-gradient(93deg, rgba(255, 255, 255, .5) 0 2px, transparent 2px 4px),
+    linear-gradient(104deg, rgba(236, 224, 190, .92), rgba(214, 200, 165, .82));
+  box-shadow: 0 1px 4px rgba(58, 50, 34, .3), inset 0 0 0 1px rgba(255, 255, 255, .35);
+  clip-path: polygon(1% 6%, 99% 0%, 100% 92%, 2% 100%);
+  transform: translateX(-50%);
   pointer-events: none;
 }
 
@@ -99,7 +123,8 @@
   aspect-ratio: calc(var(--scatter-page-count, 5) * var(--scatter-page-aspect, .8)) / 1;
 }
 
-.scatter-prototype--gallery .scatter-card { box-shadow: 0 4px 9px rgba(37, 33, 26, .1) !important; }
+/* gallery 的阴影更轻：现在阴影在相纸层上（跟随毛边轮廓）。 */
+.scatter-prototype--gallery .scatter-card__paper { filter: drop-shadow(0 3px 7px rgba(37, 33, 26, .12)); }
 
 .scatter-prototype--muse .scatter-strip > .scatter-frame:nth-child(2)::before,
 .scatter-prototype--muse .scatter-strip > .scatter-frame:nth-child(4)::before {
