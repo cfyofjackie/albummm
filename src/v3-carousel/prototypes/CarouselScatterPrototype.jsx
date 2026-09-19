@@ -154,9 +154,10 @@ function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAUL
     <article className={`carousel-master__frame scatter-frame ${rhythm && frame.recipe ? `rhythm-frame rhythm-frame--${frame.recipe.id}` : ''}`}>
       {showNumber && <span className="carousel-master__number">{String(index + 1).padStart(2, '0')}</span>}
       {rhythm && frame.recipe && <span className="rhythm-frame__role">{frame.recipe.label}</span>}
-      {frame.placed.map(({ photo, x, y, w, h, rotate, mat: cardMat, tape }, cardIndex) => {
+      {frame.placed.map(({ photo, x, y, w, h, rotate, mat: cardMat, tape, tear }, cardIndex) => {
         const mat = matPercents({ w, h, mat: cardMat }, format, spec)
-        const torn = tornContours({ w, h, mat: cardMat }, format, spec, photo.id)
+        // 只有几何层挑中的那一张（每页一张）才撕。
+        const torn = tear ? tornContours({ w, h, mat: cardMat }, format, spec, photo.id) : null
         return (
           <figure
             key={photo.id}

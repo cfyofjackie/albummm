@@ -45,10 +45,10 @@ export const BORDER_STYLES = {
   polaroid: { id: 'polaroid', label: '拍立得', side: 5, bottom: 12, chinMax: .08 },
 }
 export const EDGE_STYLES = {
-  straight: { id: 'straight', label: '直边', tear: 0, tearMinor: 0, maxTear: 0, minBand: 0 },
-  // 毛边：撕深按**卡片短边的百分比**算（与白边厚度无关），所以「无边框 + 毛边」也能把照片本身撕掉一块。
-  // tear = 主撕边（四边里最深的那条），tearMinor = 其余三条；maxTear 是硬上限（产品确认的裁切例外）。
-  torn: { id: 'torn', label: '毛边', tear: .085, tearMinor: .028, maxTear: .12, minBand: 0 },
+  straight: { id: 'straight', label: '直边', tear: 0, maxTear: 0, minBand: 0, perPage: 0 },
+  // 毛边：**一张照片只撕一条边**（产品设定），撕深按卡片短边的百分比算（与白边厚度无关），
+  // 所以「无边框 + 毛边」也能把照片本身撕掉一块。perPage = 每页挑几张来撕。
+  torn: { id: 'torn', label: '毛边', tear: .085, maxTear: .12, minBand: 0, perPage: 1 },
 }
 export const TAPE_STYLES = {
   off: { id: 'off', label: '无', enabled: false, lengthScale: 0, thickness: 0, protrude: 0 },
@@ -190,10 +190,11 @@ export function innerBox(box, format = DEFAULT_FORMAT, material = DEFAULT_MATERI
   }
 }
 
-// 毛边轮廓：撕口按**卡片短边的百分比**从外缘往里啃（与白边厚度无关），所以「无边框 + 毛边」
-// 也能把照片本身撕掉一块。返回三组 CSS polygon：
+// 毛边轮廓：**一张照片只撕一条边**（产品设定），撕口按卡片短边的百分比从那条边往里啃
+// （与白边厚度无关），所以「无边框 + 毛边」也能把照片本身撕掉一块。其余三条边保持直边。
+// 返回三组 CSS polygon：
 //   paper.outer —— 相纸的外轮廓
-//   paper.inner —— 相纸内轮廓（用它画那圈很细的纤维毛茬）
+//   paper.inner —— 相纸内轮廓（用它画那圈很细的纤维毛茬，只在撕的那条边上出现）
 //   image.outer —— **照片自己的轮廓**（同一套噪声，所以撕口与相纸对齐）
 // 深度硬性封顶在 edge.maxTear（产品确认的唯一裁切例外），所以它不会无限啃。
 export function tornContours(card, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL, photoId = 'p') {
@@ -202,10 +203,12 @@ export function tornContours(card, format = DEFAULT_FORMAT, material = DEFAULT_M
   const mat = card.mat ?? matInsets(card, format, material)
   const shortEdgePx = Math.min(card.w * format.width, card.h * format.height)
   const cap = spec.maxTear ?? spec.tear
-  const primaryPx = shortEdgePx * Math.min(spec.tear, cap)
-  const minorPx = shortEdgePx * Math.min(spec.tearMinor ?? 0, cap)
+  const tearPx = shortEdgePx * Math.min(spec.tear, cap)
   const seed = [...photoId].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 9973, 7)
-  const primary = seed % 4
+  // 撕哪条边：竖图撕左右（长边），横图撕上下 —— 参考图里撕的都是长边，像是从一叠相纸里扯下来的。
+  // 同一方向的两条边按 photoId 决定，所以一组作品里不会总是同一条边。
+  const portrait = card.h * format.height > card.w * format.width
+  const primary = portrait ? (seed % 2 ? 3 : 1) : (seed % 2 ? 2 : 0)
 
   const hash = (index, salt) => {
     const value = Math.sin(seed * 12.9898 + salt * 78.233 + index * 37.719) * 43758.5453
@@ -217,7 +220,8 @@ export function tornContours(card, format = DEFAULT_FORMAT, material = DEFAULT_M
     const notch = hash(index * 5 + salt, salt * 3) > .8 ? 1.35 : 1
     return Math.min(1, (.24 + slow * .34 + hash(index, salt) * .42) * notch)
   }
-  const depthPx = (index, salt, side) => (side === primary ? primaryPx : minorPx) * factor(index, salt)
+  // 只有主撕边有深度；其余三条返回 0（= 直边）
+  const depthPx = (index, salt, side) => (side === primary ? tearPx * factor(index, salt) : 0)
   const depthX = (index, salt, side) => depthPx(index, salt, side) / format.width
   const depthY = (index, salt, side) => depthPx(index, salt, side) / format.height
 
@@ -230,10 +234,15 @@ export function tornContours(card, format = DEFAULT_FORMAT, material = DEFAULT_M
     const px = (depth) => Math.max(0, Math.min(100, (depth - inset.x) / boxW * 100))
     const py = (depth) => Math.max(0, Math.min(100, (depth - inset.top) / boxH * 100))
     const points = []
-    for (let index = 0; index <= steps; index += 1) points.push(`${(index / steps * 100).toFixed(2)}% ${py(depthY(index, 1, 0) * scale).toFixed(2)}%`)
-    for (let index = 1; index <= steps; index += 1) points.push(`${(100 - px(depthX(index, 7, 1) * scale)).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
-    for (let index = steps - 1; index >= 0; index -= 1) points.push(`${(index / steps * 100).toFixed(2)}% ${(100 - py(depthY(index, 13, 2) * scale)).toFixed(2)}%`)
-    for (let index = steps - 1; index >= 1; index -= 1) points.push(`${px(depthX(index, 19, 3) * scale).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
+    // 每条边都要给出起点（保证直角不被切掉）；只有撕的那条边补中间采样点。
+    points.push(`${(0).toFixed(2)}% ${py(depthY(0, 1, 0) * scale).toFixed(2)}%`)
+    if (primary === 0) for (let index = 1; index <= steps; index += 1) points.push(`${(index / steps * 100).toFixed(2)}% ${py(depthY(index, 1, 0) * scale).toFixed(2)}%`)
+    points.push(`${(100 - px(depthX(0, 7, 1) * scale)).toFixed(2)}% ${(0).toFixed(2)}%`)
+    if (primary === 1) for (let index = 1; index <= steps; index += 1) points.push(`${(100 - px(depthX(index, 7, 1) * scale)).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
+    points.push(`${(100).toFixed(2)}% ${(100 - py(depthY(0, 13, 2) * scale)).toFixed(2)}%`)
+    if (primary === 2) for (let index = 1; index <= steps; index += 1) points.push(`${(100 - index / steps * 100).toFixed(2)}% ${(100 - py(depthY(index, 13, 2) * scale)).toFixed(2)}%`)
+    points.push(`${px(depthX(0, 19, 3) * scale).toFixed(2)}% ${(100).toFixed(2)}%`)
+    if (primary === 3) for (let index = 1; index <= steps; index += 1) points.push(`${px(depthX(index, 19, 3) * scale).toFixed(2)}% ${(100 - index / steps * 100).toFixed(2)}%`)
     return `polygon(${points.join(', ')})`
   }
 
@@ -242,7 +251,7 @@ export function tornContours(card, format = DEFAULT_FORMAT, material = DEFAULT_M
   return {
     paper: { outer: polygonFor(outerInset, 1), inner: polygonFor(outerInset, .9) },
     image: { outer: polygonFor(imageInset, 1) },
-    tear: { primaryPx, minorPx, capPx: shortEdgePx * cap },
+    tear: { tearPx, capPx: shortEdgePx * cap, edge: primary, steps },
   }
 }
 // 旋转会让卡片扫出轴对齐包围盒之外，所以「内容区不得碰撞」必须按旋转后的外扩量判断。
@@ -445,6 +454,15 @@ export function placeFrame(photos, random, style, recipe = null, scale = 1, form
   placed.forEach((card, index) => {
     if (card.tape && index >= finalTapeCount) delete card.tape
   })
+  // 毛边：每页挑一张来撕（产品设定 perPage = 1）—— 挑**该页面积最大**的那张（通常是主图）。
+  // 只做标记，不改几何：撕口在卡片盒子内部，不进尺寸与碰撞判定。
+  const edge = materialOf(material).edge
+  placed.forEach((card) => { delete card.tear })
+  const tearPerPage = edge.perPage ?? 0
+  if (tearPerPage > 0 && placed.length) {
+    const ranked = [...placed].sort((a, b) => b.w * b.h - a.w * a.h)
+    ranked.slice(0, tearPerPage).forEach((card) => { card.tear = true })
+  }
   return { placed, unplaced, rejected, overlaps, contentCollisions: contentCollisions(placed, format, material) }
 }
 

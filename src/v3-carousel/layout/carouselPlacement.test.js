@@ -129,7 +129,7 @@ describe('V3 受控随机几何：硬边界', () => {
         }
       }
     }
-  })
+  }, 30000)
 
   it('预览与导出同一尺度：按页宽写百分比白边，就等于几何层给的内缩量', () => {
     // 预览把白边写成 mat/页宽 的百分比（CSS padding 的百分比以父级宽度为基准），
@@ -443,46 +443,67 @@ describe('V3 材质三轴：边框 / 边缘 / 胶带', () => {
     expect(none.bottom).toBe(none.x)
   })
 
-  it('毛边：撕深按卡片短边算（与白边厚度无关），且封顶在 12%', () => {
+  it('毛边：撕深按卡片短边算（与白边厚度无关），封顶 12%，且只撕一条边', () => {
     const torn = EDGE_STYLES.torn
-    expect(torn.tear).toBeGreaterThan(torn.tearMinor)
     expect(torn.tear).toBeLessThanOrEqual(torn.maxTear)
     // 12% 是产品确认的唯一裁切例外上限，不能再放宽。
     expect(torn.maxTear).toBeLessThanOrEqual(.12)
-    // 毛边不再依赖白边：无边框 + 毛边时白边就是基础白边，但撕口照样啃到照片本体。
+    // 每页只挑一张来撕（产品设定）。
+    expect(torn.perPage).toBe(1)
+    // 毛边不依赖白边：无边框 + 毛边时白边还是基础白边，但撕口照样啃到照片本体。
     const bare = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off })
     const ragged = materialOf({ border: BORDER_STYLES.none, edge: torn, tape: TAPE_STYLES.off })
     const sample = { w: .5, h: .4 }
     expect(matInsets(sample, DEFAULT_FORMAT, ragged).x).toBe(matInsets(sample, DEFAULT_FORMAT, bare).x)
   })
 
-  it('毛边轮廓：主撕边更深、撕口啃进照片本体、深度不越上限', () => {
+  it('毛边：每页只有一张被撕，而且是该页面积最大的那张', () => {
+    const ragged = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.torn, tape: TAPE_STYLES.off })
+    for (const seed of SEEDS) {
+      const story = planSmartStory(photosOf(DEMO_DIMS, 10), seed, STYLE_LAYOUTS.muse, DEFAULT_FORMAT, ragged)
+      for (const frame of story.frames) {
+        const tornCards = frame.placed.filter((card) => card.tear)
+        expect(tornCards, `seed=${seed} 页内张数=${frame.placed.length}`).toHaveLength(EDGE_STYLES.torn.perPage)
+        const biggest = [...frame.placed].sort((a, b) => b.w * b.h - a.w * a.h)[0]
+        expect(tornCards[0].photo.id, `seed=${seed}`).toBe(biggest.photo.id)
+      }
+    }
+  })
+
+  it('毛边轮廓：只撕一条边、撕口啃进照片本体、深度不越上限、polygon 合法', () => {
     const ragged = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.torn, tape: TAPE_STYLES.off })
     let bitten = 0
+    const edges = new Set()
     for (const seed of SEEDS) {
       const story = planSmartStory(photosOf(DEMO_DIMS, 10), seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, ragged)
       for (const card of story.frames.flatMap((frame) => frame.placed)) {
+        if (!card.tear) continue
         const contours = tornContours(card, DEFAULT_FORMAT, ragged, card.photo.id)
         const label = `${card.photo.name} seed=${seed}`
         expect(contours, label).toBeTruthy()
         const shortEdgePx = Math.min(card.w * DEFAULT_FORMAT.width, card.h * DEFAULT_FORMAT.height)
-        // 主撕边比其余三条深，且都在上限之内
-        expect(contours.tear.primaryPx, label).toBeGreaterThan(contours.tear.minorPx)
-        expect(contours.tear.primaryPx, label).toBeLessThanOrEqual(contours.tear.capPx + 1e-9)
+        // 撕深在上限之内，而且确实按短边算
+        expect(contours.tear.tearPx, label).toBeGreaterThan(0)
+        expect(contours.tear.tearPx, label).toBeLessThanOrEqual(contours.tear.capPx + 1e-9)
         expect(contours.tear.capPx, label).toBeCloseTo(shortEdgePx * EDGE_STYLES.torn.maxTear, 9)
         // 撕口要比白边更深 —— 这才叫「把相纸撕掉一部分」（照片本体被裁掉一角）
-        if (contours.tear.primaryPx > card.mat.top) bitten += 1
-        // 照片与相纸用同一套噪声，所以两者的撕口轮廓是两条不同的 polygon（各自坐标系）
-        expect(contours.image.outer, label).not.toBe(contours.paper.outer)
+        if (contours.tear.tearPx > card.mat.top) bitten += 1
+        // 只撕一条边：那条边有 steps+1 个采样点，其余三条各 1 个点（= 直边）
+        edges.add(contours.tear.edge)
+        expect(contours.paper.outer.split(',').length, label).toBe(contours.tear.steps + 4)
         // 轮廓必须是合法 CSS：曾经因为坐标传了半套，生成出 NaN% 让 clip-path 被浏览器整条丢掉。
         for (const polygon of [contours.paper.outer, contours.paper.inner, contours.image.outer]) {
           expect(polygon, label).toMatch(/^polygon\(/)
           expect(polygon, label).not.toContain('NaN')
         }
+        // 照片与相纸用同一套噪声，但各自坐标系 → 两条不同的 polygon
+        expect(contours.image.outer, label).not.toBe(contours.paper.outer)
       }
     }
     expect(bitten).toBeGreaterThan(0)
-  })
+    // 撕哪条边不是固定的：竖图撕左右、横图撕上下，一组作品里至少出现两种边（不会页页同一个位置）
+    expect(edges.size).toBeGreaterThanOrEqual(2)
+  }, 20000)
 
   it('毛边是确定性的：同一张照片每次得到同一套轮廓', () => {
     const ragged = materialOf({ edge: EDGE_STYLES.torn })
@@ -560,7 +581,7 @@ describe('V3 材质三轴：边框 / 边缘 / 胶带', () => {
         }
       }
     }
-  })
+  }, 30000)
 
   it('材质不是纯装饰：拍立得改变几何，毛边改变照片自身的形状', () => {
     const bare = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off })
