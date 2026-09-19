@@ -146,30 +146,46 @@ function matPercents(box, format, material) {
   }
 }
 
-// 毛边：在「相纸层」上裁一个不规则轮廓。做法是沿四条边叠三层不同频率的确定性噪声
-// （大起伏 + 中起伏 + 细齿），再按 photoId 抖动，所以每张都不一样但同一 seed 可复现。
-// 撕边深度 = 边框厚度 × tear，只啃相纸边框、不碰照片内容。
-function tornClipPath(card, format, material, photoId) {
+// 毛边：在「相纸层」上裁出不规则轮廓。要点（对着参考图调的）：
+//   · 每条边 22 个采样点 —— 点太少就只是平缓波浪，不像撕纸；
+//   · 三层频率叠加（慢起伏 + 快抖动 + 偶发深缺口），轮廓才不规则；
+//   · 每张卡片有一条「主撕边」（更深），其余三条浅一点，像从纸卷上撕下来的；
+//   · 深度硬性封顶在白边宽度内（≤ 出血带），所以永远不会啃到照片内容。
+// 返回外轮廓与内轮廓：内轮廓用来画那圈纤维毛边。
+function tornContours(card, format, material, photoId) {
   const tear = material.edge?.tear ?? 0
-  if (!tear) return undefined
+  if (!tear) return null
   const mat = card.mat ?? matInsets(card, format, material)
-  const tearX = mat.x * tear / (card.w * format.width) * 100
-  const tearY = (mat.top * tear) / (card.h * format.height) * 100
+  const maxX = mat.x * tear / (card.w * format.width) * 100
+  const maxY = (mat.top * tear) / (card.h * format.height) * 100
   const seed = [...photoId].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 9973, 7)
-  const noise = (index, salt) => {
-    const a = Math.sin((seed + salt) * .37 + index * 1.7) * .5
-    const b = Math.sin((seed + salt * 3) * .11 + index * 4.3) * .3
-    const c = ((seed * (index + salt + 5)) % 13) / 13 - .5
-    return .5 + a * .5 + b * .45 + c * .35
+  const primary = seed % 4
+
+  const hash = (index, salt) => {
+    const value = Math.sin(seed * 12.9898 + salt * 78.233 + index * 37.719) * 43758.5453
+    return value - Math.floor(value)
   }
-  const depth = (value) => Math.max(0, value)
-  const steps = 10
-  const points = []
-  for (let index = 0; index <= steps; index += 1) points.push(`${(index / steps * 100).toFixed(2)}% ${depth(tearY * noise(index, 1)).toFixed(2)}%`)
-  for (let index = 1; index <= steps; index += 1) points.push(`${(100 - depth(tearX * noise(index, 7))).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
-  for (let index = steps - 1; index >= 0; index -= 1) points.push(`${(index / steps * 100).toFixed(2)}% ${(100 - depth(tearY * noise(index, 13))).toFixed(2)}%`)
-  for (let index = steps - 1; index >= 1; index -= 1) points.push(`${depth(tearX * noise(index, 19)).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
-  return `polygon(${points.join(', ')})`
+  const depth = (index, salt, max, side) => {
+    const slow = .5 + .5 * Math.sin(index * .5 + seed * .07 + salt)
+    const fast = hash(index, salt)
+    const notch = hash(index * 5 + salt, salt * 3) > .8 ? 1.45 : 1
+    const boost = side === primary ? 1.35 : 1
+    return Math.min(max, max * (.24 + slow * .34 + fast * .42) * notch * boost)
+  }
+
+  const polygon = (scale) => {
+    const steps = 22
+    const ax = maxX * scale
+    const ay = maxY * scale
+    const points = []
+    for (let index = 0; index <= steps; index += 1) points.push(`${(index / steps * 100).toFixed(2)}% ${depth(index, 1, ay, 0).toFixed(2)}%`)
+    for (let index = 1; index <= steps; index += 1) points.push(`${(100 - depth(index, 7, ax, 1)).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
+    for (let index = steps - 1; index >= 0; index -= 1) points.push(`${(index / steps * 100).toFixed(2)}% ${(100 - depth(index, 13, ay, 2)).toFixed(2)}%`)
+    for (let index = steps - 1; index >= 1; index -= 1) points.push(`${depth(index, 19, ax, 3).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
+    return `polygon(${points.join(', ')})`
+  }
+
+  return { outer: polygon(1), inner: polygon(.66) }
 }
 
 function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAULT_FORMAT, material = undefined }) {
@@ -182,6 +198,7 @@ function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAUL
       {rhythm && frame.recipe && <span className="rhythm-frame__role">{frame.recipe.label}</span>}
       {frame.placed.map(({ photo, x, y, w, h, rotate, mat: cardMat, tape }, cardIndex) => {
         const mat = matPercents({ w, h, mat: cardMat }, format, spec)
+        const torn = tornContours({ w, h, mat: cardMat }, format, spec, photo.id)
         return (
           <figure
             key={photo.id}
@@ -199,7 +216,9 @@ function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAUL
             }}
           >
             {/* 相纸层单独裁毛边（不是裁整个卡片），这样胶带才能越出卡片而不被裁断。 */}
-            <span className="scatter-card__paper" style={{ clipPath: tornClipPath({ w, h, mat: cardMat }, format, spec, photo.id) }} aria-hidden="true" />
+            <span className="scatter-card__paper" style={{ clipPath: torn?.outer }} aria-hidden="true" />
+            {/* 纤维毛边：比外轮廓内缩一圈，露出一条毛糙的纸纤维边（参考图里最像撕纸的那部分）。 */}
+            {torn && <span className="scatter-card__fringe" style={{ clipPath: torn.inner }} aria-hidden="true" />}
             <img src={photo.previewSrc} alt="随机排版中的照片" />
             {spec.tape.enabled && tape && (
               <span

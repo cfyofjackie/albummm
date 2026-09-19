@@ -98,6 +98,19 @@
     repeating-linear-gradient(-79deg, rgba(255, 255, 255, .5) 0 1px, transparent 1px 4px);
 }
 
+/* 纤维毛边：比外轮廓再内缩一圈，露出来的那条环就是纸被撕开后的断面 ——
+   细密竖纹 + 偏暖米色，是「像撕纸」最关键的一层。 */
+.scatter-card__fringe {
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(88deg, rgba(150, 140, 116, .3) 0 1px, transparent 1px 2px),
+    repeating-linear-gradient(92deg, rgba(255, 255, 255, .6) 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, rgba(206, 194, 165, .55), rgba(232, 223, 200, .4));
+  opacity: .6;
+  pointer-events: none;
+}
+
 /* 和纸胶带：半透明、两端毛糙、微微歪斜。下端停在照片内容上边界（位置由几何层算好），
    上端越出卡片压到纸面上 —— 所以它永远不会遮住照片内容。 */
 .scatter-tape {

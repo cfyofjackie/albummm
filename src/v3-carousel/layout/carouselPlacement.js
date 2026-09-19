@@ -46,7 +46,9 @@ export const BORDER_STYLES = {
 }
 export const EDGE_STYLES = {
   straight: { id: 'straight', label: '直边', tear: 0, minBand: 0 },
-  torn: { id: 'torn', label: '毛边', tear: .55, minBand: 10 },
+  // 毛边要能看出来：出血带至少 18px（页面宽 1.7%），撕裂深度吃到出血带的 85%。
+  // 没有出血带就撕不出毛边（只能啃照片），所以毛边自带这个最小带宽。
+  torn: { id: 'torn', label: '毛边', tear: .85, minBand: 18 },
 }
 export const TAPE_STYLES = {
   off: { id: 'off', label: '无', enabled: false, lengthScale: 0, thickness: 0, protrude: 0 },

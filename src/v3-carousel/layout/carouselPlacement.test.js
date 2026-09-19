@@ -522,22 +522,22 @@ describe('V3 材质三轴：边框 / 边缘 / 胶带', () => {
     }
   })
 
-  it('材质不是纯装饰：加厚边框与毛边都会改变卡片外框尺寸', () => {
+  it('材质不是纯装饰：加厚边框与毛边都真的改变了排版', () => {
     const bare = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off })
     const polaroid = materialOf({ border: BORDER_STYLES.polaroid, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off })
     const torn = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.torn, tape: TAPE_STYLES.off })
-    // 外框 = 内容 + 边框：边框一变，同一页放得下的东西就变了（这正是它必须进几何的原因）。
-    const outerArea = (story) => {
-      const cards = story.frames.flatMap((frame) => frame.placed)
-      return cards.reduce((sum, card) => sum + card.w * card.h, 0) / cards.length
-    }
+    const sample = { w: .4, h: .5 }
+    // 边框厚度直接决定外框（mat 进入 sizeFor：外框 = 内容 + 边框）。
+    expect(matInsets(sample, DEFAULT_FORMAT, polaroid).x).toBeGreaterThan(matInsets(sample, DEFAULT_FORMAT, bare).x)
+    expect(matInsets(sample, DEFAULT_FORMAT, torn).x).toBeGreaterThan(matInsets(sample, DEFAULT_FORMAT, bare).x)
+    // 但「平均外框更大」不成立：厚边框会让拥挤的页触发整页缩放，反而可能更小。
+    // 所以这里断言的是「每个种子下材质版与裸版的排版都不同」。
+    const geometry = (story) => JSON.stringify(story.frames.map((frame) => frame.placed.map((card) => [card.photo.id, +card.w.toFixed(4), +card.h.toFixed(4)])))
     for (const seed of SEEDS) {
       const photos = photosOf(DEMO_DIMS, 10)
-      const base = outerArea(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, bare))
-      const thick = outerArea(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, polaroid))
-      const ragged = outerArea(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, torn))
-      expect(thick, `seed=${seed}`).toBeGreaterThan(base)
-      expect(ragged, `seed=${seed}`).toBeGreaterThan(base)
+      const base = geometry(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, bare))
+      expect(geometry(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, polaroid)), `拍立得 seed=${seed}`).not.toBe(base)
+      expect(geometry(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, torn)), `毛边 seed=${seed}`).not.toBe(base)
     }
   })
 })
