@@ -1,5 +1,28 @@
 .scatter-prototype { background: #e8e5dd; }
 
+/* 纸面背景：一处定义，预览的整条带子与导出画布的单页共用同一组变量。
+   之后要做「可选背景」，就是换这几个变量的值（或按用户选择挂不同的 class）。 */
+.scatter-prototype {
+  --paper-color: #d8d6cd;
+  --paper-image: linear-gradient(rgba(69, 66, 58, .075) 1px, transparent 1px), linear-gradient(90deg, rgba(69, 66, 58, .075) 1px, transparent 1px);
+  --paper-size: 14px 14px;
+}
+.scatter-prototype--gallery {
+  --paper-color: #e7e4dc;
+  --paper-image: linear-gradient(rgba(69, 66, 58, .045) 1px, transparent 1px), linear-gradient(90deg, rgba(69, 66, 58, .045) 1px, transparent 1px);
+  --paper-size: 18px 18px;
+}
+.scatter-prototype--weekend {
+  --paper-color: #d1cec5;
+  --paper-image: linear-gradient(rgba(74, 71, 63, .08) 1px, transparent 1px), linear-gradient(90deg, rgba(74, 71, 63, .08) 1px, transparent 1px);
+  --paper-size: 13px 13px;
+}
+.scatter-prototype--muse {
+  --paper-color: #d9cabd;
+  --paper-image: linear-gradient(90deg, #e5ddd2 0%, #d9cabd 46%, #b5aa97 72%, #dfd7cb 100%);
+  --paper-size: 100% 100%;
+}
+
 .scatter-prototype__state {
   display: flex;
   flex-wrap: wrap;
@@ -13,10 +36,25 @@
 
 .scatter-prototype__state span + span { padding-left: 14px; border-left: 1px solid #c4c0b6; }
 
+/* 状态行里的小控件（页面规格切换、页码开关）。 */
+.scatter-prototype__control { display: inline-flex; align-items: center; gap: 4px; }
+.scatter-prototype__control button {
+  min-height: 18px;
+  padding: 0 7px;
+  border: 1px solid #c4c0b6;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .5);
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+.scatter-prototype__control button.is-active { border-color: #45423a; background: #45423a; color: #f7f5ef; }
+
 .scatter-strip {
-  background-color: #d8d6cd;
-  background-image: linear-gradient(rgba(69, 66, 58, .075) 1px, transparent 1px), linear-gradient(90deg, rgba(69, 66, 58, .075) 1px, transparent 1px);
-  background-size: 14px 14px;
+  background-color: var(--paper-color);
+  background-image: var(--paper-image);
+  background-size: var(--paper-size);
 }
 
 .scatter-frame::before {
@@ -36,13 +74,12 @@
 .scatter-strip {
   grid-template-columns: repeat(var(--scatter-page-count, 5), minmax(178px, 1fr));
   min-width: calc(var(--scatter-page-count, 5) * 178px);
-  aspect-ratio: calc(var(--scatter-page-count, 5) * .8) / 1;
+  /* 页面比例来自几何规格：4:5 是 .8，4:3 是 1.3333。 */
+  aspect-ratio: calc(var(--scatter-page-count, 5) * var(--scatter-page-aspect, .8)) / 1;
 }
 
-.scatter-prototype--gallery .scatter-strip { background-color: #e7e4dc; background-image: linear-gradient(rgba(69, 66, 58, .045) 1px, transparent 1px), linear-gradient(90deg, rgba(69, 66, 58, .045) 1px, transparent 1px); }
 .scatter-prototype--gallery .scatter-card { box-shadow: 0 4px 9px rgba(37, 33, 26, .1) !important; }
 
-.scatter-prototype--muse .scatter-strip { background: linear-gradient(90deg, #e5ddd2 0%, #d9cabd 46%, #b5aa97 72%, #dfd7cb 100%); }
 .scatter-prototype--muse .scatter-strip > .scatter-frame:nth-child(2)::before,
 .scatter-prototype--muse .scatter-strip > .scatter-frame:nth-child(4)::before {
   position: absolute;
@@ -60,7 +97,6 @@
   content: '';
 }
 
-.scatter-prototype--weekend .scatter-strip { background-color: #d1cec5; }
 .scatter-prototype--weekend .scatter-strip > .scatter-frame:nth-child(2)::after,
 .scatter-prototype--weekend .scatter-strip > .scatter-frame:nth-child(5)::after {
   position: absolute;
@@ -92,37 +128,25 @@
   overflow: hidden;
 }
 
+/* 与预览共用同一组 --paper-* 变量，只是把背景按页号平移；
+   Muse 的渐变要按整组宽度展开，取本页那一格。 */
 .scatter-export__paper {
   position: absolute;
   inset: 0;
+  background-color: var(--paper-color);
+  background-image: var(--paper-image);
+  background-size: var(--paper-size);
   background-position-x: calc(var(--scatter-page-index, 0) * -1080px);
 }
 
-.scatter-export--gallery .scatter-export__paper {
-  background-color: #e7e4dc;
-  background-image: linear-gradient(rgba(69, 66, 58, .045) 1px, transparent 1px), linear-gradient(90deg, rgba(69, 66, 58, .045) 1px, transparent 1px);
-  background-size: 18px 18px;
-}
-
-.scatter-export--weekend .scatter-export__paper {
-  background-color: #d1cec5;
-  background-image: linear-gradient(rgba(74, 71, 63, .08) 1px, transparent 1px), linear-gradient(90deg, rgba(74, 71, 63, .08) 1px, transparent 1px);
-  background-size: 13px 13px;
-}
-
-.scatter-export--muse .scatter-export__paper {
-  background-image: linear-gradient(90deg, #e5ddd2 0%, #d9cabd 46%, #b5aa97 72%, #dfd7cb 100%);
+.scatter-prototype--muse .scatter-export__paper {
   background-size: calc(var(--scatter-page-count, 5) * 1080px) 100%;
 }
 
-/* 4:5 作品居中放在导出画布上：9:16 多出来的上下两条是延伸的纸面。 */
+/* 画布就是页面本身（每个规格按自己的比例构图），作品块铺满整张画布。 */
 .scatter-export__art {
   position: absolute;
-  top: 50%;
-  left: 0;
-  width: 1080px;
-  height: var(--scatter-art-height, 1350px);
-  transform: translateY(-50%);
+  inset: 0;
 }
 
 /* 预览里每页的高度来自带子的 grid 拉伸；导出画布里它是个普通块，
@@ -177,15 +201,15 @@
   .scatter-prototype__state { gap: 6px 10px; font-size: 9px; }
   .scatter-prototype__state span + span { padding-left: 10px; }
   /* 手机上一页一屏：每页 86vw，左右各留 7vw 露出相邻页的边，横滑时按页吸附。
-     页宽定成 86vw 之后，页高直接由 4:5 推出（86vw / .8 = 107.5vw），
-     所以要显式覆盖母板里写死的 height: 275px —— 否则 4:5 会被压扁。
+     页高由页面比例推出（86vw / aspect：4:5 是 107.5vw，4:3 是 64.5vw），
+     所以要显式覆盖母板里写死的 height: 275px —— 否则页面比例会被压扁。
      显式写 height 而不是用 aspect-ratio，是因为全局 box-sizing: border-box 下
-     两者的取整基准不同，显式高度可避免页高被算成 109vw 那类偏差。 */
+     两者的取整基准不同，显式高度可避免页高被算歪。 */
   .scatter-prototype .carousel-master__stage { scroll-snap-type: x mandatory; scroll-padding-left: 7vw; }
   .scatter-strip {
     grid-template-columns: repeat(var(--scatter-page-count, 5), 86vw);
     min-width: calc(var(--scatter-page-count, 5) * 86vw);
-    height: calc(86vw / .8);
+    height: calc(86vw / var(--scatter-page-aspect, .8));
     aspect-ratio: auto;
     /* 母板给带子设了 overflow: hidden，那会让带子自己变成滚动容器，
        于是 .scatter-frame 的吸附点被绑到带子上（而带子没有 snap-type），吸附就失效。

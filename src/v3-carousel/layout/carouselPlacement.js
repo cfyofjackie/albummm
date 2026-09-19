@@ -4,11 +4,26 @@
 
 import { paginatePhotos } from './carouselSmartPagination.js'
 
-export const FRAME_ASPECT = .8 // 4:5 output pages
+export const FRAME_ASPECT = .8 // 4:5 output pages（portrait 规格的页面比例，向后兼容）
 export const EXPORT_WIDTH = 1080
 export const EXPORT_HEIGHT = 1350
+
+// 页面规格：同一组照片可以按不同比例重新构图，而不是把一种构图缩放塞进另一种画布。
+// aspect = 页宽 / 页高；所有几何量都以「页宽的百分比」为单位（y 以页高为 1 保存在卡片里，
+// 换算时再除以 aspect）。portrait 是主规格，landscape 只换比例、不换分页与风格。
+export const PAGE_FORMATS = {
+  portrait: { id: 'portrait', label: '4:5', width: 1080, height: 1350, aspect: 4 / 5 },
+  landscape: { id: 'landscape', label: '4:3', width: 1080, height: 810, aspect: 4 / 3 },
+}
+export const DEFAULT_FORMAT = PAGE_FORMATS.portrait
+
 // 当前验证已确定的视觉边界：限制照片内容，不限制带白边的外卡片。
 export const SIZE_RULES = { minShortEdge: .2, maxContentWidth: .8, maxContentHeight: .78 }
+
+// 「内容短边 ≥ 页面短边的 20%」换算成页宽单位：竖版页面的短边是宽（1），横版是（1/aspect）。
+export function shortEdgeFloor(format = DEFAULT_FORMAT) {
+  return SIZE_RULES.minShortEdge * Math.min(1, 1 / format.aspect)
+}
 
 // 自动缩放：一页在 20% 优先下限之上怎么都放不下时，整页所有卡片统一下调尺寸重排。
 // 目的是让「所有照片留在同一页」优先于「短边 ≥ 20%」。阶梯下限（48%）就是缩放的硬边界：
@@ -52,46 +67,47 @@ function intersection(a, b) {
   return w * h
 }
 
-function physicalShortEdge(box) {
-  return Math.min(box.w, box.h / FRAME_ASPECT)
+function physicalShortEdge(box, aspect = FRAME_ASPECT) {
+  return Math.min(box.w, box.h / aspect)
 }
 
-export function matFor(box) {
-  // 以 1080×1350 导出画布估算：小卡片 2px，大卡片最多 5px。
-  return clamp(Math.round(physicalShortEdge(box) * EXPORT_WIDTH * .015), 2, 5)
+export function matFor(box, format = DEFAULT_FORMAT) {
+  // 以 1080 宽的导出画布估算：小卡片 2px，大卡片最多 5px。
+  return clamp(Math.round(physicalShortEdge(box, format.aspect) * EXPORT_WIDTH * .015), 2, 5)
 }
 
-export function innerBox(box) {
-  const mat = matFor(box)
-  const insetX = mat / EXPORT_WIDTH
-  const insetY = mat / EXPORT_HEIGHT
+export function innerBox(box, format = DEFAULT_FORMAT) {
+  const mat = matFor(box, format)
+  const insetX = mat / format.width
+  const insetY = mat / format.height
   return { x: box.x + insetX, y: box.y + insetY, w: box.w - insetX * 2, h: box.h - insetY * 2 }
 }
 
-function sizeFor(photo, isAnchor, random, style, recipe = null, scale = 1) {
+function sizeFor(photo, isAnchor, random, style, recipe = null, scale = 1, format = DEFAULT_FORMAT) {
   const aspect = photo.width / photo.height
+  const floor = shortEdgeFloor(format)
   const desiredShort = isAnchor
     ? (recipe?.anchorShort ?? style.anchorShort) + (random() - .5) * .1
-    : (recipe?.fragmentBase ?? SIZE_RULES.minShortEdge) + random() * (recipe?.fragmentRange ?? style.fragmentRange)
+    : (recipe?.fragmentBase ?? floor) + random() * (recipe?.fragmentRange ?? style.fragmentRange)
   let contentW = aspect > 1 ? desiredShort * aspect : desiredShort
-  let contentH = contentW * FRAME_ASPECT / aspect
+  let contentH = contentW * format.aspect / aspect
   const maxScale = Math.min(SIZE_RULES.maxContentWidth / contentW, SIZE_RULES.maxContentHeight / contentH)
   if (maxScale < 1) {
     contentW *= maxScale
     contentH *= maxScale
   }
-  const currentShortEdge = Math.min(contentW, contentH / FRAME_ASPECT)
-  const minScale = SIZE_RULES.minShortEdge / currentShortEdge
+  const currentShortEdge = Math.min(contentW, contentH / format.aspect)
+  const minScale = floor / currentShortEdge
   if (minScale > 1 && contentW * minScale <= SIZE_RULES.maxContentWidth && contentH * minScale <= SIZE_RULES.maxContentHeight) {
     contentW *= minScale
     contentH *= minScale
   }
-  // 整页自动缩放放在最后：它优先于 20% 下限，但由 MIN_FITTING_SHORT_EDGE 兜底。
+  // 整页自动缩放放在最后：它优先于短边下限（阶梯下限 48% 才是硬边界）。
   contentW *= scale
   contentH *= scale
   // 白边在视觉上不应吃掉内容尺度，因此在内容尺寸之外增加外卡片边界。
-  const mat = matFor({ w: contentW, h: contentH })
-  return { w: contentW + mat * 2 / EXPORT_WIDTH, h: contentH + mat * 2 / EXPORT_HEIGHT }
+  const mat = matFor({ w: contentW, h: contentH }, format)
+  return { w: contentW + mat * 2 / format.width, h: contentH + mat * 2 / format.height }
 }
 
 function pairedCandidate(anchor, w, h, random, style) {
@@ -113,8 +129,8 @@ function pairedCandidate(anchor, w, h, random, style) {
   return options.length ? options[Math.floor(random() * options.length)] : null
 }
 
-function candidateFor(photo, isAnchor, random, style, anchor = null, recipe = null, scale = 1) {
-  const { w, h } = sizeFor(photo, isAnchor, random, style, recipe, scale)
+function candidateFor(photo, isAnchor, random, style, anchor = null, recipe = null, scale = 1, format = DEFAULT_FORMAT) {
+  const { w, h } = sizeFor(photo, isAnchor, random, style, recipe, scale, format)
   if (anchor && recipe) {
     const pair = pairedCandidate(anchor, w, h, random, style)
     if (pair) {
@@ -143,46 +159,46 @@ function candidateFor(photo, isAnchor, random, style, anchor = null, recipe = nu
   }
 }
 
-function acceptable(box, placed, style) {
-  const inner = innerBox(box)
+function acceptable(box, placed, style, format = DEFAULT_FORMAT) {
+  const inner = innerBox(box, format)
   let cardOverlaps = 0
   for (const other of placed) {
     const cardRatio = intersection(box, other) / Math.min(area(box), area(other))
     if (cardRatio > style.overlap) return null
-    if (intersection(inner, innerBox(other)) > .0001) return null
+    if (intersection(inner, innerBox(other, format)) > .0001) return null
     if (cardRatio > 0) cardOverlaps += 1
   }
   if (cardOverlaps > style.maxOverlaps) return null
   return cardOverlaps
 }
 
-function fallbackFor(photo, index, style, recipe, scale = 1) {
-  const { w, h } = sizeFor(photo, index === 0, () => .5, style, recipe, scale)
+function fallbackFor(photo, index, style, recipe, scale = 1, format = DEFAULT_FORMAT) {
+  const { w, h } = sizeFor(photo, index === 0, () => .5, style, recipe, scale, format)
   return { x: .1 + index * .08, y: .12 + index * .12, w, h, rotate: 0 }
 }
 
-function safeFallback(photo, index, placed, style, recipe, scale = 1) {
-  const base = fallbackFor(photo, index, style, recipe, scale)
+function safeFallback(photo, index, placed, style, recipe, scale = 1, format = DEFAULT_FORMAT) {
+  const base = fallbackFor(photo, index, style, recipe, scale, format)
   // 节奏页面不靠缩小回退；更细的搜索网格优先给当前页找到合法空位，
   // 避免一张陪衬图顺延后破坏下一页的“安静区”。
   const grid = [.04, .16, .28, .4, .52, .64, .76, .88]
   for (const y of grid) {
     for (const x of grid) {
       const candidate = { ...base, x: clamp(x, .04, .96 - base.w), y: clamp(y, .06, .94 - base.h) }
-      const cardOverlaps = acceptable(candidate, placed, style)
+      const cardOverlaps = acceptable(candidate, placed, style, format)
       if (cardOverlaps != null) return { box: candidate, cardOverlaps }
     }
   }
   return null
 }
 
-function contentCollisions(placed) {
+function contentCollisions(placed, format = DEFAULT_FORMAT) {
   return placed.reduce((sum, box, index) => sum + placed.slice(index + 1).filter(
-    (other) => intersection(innerBox(box), innerBox(other)) > .0001,
+    (other) => intersection(innerBox(box, format), innerBox(other, format)) > .0001,
   ).length, 0)
 }
 
-export function placeFrame(photos, random, style, recipe = null, scale = 1) {
+export function placeFrame(photos, random, style, recipe = null, scale = 1, format = DEFAULT_FORMAT) {
   const placed = []
   const unplaced = []
   let rejected = 0
@@ -190,8 +206,8 @@ export function placeFrame(photos, random, style, recipe = null, scale = 1) {
   photos.forEach((photo, index) => {
     let chosen = null
     for (let attempt = 0; attempt < 80; attempt += 1) {
-      const candidate = candidateFor(photo, placed.length === 0, random, style, placed[0], recipe, scale)
-      const cardOverlaps = acceptable(candidate, placed, style)
+      const candidate = candidateFor(photo, placed.length === 0, random, style, placed[0], recipe, scale, format)
+      const cardOverlaps = acceptable(candidate, placed, style, format)
       if (cardOverlaps == null) {
         rejected += 1
         continue
@@ -203,7 +219,7 @@ export function placeFrame(photos, random, style, recipe = null, scale = 1) {
     if (chosen) {
       placed.push({ photo, ...chosen })
     } else {
-      const fallback = safeFallback(photo, index, placed, style, recipe, scale)
+      const fallback = safeFallback(photo, index, placed, style, recipe, scale, format)
       if (fallback) {
         overlaps += fallback.cardOverlaps
         placed.push({ photo, ...fallback.box })
@@ -213,23 +229,19 @@ export function placeFrame(photos, random, style, recipe = null, scale = 1) {
       }
     }
   })
-  return { placed, unplaced, rejected, overlaps, contentCollisions: contentCollisions(placed) }
-}
-
-function frameShortEdge(placed) {
-  return placed.length ? Math.min(...placed.map((card) => physicalShortEdge(innerBox(card)))) : 0
+  return { placed, unplaced, rejected, overlaps, contentCollisions: contentCollisions(placed, format) }
 }
 
 // 同一组照片生成多轮候选，选择完整放下且拒绝次数最低的一轮；“换一组排法”仍然只改种子。
 // 整页放不下时（超宽 + 超长配成一页的典型情况），按 FITTING_SCALES 统一下调尺寸重排，
 // 取「整页都放得下」的最大缩放——这取代了以前「让一张照片顺延成单图页」的行为。
 // 阶梯试到底仍有照片放不下时，才顺延成补充页，由 planSmartStory 兜住，不丢图。
-export function placeFrameBest(photos, seed, style, recipe) {
+export function placeFrameBest(photos, seed, style, recipe, format = DEFAULT_FORMAT) {
   let best = null
   for (const scale of FITTING_SCALES) {
     let candidate = null
     for (let attempt = 0; attempt < 16; attempt += 1) {
-      const run = placeFrame(photos, rngFrom(seed + attempt * 7919), style, recipe, scale)
+      const run = placeFrame(photos, rngFrom(seed + attempt * 7919), style, recipe, scale, format)
       const score = run.placed.length * 10000 - run.unplaced.length * 10000 - run.rejected * 2 - run.overlaps
       if (!candidate || score > candidate.score) candidate = { ...run, score, fittingScale: scale }
       if (run.unplaced.length === 0 && run.rejected === 0) break
@@ -242,7 +254,7 @@ export function placeFrameBest(photos, seed, style, recipe) {
 
 // smart 模式：分页先定，再在每页内做受控随机。放不下的照片顺延为补充页，
 // 而不是缩小照片硬塞；补充页仍需通过同一套尺寸与碰撞规则。
-export function planSmartStory(photos, seed, style) {
+export function planSmartStory(photos, seed, style, format = DEFAULT_FORMAT) {
   const random = rngFrom(seed)
   const groups = paginatePhotos(photos, random).map((group) => ({
     photos: group,
@@ -250,15 +262,15 @@ export function planSmartStory(photos, seed, style) {
   }))
   const frames = []
   groups.forEach(({ photos: group, recipe }, index) => {
-    const frame = placeFrameBest(group, seed + index * 104729, style, recipe)
+    const frame = placeFrameBest(group, seed + index * 104729, style, recipe, format)
     frames.push({ ...frame, recipe })
     let overflow = frame.unplaced
     const overflowRecipe = smartRecipeFor(Math.min(4, Math.max(2, overflow.length)))
     while (overflow.length) {
-      const overflowFrame = placeFrameBest(overflow, seed + frames.length * 104729, style, overflowRecipe)
+      const overflowFrame = placeFrameBest(overflow, seed + frames.length * 104729, style, overflowRecipe, format)
       frames.push({ ...overflowFrame, recipe: overflowRecipe })
       if (!overflowFrame.placed.length) {
-        frames.push({ ...placeFrame([overflow[0]], random, style, overflowRecipe), recipe: overflowRecipe })
+        frames.push({ ...placeFrame([overflow[0]], random, style, overflowRecipe, 1, format), recipe: overflowRecipe })
         overflow = overflow.slice(1)
       } else {
         overflow = overflowFrame.unplaced

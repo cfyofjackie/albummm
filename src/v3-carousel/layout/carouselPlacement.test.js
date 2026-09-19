@@ -3,6 +3,7 @@ import {
   EXPORT_HEIGHT,
   EXPORT_WIDTH,
   FITTING_SCALES,
+  PAGE_FORMATS,
   SIZE_RULES,
   STYLE_LAYOUTS,
   innerBox,
@@ -10,6 +11,7 @@ import {
   placeFrame,
   planSmartStory,
   rngFrom,
+  shortEdgeFloor,
 } from './carouselPlacement.js'
 
 const STYLES = Object.entries(STYLE_LAYOUTS)
@@ -36,25 +38,28 @@ const photosOf = (dims, count) => Array.from({ length: count }, (_, index) => {
 
 const aspectOf = (photo) => photo.width / photo.height
 // 内容区在页面里的物理比例：x/w 以页宽为 1，y/h 以页高为 1。
-const physicalAspect = (box) => box.w * EXPORT_WIDTH / (box.h * EXPORT_HEIGHT)
-const physicalShortEdge = (box) => Math.min(box.w, box.h / FRAME_ASPECT)
-// 长边同样换算成「占页宽的比例」，用于判断照片有没有被缩到读不清。
-const longEdge = (box) => Math.max(box.w, box.h / FRAME_ASPECT)
+const physicalAspect = (box, format = PAGE_FORMATS.portrait) => box.w * format.width / (box.h * format.height)
+// 短边 / 长边都换算成「占页宽的比例」，用于与尺寸边界比较。
+const physicalShortEdge = (box, format = PAGE_FORMATS.portrait) => Math.min(box.w, box.h / format.aspect)
+const longEdge = (box, format = PAGE_FORMATS.portrait) => Math.max(box.w, box.h / format.aspect)
 
-let cachedDemoRuns = null
-function demoRuns() {
-  if (!cachedDemoRuns) {
-    cachedDemoRuns = []
+const runCache = new Map()
+function runsFor(format = PAGE_FORMATS.portrait) {
+  if (!runCache.has(format.id)) {
+    const runs = []
     for (const count of COUNTS.filter((value) => value >= 4)) {
       for (const [styleId, layout] of STYLES) {
         for (const seed of SEEDS) {
-          cachedDemoRuns.push({ count, styleId, seed, story: planSmartStory(photosOf(DEMO_DIMS, count), seed, layout) })
+          runs.push({ count, styleId, seed, story: planSmartStory(photosOf(DEMO_DIMS, count), seed, layout, format) })
         }
       }
     }
+    runCache.set(format.id, runs)
   }
-  return cachedDemoRuns
+  return runCache.get(format.id)
 }
+
+const demoRuns = () => runsFor(PAGE_FORMATS.portrait)
 
 describe('V3 受控随机几何：硬边界', () => {
   it('照片内容区互不碰撞', () => {
@@ -94,19 +99,21 @@ describe('V3 受控随机几何：硬边界', () => {
   })
 
   it('预览与导出同一尺度：按页宽写百分比白边，就等于 innerBox() 的内缩量', () => {
-    // 预览把白边写成 matFor()/1080 的百分比（CSS padding 的百分比以父级宽度为基准），
-    // 这个规则保证预览在 216–335px 的页宽下也画出与 1080×1350 导出完全一致的内缩比例：
-    // 水平内缩 = mat/1080（与 innerBox 相同），垂直内缩 = (mat/1080)×(1080/1350) = mat/1350（同样相同）。
-    for (const { story } of demoRuns()) {
-      for (const frame of story.frames) {
-        for (const card of frame.placed) {
-          const mat = matFor({ w: card.w, h: card.h })
-          const paddingFraction = mat / EXPORT_WIDTH
-          const inner = innerBox(card)
-          expect(card.x + paddingFraction).toBeCloseTo(inner.x, 12)
-          expect(card.y + paddingFraction * EXPORT_WIDTH / EXPORT_HEIGHT).toBeCloseTo(inner.y, 12)
-          expect(card.w - paddingFraction * 2).toBeCloseTo(inner.w, 12)
-          expect(card.h - paddingFraction * 2 * EXPORT_WIDTH / EXPORT_HEIGHT).toBeCloseTo(inner.h, 12)
+    // 预览把白边写成 matFor()/页宽 的百分比（CSS padding 的百分比以父级宽度为基准），
+    // 这个规则保证预览在 216–335px 的页宽下也画出与导出完全一致的内缩比例：
+    // 水平内缩 = mat/页宽（与 innerBox 相同），垂直内缩 = (mat/页宽)×(页宽/页高) = mat/页高（同样相同）。
+    for (const format of Object.values(PAGE_FORMATS)) {
+      for (const { story } of runsFor(format)) {
+        for (const frame of story.frames) {
+          for (const card of frame.placed) {
+            const mat = matFor({ w: card.w, h: card.h }, format)
+            const paddingFraction = mat / format.width
+            const inner = innerBox(card, format)
+            expect(card.x + paddingFraction).toBeCloseTo(inner.x, 12)
+            expect(card.y + paddingFraction * format.width / format.height).toBeCloseTo(inner.y, 12)
+            expect(card.w - paddingFraction * 2).toBeCloseTo(inner.w, 12)
+            expect(card.h - paddingFraction * 2 * format.width / format.height).toBeCloseTo(inner.h, 12)
+          }
         }
       }
     }
@@ -302,5 +309,69 @@ describe('V3 智能分页随机：整组规划', () => {
         }
       }
     }
+  })
+})
+
+describe('V3 页面规格：4:3 是按比例重新构图', () => {
+  const landscape = PAGE_FORMATS.landscape
+
+  it('分页与页面比例无关：两种规格的页数计划完全一致', () => {
+    for (const count of COUNTS) {
+      for (const seed of SEEDS) {
+        const portraitPlan = planSmartStory(photosOf(DEMO_DIMS, count), seed, STYLE_LAYOUTS.gallery, PAGE_FORMATS.portrait).pagePlan.join(',')
+        const landscapePlan = planSmartStory(photosOf(DEMO_DIMS, count), seed, STYLE_LAYOUTS.gallery, landscape).pagePlan.join(',')
+        expect(landscapePlan, `count=${count} seed=${seed}`).toBe(portraitPlan)
+      }
+    }
+  })
+
+  it('4:3 同样满足：每页 2–4 张、不丢图、不碰撞、不出现单图页', () => {
+    for (const { count, styleId, seed, story } of runsFor(landscape)) {
+      const label = `count=${count} style=${styleId} seed=${seed}`
+      const ids = story.frames.flatMap((frame) => frame.placed.map((card) => card.photo.id))
+      expect(ids, label).toHaveLength(count)
+      expect(new Set(ids).size, label).toBe(count)
+      expect(story.contentCollisions, label).toBe(0)
+      expect(story.frames.map((frame) => frame.placed.length).filter((size) => size < 2 || size > 4), label).toHaveLength(0)
+    }
+  })
+
+  it('4:3 的尺寸边界：宽 ≤ 80%、高 ≤ 78%、短边 ≥ 页面短边的 20%', () => {
+    // 横版页面的短边是「高」，所以 20% 换算到页宽单位是 0.2 × (1 / 1.3333) = 15%。
+    const floor = shortEdgeFloor(landscape)
+    expect(floor).toBeCloseTo(.15, 10)
+    for (const { count, styleId, seed, story } of runsFor(landscape)) {
+      for (const frame of story.frames) {
+        for (const card of frame.placed) {
+          const inner = innerBox(card, landscape)
+          const label = `count=${count} style=${styleId} seed=${seed} ${card.photo.name}`
+          expect(physicalShortEdge(inner, landscape), label).toBeGreaterThanOrEqual(floor - 1e-9)
+          expect(inner.w, label).toBeLessThanOrEqual(SIZE_RULES.maxContentWidth + 1e-9)
+          expect(inner.h, label).toBeLessThanOrEqual(SIZE_RULES.maxContentHeight + 1e-9)
+          // 不拉伸：误差同样只来自白边在内容盒/外盒上的 1px 取整（实测 < 1%）。
+          const aspectError = Math.abs(physicalAspect(inner, landscape) - aspectOf(card.photo)) / aspectOf(card.photo)
+          expect(aspectError, label).toBeLessThan(.01)
+        }
+      }
+    }
+  })
+
+  it('4:3 是真的重新构图，而不是把 4:5 缩放过来', () => {
+    let framesCompared = 0
+    let framesDifferent = 0
+    for (const [styleId, layout] of STYLES) {
+      for (const count of [6, 10, 13, 24]) {
+        for (const seed of SEEDS) {
+          const photos = photosOf(DEMO_DIMS, count)
+          const portrait = planSmartStory(photos, seed, layout, PAGE_FORMATS.portrait)
+          const wide = planSmartStory(photos, seed, layout, landscape)
+          const geometry = (story) => JSON.stringify(story.frames.map((frame) => frame.placed.map((card) => [card.photo.id, card.w, card.h])))
+          framesCompared += 1
+          if (geometry(portrait) !== geometry(wide)) framesDifferent += 1
+        }
+      }
+    }
+    expect(framesCompared).toBeGreaterThan(0)
+    expect(framesDifferent).toBe(framesCompared)
   })
 })

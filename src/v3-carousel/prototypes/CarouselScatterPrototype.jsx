@@ -3,25 +3,19 @@ import { flushSync } from 'react-dom'
 import { toBlob } from 'html-to-image'
 import { makeDemoPhotos } from '../../shared/demo.js'
 import { loadPhoto } from '../../shared/photo.js'
-import { EXPORT_WIDTH, clamp, matFor, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS } from '../layout/carouselPlacement.js'
+import { EXPORT_WIDTH, PAGE_FORMATS, clamp, matFor, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS } from '../layout/carouselPlacement.js'
 import './CarouselMastersPrototype.css'
 import './CarouselScatterPrototype.css'
 
 // PROTOTYPE — Can a seeded, geometry-only loose layout preserve photo ratios
 // while allowing small paper-card overlaps? Open /?prototype=carousel-scatter.
 
-// 导出规格：两个格式共用同一份「4:5 作品」，9:16 只是把它居中放在更高的画布上，
-// 多出来的上下两条是延伸的纸面背景 —— 这样两种格式是同一件作品，不会出现构图不一致。
-const EXPORT_FORMATS = [
-  {
-    id: 'feed', slug: '4x5', label: '4:5', width: 1080, height: 1350, artHeight: 1350,
-    paper: { gallery: '#e7e4dc', muse: '#d9cabd', weekend: '#d1cec5' },
-  },
-  {
-    id: 'story', slug: '9x16', label: '9:16', width: 1080, height: 1920, artHeight: 1350,
-    paper: { gallery: '#e7e4dc', muse: '#d9cabd', weekend: '#d1cec5' },
-  },
-]
+// 页面规格来自几何层（PAGE_FORMATS）：每个规格都按自己的页面比例重新构图，
+// 不是把一种构图缩放进另一种画布。这里的 paper 只作为 html-to-image 的兜底色，
+// 真正的纸面背景由 CSS 变量（--paper-*）提供。
+const PAPER_COLORS = { gallery: '#e7e4dc', muse: '#d9cabd', weekend: '#d1cec5' }
+const FORMATS = Object.values(PAGE_FORMATS)
+const formatById = (id) => PAGE_FORMATS[id] ?? PAGE_FORMATS.portrait
 
 // 用户选择风格；随机的位置、尺寸与轻叠只是各风格内部的排版规则。
 // 几何参数放在 layout/carouselPlacement.js，与分页规则一样可以用固定种子回归。
@@ -90,8 +84,8 @@ function groupsFor(photos, recipes = null) {
 }
 
 // smart 的整组规划已移到 layout/carouselPlacement.js；这里只保留 scatter / rhythm 两条历史路径。
-function planStory(photos, seed, style, rhythm = false, smart = false) {
-  if (smart) return planSmartStory(photos, seed, style)
+function planStory(photos, seed, style, rhythm = false, smart = false, format = PAGE_FORMATS.portrait) {
+  if (smart) return planSmartStory(photos, seed, style, format)
   const random = rngFrom(seed)
   const frames = []
   let pending = []
@@ -145,10 +139,10 @@ function matPercentFor(box) {
   return matFor(box) / EXPORT_WIDTH * 100
 }
 
-function ScatterFrame({ frame, index, rhythm }) {
+function ScatterFrame({ frame, index, rhythm, showNumber = true }) {
   return (
     <article className={`carousel-master__frame scatter-frame ${rhythm && frame.recipe ? `rhythm-frame rhythm-frame--${frame.recipe.id}` : ''}`}>
-      <span className="carousel-master__number">{String(index + 1).padStart(2, '0')}</span>
+      {showNumber && <span className="carousel-master__number">{String(index + 1).padStart(2, '0')}</span>}
       {rhythm && frame.recipe && <span className="rhythm-frame__role">{frame.recipe.label}</span>}
       {frame.placed.map(({ photo, x, y, w, h, rotate }) => (
         <figure
@@ -185,8 +179,11 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const [photos, setPhotos] = useState([])
   const [seed, setSeed] = useState(4128)
   const [loading, setLoading] = useState(true)
+  const [previewFormatId, setPreviewFormatId] = useState(PAGE_FORMATS.portrait.id)
+  const [showNumbers, setShowNumbers] = useState(true)
   const inputRef = useRef(null)
   const style = STYLES.find((item) => item.id === activeId)
+  const previewFormat = formatById(previewFormatId)
 
   useEffect(() => {
     let live = true
@@ -246,7 +243,10 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
 
   const exportPages = async (format) => {
     if (!story || exportJob) return
-    const total = story.frames.length
+    // 导出的是目标规格自己的构图：按该规格重新规划一遍，而不是复用预览里的 4:5 排版。
+    const target = photos.length ? planStory(photos, seed, style, rhythm, smart, format) : null
+    if (!target) return
+    const total = target.frames.length
     for (let index = 0; index < total; index += 1) {
       // flushSync：保证这一页已经挂到 DOM 上再截图，不靠等帧去猜 React 何时提交。
       flushSync(() => setExportJob({ formatId: format.id, index, total }))
@@ -255,15 +255,16 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
       await Promise.all([...node.querySelectorAll('img')].map((img) => (
         img.complete ? Promise.resolve() : new Promise((resolve) => { img.onload = resolve; img.onerror = resolve })
       )))
-      const blob = await toBlob(node, { pixelRatio: 1, cacheBust: false, backgroundColor: format.paper[activeId] })
-      if (blob) downloadBlob(blob, `albummm-v3-${format.slug}-${String(index + 1).padStart(2, '0')}.png`)
+      const blob = await toBlob(node, { pixelRatio: 1, cacheBust: false, backgroundColor: PAPER_COLORS[activeId] })
+      if (blob) downloadBlob(blob, `albummm-v3-${format.id}-${String(index + 1).padStart(2, '0')}.png`)
       await new Promise((resolve) => setTimeout(resolve, 150))
     }
     flushSync(() => setExportJob(null))
   }
 
-  const story = photos.length ? planStory(photos, seed, style, rhythm, smart) : null
-  const exportFormat = exportJob ? EXPORT_FORMATS.find((item) => item.id === exportJob.formatId) : null
+  const story = photos.length ? planStory(photos, seed, style, rhythm, smart, previewFormat) : null
+  const exportFormat = exportJob ? formatById(exportJob.formatId) : null
+  const exportStory = exportJob && photos.length ? planStory(photos, seed, style, rhythm, smart, exportFormat) : null
   return (
     <main className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} ${smart ? 'smart-prototype' : ''} scatter-prototype--${activeId}`}>
       <header className="carousel-master__header">
@@ -276,7 +277,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
           <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={addPhotos} />
           <button type="button" onClick={() => inputRef.current?.click()}>换一组照片</button>
           <button type="button" onClick={() => setSeed(Math.floor(Math.random() * 1e9))}>换一组排法</button>
-          {smart && EXPORT_FORMATS.map((format) => (
+          {smart && FORMATS.map((format) => (
             <button key={format.id} type="button" disabled={Boolean(exportJob) || !story} onClick={() => exportPages(format)}>
               导出 {format.label}
             </button>
@@ -300,13 +301,40 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
         )}
         {rhythm && story && <span>{story.frames.length} 页输出</span>}
         {rhythm && story && <span>节奏：{story.frames.slice(0, 5).map((frame) => frame.recipe?.label).filter(Boolean).join(' → ')}</span>}
-        {exportJob && <span>正在导出 {exportJob.index + 1} / {exportJob.total} 页（{EXPORT_FORMATS.find((item) => item.id === exportJob.formatId)?.label}）</span>}
+        {exportJob && <span>正在导出 {exportJob.index + 1} / {exportJob.total} 页（{exportFormat?.label}）</span>}
+        {smart && (
+          <span className="scatter-prototype__control">
+            预览
+            {FORMATS.map((format) => (
+              <button
+                key={format.id}
+                type="button"
+                className={format.id === previewFormat.id ? 'is-active' : ''}
+                onClick={() => setPreviewFormatId(format.id)}
+              >
+                {format.label}
+              </button>
+            ))}
+          </span>
+        )}
+        {smart && (
+          <span className="scatter-prototype__control">
+            <button type="button" className={showNumbers ? 'is-active' : ''} onClick={() => setShowNumbers(!showNumbers)}>
+              页码
+            </button>
+          </span>
+        )}
       </section>
 
       <section className="carousel-master__stage" aria-label={smart ? '智能分页随机连续作品预览' : rhythm ? '五页节奏连续作品预览' : '五页随机连续作品预览'}>
         {loading || !story ? <p className="carousel-master__loading">正在计算卡片位置…</p> : (
-          <div className="carousel-master__strip scatter-strip" style={{ '--scatter-page-count': story.frames.length }}>
-            {story.frames.map((frame, index) => <ScatterFrame key={index} frame={frame} index={index} rhythm={rhythm} />)}
+          <div
+            className="carousel-master__strip scatter-strip"
+            style={{ '--scatter-page-count': story.frames.length, '--scatter-page-aspect': previewFormat.aspect }}
+          >
+            {story.frames.map((frame, index) => (
+              <ScatterFrame key={index} frame={frame} index={index} rhythm={rhythm} showNumber={showNumbers} />
+            ))}
           </div>
         )}
       </section>
@@ -324,7 +352,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
       {/* 离屏导出画布：按 1080 宽渲染单页（正是几何计算所用的尺度）。
           背景挂在整条带子上，所以这里按页号把同一张背景平移到本页位置，
           切出来的每一页与「连续带子」上的那一格完全一致。 */}
-      {exportJob && exportFormat && story && (
+      {exportJob && exportFormat && exportStory && (
         <div className="scatter-export-holder">
           <div
             ref={exportRef}
@@ -333,14 +361,13 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
             style={{
               width: `${exportFormat.width}px`,
               height: `${exportFormat.height}px`,
-              '--scatter-page-count': story.frames.length,
+              '--scatter-page-count': exportStory.frames.length,
               '--scatter-page-index': exportJob.index,
-              '--scatter-art-height': `${exportFormat.artHeight}px`,
             }}
           >
             <div className="scatter-export__paper" />
             <div className="scatter-export__art">
-              <ScatterFrame frame={story.frames[exportJob.index]} index={exportJob.index} rhythm={false} />
+              <ScatterFrame frame={exportStory.frames[exportJob.index]} index={exportJob.index} rhythm={false} showNumber={showNumbers} />
             </div>
           </div>
         </div>
