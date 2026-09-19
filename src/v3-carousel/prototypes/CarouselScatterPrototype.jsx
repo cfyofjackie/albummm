@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { toBlob } from 'html-to-image'
 import { makeDemoPhotos } from '../../shared/demo.js'
 import { loadPhoto } from '../../shared/photo.js'
-import { EXPORT_WIDTH, PAGE_FORMATS, clamp, matFor, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS } from '../layout/carouselPlacement.js'
+import { DEFAULT_FORMAT, EXPORT_WIDTH, PAGE_FORMATS, clamp, matFor, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS } from '../layout/carouselPlacement.js'
 import './CarouselMastersPrototype.css'
 import './CarouselScatterPrototype.css'
 
@@ -15,7 +15,7 @@ import './CarouselScatterPrototype.css'
 // 真正的纸面背景由 CSS 变量（--paper-*）提供。
 const PAPER_COLORS = { gallery: '#e7e4dc', muse: '#d9cabd', weekend: '#d1cec5' }
 const FORMATS = Object.values(PAGE_FORMATS)
-const formatById = (id) => PAGE_FORMATS[id] ?? PAGE_FORMATS.portrait
+const formatById = (id) => PAGE_FORMATS[id] ?? DEFAULT_FORMAT
 
 // 用户选择风格；随机的位置、尺寸与轻叠只是各风格内部的排版规则。
 // 几何参数放在 layout/carouselPlacement.js，与分页规则一样可以用固定种子回归。
@@ -84,7 +84,7 @@ function groupsFor(photos, recipes = null) {
 }
 
 // smart 的整组规划已移到 layout/carouselPlacement.js；这里只保留 scatter / rhythm 两条历史路径。
-function planStory(photos, seed, style, rhythm = false, smart = false, format = PAGE_FORMATS.portrait) {
+function planStory(photos, seed, style, rhythm = false, smart = false, format = DEFAULT_FORMAT) {
   if (smart) return planSmartStory(photos, seed, style, format)
   const random = rngFrom(seed)
   const frames = []
@@ -179,7 +179,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const [photos, setPhotos] = useState([])
   const [seed, setSeed] = useState(4128)
   const [loading, setLoading] = useState(true)
-  const [previewFormatId, setPreviewFormatId] = useState(PAGE_FORMATS.portrait.id)
+  const [previewFormatId, setPreviewFormatId] = useState(DEFAULT_FORMAT.id)
   const [showNumbers, setShowNumbers] = useState(true)
   const inputRef = useRef(null)
   const style = STYLES.find((item) => item.id === activeId)

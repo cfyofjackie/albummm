@@ -10,12 +10,13 @@ export const EXPORT_HEIGHT = 1350
 
 // 页面规格：同一组照片可以按不同比例重新构图，而不是把一种构图缩放塞进另一种画布。
 // aspect = 页宽 / 页高；所有几何量都以「页宽的百分比」为单位（y 以页高为 1 保存在卡片里，
-// 换算时再除以 aspect）。portrait 是主规格，landscape 只换比例、不换分页与风格。
+// 换算时再除以 aspect）。规格与分页、风格都无关，加一个规格只是加一行常数。
 export const PAGE_FORMATS = {
-  portrait: { id: 'portrait', label: '4:5', width: 1080, height: 1350, aspect: 4 / 5 },
-  landscape: { id: 'landscape', label: '4:3', width: 1080, height: 810, aspect: 4 / 3 },
+  '4x5': { id: '4x5', label: '4:5', width: 1080, height: 1350, aspect: 4 / 5 },
+  '3x4': { id: '3x4', label: '3:4', width: 1080, height: 1440, aspect: 3 / 4 },
+  '4x3': { id: '4x3', label: '4:3', width: 1080, height: 810, aspect: 4 / 3 },
 }
-export const DEFAULT_FORMAT = PAGE_FORMATS.portrait
+export const DEFAULT_FORMAT = PAGE_FORMATS['4x5']
 
 // 当前验证已确定的视觉边界：限制照片内容，不限制带白边的外卡片。
 export const SIZE_RULES = { minShortEdge: .2, maxContentWidth: .8, maxContentHeight: .78 }

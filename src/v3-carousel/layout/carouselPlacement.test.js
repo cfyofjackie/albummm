@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DEFAULT_FORMAT,
   EXPORT_HEIGHT,
   EXPORT_WIDTH,
   FITTING_SCALES,
@@ -38,13 +39,13 @@ const photosOf = (dims, count) => Array.from({ length: count }, (_, index) => {
 
 const aspectOf = (photo) => photo.width / photo.height
 // 内容区在页面里的物理比例：x/w 以页宽为 1，y/h 以页高为 1。
-const physicalAspect = (box, format = PAGE_FORMATS.portrait) => box.w * format.width / (box.h * format.height)
+const physicalAspect = (box, format = DEFAULT_FORMAT) => box.w * format.width / (box.h * format.height)
 // 短边 / 长边都换算成「占页宽的比例」，用于与尺寸边界比较。
-const physicalShortEdge = (box, format = PAGE_FORMATS.portrait) => Math.min(box.w, box.h / format.aspect)
-const longEdge = (box, format = PAGE_FORMATS.portrait) => Math.max(box.w, box.h / format.aspect)
+const physicalShortEdge = (box, format = DEFAULT_FORMAT) => Math.min(box.w, box.h / format.aspect)
+const longEdge = (box, format = DEFAULT_FORMAT) => Math.max(box.w, box.h / format.aspect)
 
 const runCache = new Map()
-function runsFor(format = PAGE_FORMATS.portrait) {
+function runsFor(format = DEFAULT_FORMAT) {
   if (!runCache.has(format.id)) {
     const runs = []
     for (const count of COUNTS.filter((value) => value >= 4)) {
@@ -59,7 +60,7 @@ function runsFor(format = PAGE_FORMATS.portrait) {
   return runCache.get(format.id)
 }
 
-const demoRuns = () => runsFor(PAGE_FORMATS.portrait)
+const demoRuns = () => runsFor(DEFAULT_FORMAT)
 
 describe('V3 受控随机几何：硬边界', () => {
   it('照片内容区互不碰撞', () => {
@@ -312,66 +313,74 @@ describe('V3 智能分页随机：整组规划', () => {
   })
 })
 
-describe('V3 页面规格：4:3 是按比例重新构图', () => {
-  const landscape = PAGE_FORMATS.landscape
+describe('V3 页面规格：每个规格都按自己的比例重新构图', () => {
+  const OTHER_FORMATS = Object.values(PAGE_FORMATS).filter((format) => format.id !== DEFAULT_FORMAT.id)
 
-  it('分页与页面比例无关：两种规格的页数计划完全一致', () => {
+  it('分页与页面比例无关：所有规格的页数计划完全一致', () => {
     for (const count of COUNTS) {
       for (const seed of SEEDS) {
-        const portraitPlan = planSmartStory(photosOf(DEMO_DIMS, count), seed, STYLE_LAYOUTS.gallery, PAGE_FORMATS.portrait).pagePlan.join(',')
-        const landscapePlan = planSmartStory(photosOf(DEMO_DIMS, count), seed, STYLE_LAYOUTS.gallery, landscape).pagePlan.join(',')
-        expect(landscapePlan, `count=${count} seed=${seed}`).toBe(portraitPlan)
-      }
-    }
-  })
-
-  it('4:3 同样满足：每页 2–4 张、不丢图、不碰撞、不出现单图页', () => {
-    for (const { count, styleId, seed, story } of runsFor(landscape)) {
-      const label = `count=${count} style=${styleId} seed=${seed}`
-      const ids = story.frames.flatMap((frame) => frame.placed.map((card) => card.photo.id))
-      expect(ids, label).toHaveLength(count)
-      expect(new Set(ids).size, label).toBe(count)
-      expect(story.contentCollisions, label).toBe(0)
-      expect(story.frames.map((frame) => frame.placed.length).filter((size) => size < 2 || size > 4), label).toHaveLength(0)
-    }
-  })
-
-  it('4:3 的尺寸边界：宽 ≤ 80%、高 ≤ 78%、短边 ≥ 页面短边的 20%', () => {
-    // 横版页面的短边是「高」，所以 20% 换算到页宽单位是 0.2 × (1 / 1.3333) = 15%。
-    const floor = shortEdgeFloor(landscape)
-    expect(floor).toBeCloseTo(.15, 10)
-    for (const { count, styleId, seed, story } of runsFor(landscape)) {
-      for (const frame of story.frames) {
-        for (const card of frame.placed) {
-          const inner = innerBox(card, landscape)
-          const label = `count=${count} style=${styleId} seed=${seed} ${card.photo.name}`
-          expect(physicalShortEdge(inner, landscape), label).toBeGreaterThanOrEqual(floor - 1e-9)
-          expect(inner.w, label).toBeLessThanOrEqual(SIZE_RULES.maxContentWidth + 1e-9)
-          expect(inner.h, label).toBeLessThanOrEqual(SIZE_RULES.maxContentHeight + 1e-9)
-          // 不拉伸：误差同样只来自白边在内容盒/外盒上的 1px 取整（实测 < 1%）。
-          const aspectError = Math.abs(physicalAspect(inner, landscape) - aspectOf(card.photo)) / aspectOf(card.photo)
-          expect(aspectError, label).toBeLessThan(.01)
+        const expected = planSmartStory(photosOf(DEMO_DIMS, count), seed, STYLE_LAYOUTS.gallery, DEFAULT_FORMAT).pagePlan.join(',')
+        for (const format of OTHER_FORMATS) {
+          const plan = planSmartStory(photosOf(DEMO_DIMS, count), seed, STYLE_LAYOUTS.gallery, format).pagePlan.join(',')
+          expect(plan, `${format.label} count=${count} seed=${seed}`).toBe(expected)
         }
       }
     }
   })
 
-  it('4:3 是真的重新构图，而不是把 4:5 缩放过来', () => {
-    let framesCompared = 0
-    let framesDifferent = 0
-    for (const [styleId, layout] of STYLES) {
-      for (const count of [6, 10, 13, 24]) {
-        for (const seed of SEEDS) {
-          const photos = photosOf(DEMO_DIMS, count)
-          const portrait = planSmartStory(photos, seed, layout, PAGE_FORMATS.portrait)
-          const wide = planSmartStory(photos, seed, layout, landscape)
-          const geometry = (story) => JSON.stringify(story.frames.map((frame) => frame.placed.map((card) => [card.photo.id, card.w, card.h])))
-          framesCompared += 1
-          if (geometry(portrait) !== geometry(wide)) framesDifferent += 1
+  it('每个规格都满足：每页 2–4 张、不丢图、不碰撞、不出现单图页', () => {
+    for (const format of Object.values(PAGE_FORMATS)) {
+      for (const { count, styleId, seed, story } of runsFor(format)) {
+        const label = `${format.label} count=${count} style=${styleId} seed=${seed}`
+        const ids = story.frames.flatMap((frame) => frame.placed.map((card) => card.photo.id))
+        expect(ids, label).toHaveLength(count)
+        expect(new Set(ids).size, label).toBe(count)
+        expect(story.contentCollisions, label).toBe(0)
+        expect(story.frames.map((frame) => frame.placed.length).filter((size) => size < 2 || size > 4), label).toHaveLength(0)
+      }
+    }
+  })
+
+  it('尺寸边界按页面短边换算：竖版 20%、横版 15%', () => {
+    // 竖版页面的短边是「宽」，下限就是 0.2 页宽；横版短边是「高」，换算成 0.2 × (1 / 1.3333) = 0.15 页宽。
+    expect(shortEdgeFloor(PAGE_FORMATS['4x5'])).toBeCloseTo(.2, 10)
+    expect(shortEdgeFloor(PAGE_FORMATS['3x4'])).toBeCloseTo(.2, 10)
+    expect(shortEdgeFloor(PAGE_FORMATS['4x3'])).toBeCloseTo(.15, 10)
+    for (const format of Object.values(PAGE_FORMATS)) {
+      const floor = shortEdgeFloor(format)
+      for (const { count, styleId, seed, story } of runsFor(format)) {
+        for (const frame of story.frames) {
+          for (const card of frame.placed) {
+            const inner = innerBox(card, format)
+            const label = `${format.label} count=${count} style=${styleId} seed=${seed} ${card.photo.name}`
+            expect(physicalShortEdge(inner, format), label).toBeGreaterThanOrEqual(floor - 1e-9)
+            expect(inner.w, label).toBeLessThanOrEqual(SIZE_RULES.maxContentWidth + 1e-9)
+            expect(inner.h, label).toBeLessThanOrEqual(SIZE_RULES.maxContentHeight + 1e-9)
+            // 不拉伸：误差同样只来自白边在内容盒/外盒上的 1px 取整（实测 < 1%）。
+            const aspectError = Math.abs(physicalAspect(inner, format) - aspectOf(card.photo)) / aspectOf(card.photo)
+            expect(aspectError, label).toBeLessThan(.01)
+          }
         }
       }
     }
-    expect(framesCompared).toBeGreaterThan(0)
-    expect(framesDifferent).toBe(framesCompared)
+  })
+
+  it('每个规格都是真的重新构图，而不是把 4:5 缩放过来', () => {
+    const geometry = (story) => JSON.stringify(story.frames.map((frame) => frame.placed.map((card) => [card.photo.id, card.w, card.h])))
+    for (const format of OTHER_FORMATS) {
+      let compared = 0
+      let different = 0
+      for (const [, layout] of STYLES) {
+        for (const count of [6, 10, 13, 24]) {
+          for (const seed of SEEDS) {
+            const photos = photosOf(DEMO_DIMS, count)
+            compared += 1
+            if (geometry(planSmartStory(photos, seed, layout, DEFAULT_FORMAT)) !== geometry(planSmartStory(photos, seed, layout, format))) different += 1
+          }
+        }
+      }
+      expect(compared, format.label).toBeGreaterThan(0)
+      expect(different, `${format.label} 的构图应与 4:5 不同`).toBe(compared)
+    }
   })
 })
