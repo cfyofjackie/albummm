@@ -318,7 +318,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
     <main
       className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} ${smart ? 'smart-prototype' : ''} scatter-prototype--${activeId}`}
       /* 背景只换这三个变量：预览与导出共用，所以换背景不需要改导出逻辑。 */
-      style={{ '--paper-color': background.paper.color, '--paper-image': background.paper.image, '--paper-size': background.paper.size }}
+      style={{ '--paper-color': background.paper.color, '--paper-image': background.paper.image, '--paper-size': background.paper.size, '--paper-blend': background.paper.blend }}
     >
       <header className="carousel-master__header">
         <div>

@@ -55,6 +55,7 @@
   background-color: var(--paper-color);
   background-image: var(--paper-image);
   background-size: var(--paper-size);
+  background-blend-mode: var(--paper-blend, normal);
 }
 
 .scatter-frame::before {
@@ -195,6 +196,7 @@
   background-color: var(--paper-color);
   background-image: var(--paper-image);
   background-size: var(--paper-size);
+  background-blend-mode: var(--paper-blend, normal);
   background-position-x: calc(var(--scatter-page-index, 0) * -1080px);
 }
 
