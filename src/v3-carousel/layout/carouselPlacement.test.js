@@ -20,6 +20,7 @@ import {
   shortEdgeFloor,
   tapeCountFor,
   tapeRect,
+  tornContours,
 } from './carouselPlacement.js'
 
 // 矩形相交面积：测试里独立复算，不用被测代码的实现。
@@ -442,16 +443,55 @@ describe('V3 材质三轴：边框 / 边缘 / 胶带', () => {
     expect(none.bottom).toBe(none.x)
   })
 
-  it('毛边自带最小出血带，且撕边深度只啃边框', () => {
-    for (const edge of Object.values(EDGE_STYLES)) {
-      expect(edge.tear, edge.id).toBeLessThan(1)
-      expect(edge.tear, edge.id).toBeGreaterThanOrEqual(0)
+  it('毛边：撕深按卡片短边算（与白边厚度无关），且封顶在 12%', () => {
+    const torn = EDGE_STYLES.torn
+    expect(torn.tear).toBeGreaterThan(torn.tearMinor)
+    expect(torn.tear).toBeLessThanOrEqual(torn.maxTear)
+    // 12% 是产品确认的唯一裁切例外上限，不能再放宽。
+    expect(torn.maxTear).toBeLessThanOrEqual(.12)
+    // 毛边不再依赖白边：无边框 + 毛边时白边就是基础白边，但撕口照样啃到照片本体。
+    const bare = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off })
+    const ragged = materialOf({ border: BORDER_STYLES.none, edge: torn, tape: TAPE_STYLES.off })
+    const sample = { w: .5, h: .4 }
+    expect(matInsets(sample, DEFAULT_FORMAT, ragged).x).toBe(matInsets(sample, DEFAULT_FORMAT, bare).x)
+  })
+
+  it('毛边轮廓：主撕边更深、撕口啃进照片本体、深度不越上限', () => {
+    const ragged = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.torn, tape: TAPE_STYLES.off })
+    let bitten = 0
+    for (const seed of SEEDS) {
+      const story = planSmartStory(photosOf(DEMO_DIMS, 10), seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, ragged)
+      for (const card of story.frames.flatMap((frame) => frame.placed)) {
+        const contours = tornContours(card, DEFAULT_FORMAT, ragged, card.photo.id)
+        const label = `${card.photo.name} seed=${seed}`
+        expect(contours, label).toBeTruthy()
+        const shortEdgePx = Math.min(card.w * DEFAULT_FORMAT.width, card.h * DEFAULT_FORMAT.height)
+        // 主撕边比其余三条深，且都在上限之内
+        expect(contours.tear.primaryPx, label).toBeGreaterThan(contours.tear.minorPx)
+        expect(contours.tear.primaryPx, label).toBeLessThanOrEqual(contours.tear.capPx + 1e-9)
+        expect(contours.tear.capPx, label).toBeCloseTo(shortEdgePx * EDGE_STYLES.torn.maxTear, 9)
+        // 撕口要比白边更深 —— 这才叫「把相纸撕掉一部分」（照片本体被裁掉一角）
+        if (contours.tear.primaryPx > card.mat.top) bitten += 1
+        // 照片与相纸用同一套噪声，所以两者的撕口轮廓是两条不同的 polygon（各自坐标系）
+        expect(contours.image.outer, label).not.toBe(contours.paper.outer)
+        // 轮廓必须是合法 CSS：曾经因为坐标传了半套，生成出 NaN% 让 clip-path 被浏览器整条丢掉。
+        for (const polygon of [contours.paper.outer, contours.paper.inner, contours.image.outer]) {
+          expect(polygon, label).toMatch(/^polygon\(/)
+          expect(polygon, label).not.toContain('NaN')
+        }
+      }
     }
-    const torn = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.torn, tape: TAPE_STYLES.off })
-    const band = matInsets({ w: .3, h: .4 }, DEFAULT_FORMAT, torn)
-    // 没有出血带就撕不出毛边（只能啃照片），所以毛边必须自带一个最小带宽。
-    expect(band.x).toBeGreaterThanOrEqual(EDGE_STYLES.torn.minBand)
-    expect(band.x * EDGE_STYLES.torn.tear).toBeGreaterThanOrEqual(5)
+    expect(bitten).toBeGreaterThan(0)
+  })
+
+  it('毛边是确定性的：同一张照片每次得到同一套轮廓', () => {
+    const ragged = materialOf({ edge: EDGE_STYLES.torn })
+    const card = { x: .1, y: .2, w: .5, h: .4, mat: { x: 5, top: 5, bottom: 5 } }
+    const first = tornContours(card, DEFAULT_FORMAT, ragged, 'demo-3.jpg')
+    const second = tornContours(card, DEFAULT_FORMAT, ragged, 'demo-3.jpg')
+    const other = tornContours(card, DEFAULT_FORMAT, ragged, 'demo-4.jpg')
+    expect(first.paper.outer).toBe(second.paper.outer)
+    expect(first.paper.outer).not.toBe(other.paper.outer)
   })
 
   it('胶带条数 = 页内照片数 − 1，至少 1 条', () => {
@@ -522,22 +562,17 @@ describe('V3 材质三轴：边框 / 边缘 / 胶带', () => {
     }
   })
 
-  it('材质不是纯装饰：加厚边框与毛边都真的改变了排版', () => {
+  it('材质不是纯装饰：拍立得改变几何，毛边改变照片自身的形状', () => {
     const bare = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off })
     const polaroid = materialOf({ border: BORDER_STYLES.polaroid, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.off })
-    const torn = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.torn, tape: TAPE_STYLES.off })
     const sample = { w: .4, h: .5 }
-    // 边框厚度直接决定外框（mat 进入 sizeFor：外框 = 内容 + 边框）。
+    // 边框轴进几何：外框 = 内容 + 边框（所以它会改变排版）。
     expect(matInsets(sample, DEFAULT_FORMAT, polaroid).x).toBeGreaterThan(matInsets(sample, DEFAULT_FORMAT, bare).x)
-    expect(matInsets(sample, DEFAULT_FORMAT, torn).x).toBeGreaterThan(matInsets(sample, DEFAULT_FORMAT, bare).x)
-    // 但「平均外框更大」不成立：厚边框会让拥挤的页触发整页缩放，反而可能更小。
-    // 所以这里断言的是「每个种子下材质版与裸版的排版都不同」。
     const geometry = (story) => JSON.stringify(story.frames.map((frame) => frame.placed.map((card) => [card.photo.id, +card.w.toFixed(4), +card.h.toFixed(4)])))
     for (const seed of SEEDS) {
       const photos = photosOf(DEMO_DIMS, 10)
       const base = geometry(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, bare))
       expect(geometry(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, polaroid)), `拍立得 seed=${seed}`).not.toBe(base)
-      expect(geometry(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, torn)), `毛边 seed=${seed}`).not.toBe(base)
     }
   })
 })

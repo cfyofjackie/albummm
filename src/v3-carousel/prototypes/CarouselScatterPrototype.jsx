@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { toBlob } from 'html-to-image'
 import { makeDemoPhotos } from '../../shared/demo.js'
 import { loadPhoto } from '../../shared/photo.js'
-import { BORDER_STYLES, DEFAULT_BORDER, DEFAULT_EDGE, DEFAULT_FORMAT, DEFAULT_TAPE, EDGE_STYLES, PAGE_FORMATS, TAPE_STYLES, clamp, matInsets, materialOf, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS } from '../layout/carouselPlacement.js'
+import { BORDER_STYLES, DEFAULT_BORDER, DEFAULT_EDGE, DEFAULT_FORMAT, DEFAULT_TAPE, EDGE_STYLES, PAGE_FORMATS, TAPE_STYLES, clamp, matInsets, materialOf, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS, tornContours } from '../layout/carouselPlacement.js'
 import './CarouselMastersPrototype.css'
 import './CarouselScatterPrototype.css'
 
@@ -146,48 +146,6 @@ function matPercents(box, format, material) {
   }
 }
 
-// 毛边：在「相纸层」上裁出不规则轮廓。要点（对着参考图调的）：
-//   · 每条边 22 个采样点 —— 点太少就只是平缓波浪，不像撕纸；
-//   · 三层频率叠加（慢起伏 + 快抖动 + 偶发深缺口），轮廓才不规则；
-//   · 每张卡片有一条「主撕边」（更深），其余三条浅一点，像从纸卷上撕下来的；
-//   · 深度硬性封顶在白边宽度内（≤ 出血带），所以永远不会啃到照片内容。
-// 返回外轮廓与内轮廓：内轮廓用来画那圈纤维毛边。
-function tornContours(card, format, material, photoId) {
-  const tear = material.edge?.tear ?? 0
-  if (!tear) return null
-  const mat = card.mat ?? matInsets(card, format, material)
-  const maxX = mat.x * tear / (card.w * format.width) * 100
-  const maxY = (mat.top * tear) / (card.h * format.height) * 100
-  const seed = [...photoId].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 9973, 7)
-  const primary = seed % 4
-
-  const hash = (index, salt) => {
-    const value = Math.sin(seed * 12.9898 + salt * 78.233 + index * 37.719) * 43758.5453
-    return value - Math.floor(value)
-  }
-  const depth = (index, salt, max, side) => {
-    const slow = .5 + .5 * Math.sin(index * .5 + seed * .07 + salt)
-    const fast = hash(index, salt)
-    const notch = hash(index * 5 + salt, salt * 3) > .8 ? 1.45 : 1
-    const boost = side === primary ? 1.35 : 1
-    return Math.min(max, max * (.24 + slow * .34 + fast * .42) * notch * boost)
-  }
-
-  const polygon = (scale) => {
-    const steps = 22
-    const ax = maxX * scale
-    const ay = maxY * scale
-    const points = []
-    for (let index = 0; index <= steps; index += 1) points.push(`${(index / steps * 100).toFixed(2)}% ${depth(index, 1, ay, 0).toFixed(2)}%`)
-    for (let index = 1; index <= steps; index += 1) points.push(`${(100 - depth(index, 7, ax, 1)).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
-    for (let index = steps - 1; index >= 0; index -= 1) points.push(`${(index / steps * 100).toFixed(2)}% ${(100 - depth(index, 13, ay, 2)).toFixed(2)}%`)
-    for (let index = steps - 1; index >= 1; index -= 1) points.push(`${depth(index, 19, ax, 3).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
-    return `polygon(${points.join(', ')})`
-  }
-
-  return { outer: polygon(1), inner: polygon(.66) }
-}
-
 function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAULT_FORMAT, material = undefined }) {
   const spec = materialOf(material)
   // 胶带的位置：从卡片上缘越出，一半在卡片上、一半贴纸底；由几何层决定哪几张带胶带。
@@ -215,11 +173,12 @@ function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAUL
               '--scatter-tape-h': `${tapeHeight}%`,
             }}
           >
-            {/* 相纸层单独裁毛边（不是裁整个卡片），这样胶带才能越出卡片而不被裁断。 */}
-            <span className="scatter-card__paper" style={{ clipPath: torn?.outer }} aria-hidden="true" />
-            {/* 纤维毛边：比外轮廓内缩一圈，露出一条毛糙的纸纤维边（参考图里最像撕纸的那部分）。 */}
-            {torn && <span className="scatter-card__fringe" style={{ clipPath: torn.inner }} aria-hidden="true" />}
-            <img src={photo.previewSrc} alt="随机排版中的照片" />
+            {/* 相纸层裁毛边（不是裁整个卡片），这样胶带才能越出卡片而不被裁断。 */}
+            <span className="scatter-card__paper" style={{ clipPath: torn?.paper.outer }} aria-hidden="true" />
+            {/* 纤维毛茬：比外轮廓内缩一点点，露出很细的一条纸纤维断面。 */}
+            {torn && <span className="scatter-card__fringe" style={{ clipPath: torn.paper.inner }} aria-hidden="true" />}
+            {/* 照片本体用同一套轮廓裁 —— 照片自己就是撕口的形状（撕掉相纸一部分的效果）。 */}
+            <img src={photo.previewSrc} alt="随机排版中的照片" style={{ clipPath: torn?.image.outer }} />
             {spec.tape.enabled && tape && (
               <span
                 className="scatter-tape"

@@ -45,10 +45,10 @@ export const BORDER_STYLES = {
   polaroid: { id: 'polaroid', label: '拍立得', side: 5, bottom: 12, chinMax: .08 },
 }
 export const EDGE_STYLES = {
-  straight: { id: 'straight', label: '直边', tear: 0, minBand: 0 },
-  // 毛边要能看出来：出血带至少 18px（页面宽 1.7%），撕裂深度吃到出血带的 85%。
-  // 没有出血带就撕不出毛边（只能啃照片），所以毛边自带这个最小带宽。
-  torn: { id: 'torn', label: '毛边', tear: .85, minBand: 18 },
+  straight: { id: 'straight', label: '直边', tear: 0, tearMinor: 0, maxTear: 0, minBand: 0 },
+  // 毛边：撕深按**卡片短边的百分比**算（与白边厚度无关），所以「无边框 + 毛边」也能把照片本身撕掉一块。
+  // tear = 主撕边（四边里最深的那条），tearMinor = 其余三条；maxTear 是硬上限（产品确认的裁切例外）。
+  torn: { id: 'torn', label: '毛边', tear: .085, tearMinor: .028, maxTear: .12, minBand: 0 },
 }
 export const TAPE_STYLES = {
   off: { id: 'off', label: '无', enabled: false, lengthScale: 0, thickness: 0, protrude: 0 },
@@ -190,6 +190,61 @@ export function innerBox(box, format = DEFAULT_FORMAT, material = DEFAULT_MATERI
   }
 }
 
+// 毛边轮廓：撕口按**卡片短边的百分比**从外缘往里啃（与白边厚度无关），所以「无边框 + 毛边」
+// 也能把照片本身撕掉一块。返回三组 CSS polygon：
+//   paper.outer —— 相纸的外轮廓
+//   paper.inner —— 相纸内轮廓（用它画那圈很细的纤维毛茬）
+//   image.outer —— **照片自己的轮廓**（同一套噪声，所以撕口与相纸对齐）
+// 深度硬性封顶在 edge.maxTear（产品确认的唯一裁切例外），所以它不会无限啃。
+export function tornContours(card, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL, photoId = 'p') {
+  const spec = materialOf(material).edge
+  if (!spec.tear) return null
+  const mat = card.mat ?? matInsets(card, format, material)
+  const shortEdgePx = Math.min(card.w * format.width, card.h * format.height)
+  const cap = spec.maxTear ?? spec.tear
+  const primaryPx = shortEdgePx * Math.min(spec.tear, cap)
+  const minorPx = shortEdgePx * Math.min(spec.tearMinor ?? 0, cap)
+  const seed = [...photoId].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 9973, 7)
+  const primary = seed % 4
+
+  const hash = (index, salt) => {
+    const value = Math.sin(seed * 12.9898 + salt * 78.233 + index * 37.719) * 43758.5453
+    return value - Math.floor(value)
+  }
+  // 沿边方向的噪声系数：慢起伏 + 快抖动 + 偶发深缺口
+  const factor = (index, salt) => {
+    const slow = .5 + .5 * Math.sin(index * .5 + seed * .07 + salt)
+    const notch = hash(index * 5 + salt, salt * 3) > .8 ? 1.35 : 1
+    return Math.min(1, (.24 + slow * .34 + hash(index, salt) * .42) * notch)
+  }
+  const depthPx = (index, salt, side) => (side === primary ? primaryPx : minorPx) * factor(index, salt)
+  const depthX = (index, salt, side) => depthPx(index, salt, side) / format.width
+  const depthY = (index, salt, side) => depthPx(index, salt, side) / format.height
+
+  const steps = 22
+  // 轮廓用**元素自身坐标系**生成（不依赖卡片的 x/y）：inset 是元素相对卡片外框的内缩。
+  // 这样调用方只需要 { w, h, mat }，不会出现「传了半套坐标 → NaN% → clip-path 失效」这类问题。
+  const polygonFor = (inset, scale) => {
+    const boxW = card.w - inset.x * 2
+    const boxH = card.h - (inset.top + inset.bottom)
+    const px = (depth) => Math.max(0, Math.min(100, (depth - inset.x) / boxW * 100))
+    const py = (depth) => Math.max(0, Math.min(100, (depth - inset.top) / boxH * 100))
+    const points = []
+    for (let index = 0; index <= steps; index += 1) points.push(`${(index / steps * 100).toFixed(2)}% ${py(depthY(index, 1, 0) * scale).toFixed(2)}%`)
+    for (let index = 1; index <= steps; index += 1) points.push(`${(100 - px(depthX(index, 7, 1) * scale)).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
+    for (let index = steps - 1; index >= 0; index -= 1) points.push(`${(index / steps * 100).toFixed(2)}% ${(100 - py(depthY(index, 13, 2) * scale)).toFixed(2)}%`)
+    for (let index = steps - 1; index >= 1; index -= 1) points.push(`${px(depthX(index, 19, 3) * scale).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
+    return `polygon(${points.join(', ')})`
+  }
+
+  const outerInset = { x: 0, top: 0, bottom: 0 }
+  const imageInset = { x: mat.x / format.width, top: mat.top / format.height, bottom: mat.bottom / format.height }
+  return {
+    paper: { outer: polygonFor(outerInset, 1), inner: polygonFor(outerInset, .9) },
+    image: { outer: polygonFor(imageInset, 1) },
+    tear: { primaryPx, minorPx, capPx: shortEdgePx * cap },
+  }
+}
 // 旋转会让卡片扫出轴对齐包围盒之外，所以「内容区不得碰撞」必须按旋转后的外扩量判断。
 const rotationTheta = (rotate = 0) => Math.abs(rotate) * Math.PI / 180
 
