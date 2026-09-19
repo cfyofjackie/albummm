@@ -65,11 +65,32 @@
 }
 
 .scatter-card {
-  padding: var(--scatter-mat) !important;
+  /* 边框厚度由几何层给出（按页宽百分比），并且左右/上下可以不同：
+     拍立得的宽下边就是 --scatter-mat-bottom 单独放大。 */
+  padding: var(--scatter-mat-top, var(--scatter-mat)) var(--scatter-mat) var(--scatter-mat-bottom, var(--scatter-mat)) !important;
   box-shadow: 0 8px 16px rgba(37, 33, 26, .16) !important;
 }
 
 .scatter-card img { max-height: none; }
+
+/* 撕纸材质：底色仍是纸白，边缘由 clip-path 裁出锯齿（幅度只吃边框，不碰照片内容）。 */
+.scatter-card--torn { background: rgba(252, 250, 244, .97); }
+
+/* 胶带：贴在卡片上缘的边框带之内（不越出卡片外框），所以永远不会遮到照片内容，
+   也不会压到相邻卡片；每组作品最多出现 1–2 处（由页号决定）。 */
+.scatter-tape {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 50%;
+  width: 30%;
+  height: 2.6%;
+  min-height: 7px;
+  background: linear-gradient(100deg, rgba(236, 228, 203, .9), rgba(224, 214, 186, .7));
+  box-shadow: 0 1px 2px rgba(60, 54, 40, .16);
+  transform: translateX(-50%) rotate(-2.5deg);
+  pointer-events: none;
+}
 
 .scatter-strip {
   grid-template-columns: repeat(var(--scatter-page-count, 5), minmax(178px, 1fr));

@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { toBlob } from 'html-to-image'
 import { makeDemoPhotos } from '../../shared/demo.js'
 import { loadPhoto } from '../../shared/photo.js'
-import { DEFAULT_FORMAT, EXPORT_WIDTH, PAGE_FORMATS, clamp, matFor, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS } from '../layout/carouselPlacement.js'
+import { DEFAULT_FORMAT, DEFAULT_FRAME, FRAME_STYLES, PAGE_FORMATS, clamp, matInsets, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS } from '../layout/carouselPlacement.js'
 import './CarouselMastersPrototype.css'
 import './CarouselScatterPrototype.css'
 
@@ -84,8 +84,8 @@ function groupsFor(photos, recipes = null) {
 }
 
 // smart 的整组规划已移到 layout/carouselPlacement.js；这里只保留 scatter / rhythm 两条历史路径。
-function planStory(photos, seed, style, rhythm = false, smart = false, format = DEFAULT_FORMAT) {
-  if (smart) return planSmartStory(photos, seed, style, format)
+function planStory(photos, seed, style, rhythm = false, smart = false, format = DEFAULT_FORMAT, material = DEFAULT_FRAME) {
+  if (smart) return planSmartStory(photos, seed, style, format, material)
   const random = rngFrom(seed)
   const frames = []
   let pending = []
@@ -134,25 +134,63 @@ function planStory(photos, seed, style, rhythm = false, smart = false, format = 
 
 // 白边按页宽换算成百分比：预览里每页只有 216–335px 宽，若照搬 1080 尺度的裸 px，
 // 预览的白边会比真实导出粗 4–5 倍。百分比 padding 以父级（页面）宽度为基准，
-// 换算出来的水平/垂直内缩正好等于 innerBox() 在 1080×1350 导出尺度下的值，预览即导出。
-function matPercentFor(box) {
-  return matFor(box) / EXPORT_WIDTH * 100
+// 换算出来的水平/垂直内缩正好等于 innerBox() 在导出尺度下的值，预览即导出。
+function matPercents(box, format, material) {
+  // 用几何层存在卡片上的边框值（box.mat），渲染与碰撞判定才是同一套数字。
+  const mat = box.mat ?? matInsets(box, format, material)
+  return {
+    x: mat.x / format.width * 100,
+    top: mat.top / format.width * 100,
+    bottom: mat.bottom / format.width * 100,
+    px: mat,
+  }
 }
 
-function ScatterFrame({ frame, index, rhythm, showNumber = true }) {
+// 撕边：在卡片自身上裁一个锯齿外轮廓。锯齿深度 = 边框厚度 × tear，只啃边框、不碰照片内容。
+// 每个卡片按照片 id 做一次确定性抖动，所以同一 seed 每次渲染都一样。
+function tornClipPath(card, format, material, photoId) {
+  if (!material.tear) return undefined
+  const mat = matInsets(card, format, material)
+  const tearX = mat.x * material.tear / (card.w * format.width) * 100
+  const tearY = (mat.top * material.tear) / (card.h * format.height) * 100
+  const hash = [...photoId].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 997, 7)
+  const points = []
+  const jitter = (index, scale) => (((hash + index * 37) % 11) / 10 - .5) * scale
+  const steps = 5
+  for (let index = 0; index <= steps; index += 1) points.push(`${(index / steps * 100).toFixed(2)}% ${Math.max(0, tearY * (.35 + jitter(index, 1.3))).toFixed(2)}%`)
+  for (let index = 1; index <= steps; index += 1) points.push(`${(100 - Math.max(0, tearX * (.35 + jitter(index + 7, 1.3)))).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
+  for (let index = steps - 1; index >= 0; index -= 1) points.push(`${(index / steps * 100).toFixed(2)}% ${(100 - Math.max(0, tearY * (.35 + jitter(index + 13, 1.3)))).toFixed(2)}%`)
+  for (let index = steps - 1; index >= 1; index -= 1) points.push(`${Math.max(0, tearX * (.35 + jitter(index + 19, 1.3))).toFixed(2)}% ${(index / steps * 100).toFixed(2)}%`)
+  return `polygon(${points.join(', ')})`
+}
+
+function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAULT_FORMAT, material = DEFAULT_FRAME, withTape = false }) {
   return (
     <article className={`carousel-master__frame scatter-frame ${rhythm && frame.recipe ? `rhythm-frame rhythm-frame--${frame.recipe.id}` : ''}`}>
       {showNumber && <span className="carousel-master__number">{String(index + 1).padStart(2, '0')}</span>}
       {rhythm && frame.recipe && <span className="rhythm-frame__role">{frame.recipe.label}</span>}
-      {frame.placed.map(({ photo, x, y, w, h, rotate }) => (
-        <figure
-          key={photo.id}
-          className="carousel-master__photo scatter-card"
-          style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: `${w * 100}%`, rotate: `${rotate}deg`, '--scatter-mat': `${matPercentFor({ w, h })}%` }}
-        >
-          <img src={photo.previewSrc} alt="随机排版中的照片" />
-        </figure>
-      ))}
+      {frame.placed.map(({ photo, x, y, w, h, rotate, mat: cardMat }, cardIndex) => {
+        const mat = matPercents({ w, h, mat: cardMat }, format, material)
+        return (
+          <figure
+            key={photo.id}
+            className={`carousel-master__photo scatter-card scatter-card--${material.id}`}
+            style={{
+              left: `${x * 100}%`,
+              top: `${y * 100}%`,
+              width: `${w * 100}%`,
+              rotate: `${rotate}deg`,
+              '--scatter-mat': `${mat.x}%`,
+              '--scatter-mat-top': `${mat.top}%`,
+              '--scatter-mat-bottom': `${mat.bottom}%`,
+              clipPath: tornClipPath({ w, h }, format, material, photo.id),
+            }}
+          >
+            <img src={photo.previewSrc} alt="随机排版中的照片" />
+            {withTape && cardIndex === 0 && <span className="scatter-tape" aria-hidden="true" />}
+          </figure>
+        )
+      })}
     </article>
   )
 }
@@ -180,10 +218,12 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const [seed, setSeed] = useState(4128)
   const [loading, setLoading] = useState(true)
   const [previewFormatId, setPreviewFormatId] = useState(DEFAULT_FORMAT.id)
+  const [materialId, setMaterialId] = useState(DEFAULT_FRAME.id)
   const [showNumbers, setShowNumbers] = useState(true)
   const inputRef = useRef(null)
   const style = STYLES.find((item) => item.id === activeId)
   const previewFormat = formatById(previewFormatId)
+  const material = FRAME_STYLES[materialId] ?? DEFAULT_FRAME
 
   useEffect(() => {
     let live = true
@@ -244,7 +284,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const exportPages = async (format) => {
     if (!story || exportJob) return
     // 导出的是目标规格自己的构图：按该规格重新规划一遍，而不是复用预览里的 4:5 排版。
-    const target = photos.length ? planStory(photos, seed, style, rhythm, smart, format) : null
+    const target = photos.length ? planStory(photos, seed, style, rhythm, smart, format, material) : null
     if (!target) return
     const total = target.frames.length
     for (let index = 0; index < total; index += 1) {
@@ -262,9 +302,9 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
     flushSync(() => setExportJob(null))
   }
 
-  const story = photos.length ? planStory(photos, seed, style, rhythm, smart, previewFormat) : null
+  const story = photos.length ? planStory(photos, seed, style, rhythm, smart, previewFormat, material) : null
   const exportFormat = exportJob ? formatById(exportJob.formatId) : null
-  const exportStory = exportJob && photos.length ? planStory(photos, seed, style, rhythm, smart, exportFormat) : null
+  const exportStory = exportJob && photos.length ? planStory(photos, seed, style, rhythm, smart, exportFormat, material) : null
   return (
     <main className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} ${smart ? 'smart-prototype' : ''} scatter-prototype--${activeId}`}>
       <header className="carousel-master__header">
@@ -319,6 +359,21 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
         )}
         {smart && (
           <span className="scatter-prototype__control">
+            材质
+            {Object.values(FRAME_STYLES).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={item.id === material.id ? 'is-active' : ''}
+                onClick={() => setMaterialId(item.id)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </span>
+        )}
+        {smart && (
+          <span className="scatter-prototype__control">
             <button type="button" className={showNumbers ? 'is-active' : ''} onClick={() => setShowNumbers(!showNumbers)}>
               页码
             </button>
@@ -333,7 +388,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
             style={{ '--scatter-page-count': story.frames.length, '--scatter-page-aspect': previewFormat.aspect }}
           >
             {story.frames.map((frame, index) => (
-              <ScatterFrame key={index} frame={frame} index={index} rhythm={rhythm} showNumber={showNumbers} />
+              <ScatterFrame key={index} frame={frame} index={index} rhythm={rhythm} showNumber={showNumbers} format={previewFormat} material={material} withTape={material.tape && index < 2} />
             ))}
           </div>
         )}
@@ -367,7 +422,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
           >
             <div className="scatter-export__paper" />
             <div className="scatter-export__art">
-              <ScatterFrame frame={exportStory.frames[exportJob.index]} index={exportJob.index} rhythm={false} showNumber={showNumbers} />
+              <ScatterFrame frame={exportStory.frames[exportJob.index]} index={exportJob.index} rhythm={false} showNumber={showNumbers} format={exportFormat} material={material} withTape={material.tape && exportJob.index < 2} />
             </div>
           </div>
         </div>

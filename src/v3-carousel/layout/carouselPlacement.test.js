@@ -4,11 +4,13 @@ import {
   EXPORT_HEIGHT,
   EXPORT_WIDTH,
   FITTING_SCALES,
+  FRAME_STYLES,
   PAGE_FORMATS,
   SIZE_RULES,
   STYLE_LAYOUTS,
   innerBox,
   matFor,
+  matInsets,
   placeFrame,
   planSmartStory,
   rngFrom,
@@ -83,37 +85,45 @@ describe('V3 受控随机几何：硬边界', () => {
     }
   })
 
-  it('白边在内容盒与外盒上的取整差不超过 1px', () => {
-    // 这个 1px 差异就是上一条测试里 0.56% 误差的来源；它同时说明
-    // innerBox() 只是内容区的近似值，而 CSS 真正渲染的 padding 用的是外盒的 matFor()。
-    let maxDelta = 0
-    for (const { story } of demoRuns()) {
-      for (const frame of story.frames) {
-        for (const card of frame.placed) {
-          const outerMat = matFor({ w: card.w, h: card.h })
-          const innerMat = matFor(innerBox(card))
-          maxDelta = Math.max(maxDelta, Math.abs(outerMat - innerMat))
+  it('白边由几何层给出并被渲染层原样使用（不再按外框重算）', () => {
+    // 材质会把边框乘上 2.2–5.5 的系数：若渲染/判定按「外框」重算一次边框，
+    // 1px 的取整误差会被放大成约 0.5% 页高的偏差（实测曾经让内容短边掉到 19.5%）。
+    // 所以几何层把边框存在卡片上，innerBox 与渲染都直接用它。
+    for (const material of Object.values(FRAME_STYLES)) {
+      for (const format of Object.values(PAGE_FORMATS)) {
+        for (const { story } of runsFor(format)) {
+          for (const frame of story.frames) {
+            for (const card of frame.placed) {
+              const label = `${material.id} ${format.label} ${card.photo.name}`
+              expect(card.mat, label).toBeTruthy()
+              const inner = innerBox(card, format, material)
+              expect(inner.x, label).toBeCloseTo(card.x + card.mat.x / format.width, 12)
+              expect(inner.y, label).toBeCloseTo(card.y + card.mat.top / format.height, 12)
+              expect(inner.w, label).toBeCloseTo(card.w - card.mat.x * 2 / format.width, 12)
+              expect(inner.h, label).toBeCloseTo(card.h - (card.mat.top + card.mat.bottom) / format.height, 12)
+              // 按外框重算的值可以和存的值不同（就是上面那个 1px 被放大后的偏差），
+              // 但渲染必须用存的值：百分比 padding 由 mat 换算而来。
+              expect(matFor(card, format, material)).toBeGreaterThan(0)
+            }
+          }
         }
       }
     }
-    expect(maxDelta).toBeLessThanOrEqual(1)
   })
 
-  it('预览与导出同一尺度：按页宽写百分比白边，就等于 innerBox() 的内缩量', () => {
-    // 预览把白边写成 matFor()/页宽 的百分比（CSS padding 的百分比以父级宽度为基准），
-    // 这个规则保证预览在 216–335px 的页宽下也画出与导出完全一致的内缩比例：
-    // 水平内缩 = mat/页宽（与 innerBox 相同），垂直内缩 = (mat/页宽)×(页宽/页高) = mat/页高（同样相同）。
+  it('预览与导出同一尺度：按页宽写百分比白边，就等于几何层给的内缩量', () => {
+    // 预览把白边写成 mat/页宽 的百分比（CSS padding 的百分比以父级宽度为基准），
+    // 这个换算保证预览在 216–335px 的页宽下也画出与 1080 导出完全一致的内缩比例。
     for (const format of Object.values(PAGE_FORMATS)) {
       for (const { story } of runsFor(format)) {
         for (const frame of story.frames) {
           for (const card of frame.placed) {
-            const mat = matFor({ w: card.w, h: card.h }, format)
-            const paddingFraction = mat / format.width
+            const paddingFraction = card.mat.x / format.width
             const inner = innerBox(card, format)
             expect(card.x + paddingFraction).toBeCloseTo(inner.x, 12)
-            expect(card.y + paddingFraction * format.width / format.height).toBeCloseTo(inner.y, 12)
+            expect(card.y + card.mat.top / format.height).toBeCloseTo(inner.y, 12)
             expect(card.w - paddingFraction * 2).toBeCloseTo(inner.w, 12)
-            expect(card.h - paddingFraction * 2 * format.width / format.height).toBeCloseTo(inner.h, 12)
+            expect(card.h - (card.mat.top + card.mat.bottom) / format.height).toBeCloseTo(inner.h, 12)
           }
         }
       }
@@ -387,6 +397,64 @@ describe('V3 页面规格：每个规格都按自己的比例重新构图', () =
       expect(compared, format.label).toBeGreaterThan(0)
       expect(different, `${format.label} 的构图应与 4:5 不同`).toBe(compared)
     }
+  })
+})
+
+describe('V3 材质 / 边框：边框是几何的一部分', () => {
+  const MATERIALS = Object.values(FRAME_STYLES)
+  const MATERIAL_COUNTS = [6, 10, 13, 24]
+
+  it('拍立得有更宽的下边，撕纸的锯齿只啃边框', () => {
+    expect(FRAME_STYLES.polaroid.bottom).toBeGreaterThan(FRAME_STYLES.polaroid.side * 2)
+    expect(FRAME_STYLES.plain.bottom).toBe(FRAME_STYLES.plain.side)
+    for (const material of MATERIALS) {
+      // 撕边深度必须小于边框厚度，否则会切到照片内容（撕纸材质靠这条保证不啃内容）。
+      expect(material.tear, material.id).toBeLessThan(1)
+      expect(material.tear, material.id).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('三种材质下硬边界都成立：不丢图、内容区不碰撞、尺寸边界不越界', () => {
+    for (const material of MATERIALS) {
+      for (const [styleId, style] of STYLES) {
+        for (const count of MATERIAL_COUNTS) {
+          for (const seed of SEEDS) {
+            const photos = photosOf(DEMO_DIMS, count)
+            const story = planSmartStory(photos, seed, style, DEFAULT_FORMAT, material)
+            const label = `${material.id} ${styleId} count=${count} seed=${seed}`
+            const cards = story.frames.flatMap((frame) => frame.placed)
+            expect(cards, label).toHaveLength(count)
+            expect(story.contentCollisions, label).toBe(0)
+            expect(story.frames.length, label).toBe(story.pagePlan.length)
+            for (const frame of story.frames) {
+              const allowedFloor = SIZE_RULES.minShortEdge * (frame.fittingScale ?? 1)
+              for (const card of frame.placed) {
+                const inner = innerBox(card, DEFAULT_FORMAT, material)
+                expect(physicalShortEdge(inner), label).toBeGreaterThanOrEqual(allowedFloor - 1e-9)
+                expect(inner.w, label).toBeLessThanOrEqual(SIZE_RULES.maxContentWidth + 1e-9)
+                expect(inner.h, label).toBeLessThanOrEqual(SIZE_RULES.maxContentHeight + 1e-9)
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+
+  it('换材质会改变构图（因为边框占了间隙），不是纯装饰', () => {
+    const geometry = (story) => JSON.stringify(story.frames.map((frame) => frame.placed.map((card) => [card.photo.id, +(card.w).toFixed(3), +(card.h).toFixed(3)])))
+    let compared = 0
+    let different = 0
+    for (const seed of SEEDS) {
+      const photos = photosOf(DEMO_DIMS, 10)
+      const plain = geometry(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, FRAME_STYLES.plain))
+      for (const material of MATERIALS.filter((item) => item.id !== 'plain')) {
+        compared += 1
+        if (geometry(planSmartStory(photos, seed, STYLE_LAYOUTS.weekend, DEFAULT_FORMAT, material)) !== plain) different += 1
+      }
+    }
+    expect(compared).toBeGreaterThan(0)
+    expect(different).toBe(compared)
   })
 })
 
