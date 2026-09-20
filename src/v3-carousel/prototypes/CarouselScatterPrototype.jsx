@@ -174,9 +174,21 @@ function StyleDecor({ decor }) {
   return null
 }
 
-function BackgroundMasterLayer({ master }) {
-  if (master?.id !== 'edge') return null
-  return <span className="scatter-background-master__edge" style={{ '--background-master-accent': master.accent }} aria-hidden="true" />
+function BackgroundMasterLayer({ master, index, total }) {
+  if (!master || master.id === 'night' || master.id === 'field') return null
+  if (master.id === 'edge') {
+    return <span className="scatter-background-master__edge" style={{ '--background-master-accent': master.accent }} aria-hidden="true" />
+  }
+  const positions = master.layer?.position ?? ['50% 50%']
+  // 背景是「每页一张完整画布」而不是一张长图切成五段；页序只决定同一材质的取景推进。
+  const position = positions[Math.min(index, positions.length - 1)] ?? positions.at(-1)
+  return (
+    <span
+      className={`scatter-background-master scatter-background-master--${master.id}`}
+      style={{ '--background-master-image': `url("${master.layer.image}")`, '--background-master-position': position, '--background-master-page': `${index + 1} / ${total}` }}
+      aria-hidden="true"
+    />
+  )
 }
 
 function ScatterFrame({ frame, index, total = 1, rhythm, showNumber = true, format = DEFAULT_FORMAT, material = undefined, styleId = 'gallery', decorExperiment = false, backgroundMaster = null }) {
@@ -185,7 +197,7 @@ function ScatterFrame({ frame, index, total = 1, rhythm, showNumber = true, form
   const decor = decorExperiment ? styleDecorFor(styleId, index, total) : null
   return (
     <article className={`carousel-master__frame scatter-frame ${rhythm && frame.recipe ? `rhythm-frame rhythm-frame--${frame.recipe.id}` : ''}`}>
-      <BackgroundMasterLayer master={backgroundMaster} />
+      <BackgroundMasterLayer master={backgroundMaster} index={index} total={total} />
       {decor && <StyleDecor decor={decor} />}
       {showNumber && (
         <footer className="scatter-frame__footer">

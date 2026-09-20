@@ -77,6 +77,42 @@
   pointer-events: none;
 }
 
+/* 两个「背景图」母板都作为一页独立图层渲染：预览和导出共用 ScatterFrame，
+   因而每一张导出图都会拿到自己的完整背景，不会把五页压缩进一张位图。 */
+.scatter-background-master {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.scatter-background-master--ink-wave {
+  background-color: #eee9df;
+  background-image: var(--background-master-image);
+  background-position: var(--background-master-position, 50% 50%);
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: sepia(.22) saturate(.62) contrast(.92);
+  mix-blend-mode: multiply;
+  opacity: .48;
+}
+.scatter-background-master--veil-flow {
+  background-color: #e9e2e2;
+  background-image: var(--background-master-image);
+  background-position: var(--background-master-position, 50% 50%);
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: saturate(.68) contrast(.92);
+  mix-blend-mode: multiply;
+  opacity: .48;
+}
+.scatter-background-master--veil-flow::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(112deg, rgba(255, 251, 247, .28), rgba(245, 239, 244, .1) 55%, rgba(255, 251, 247, .34));
+  content: '';
+}
+
 .background-experiment--night .scatter-frame::before {
   background: linear-gradient(135deg, rgba(255, 255, 255, .05), transparent 42%);
 }
