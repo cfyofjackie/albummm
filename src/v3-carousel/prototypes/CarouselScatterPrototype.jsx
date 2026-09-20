@@ -6,6 +6,7 @@ import { loadPhoto } from '../../shared/photo.js'
 import { BORDER_STYLES, DEFAULT_BORDER, DEFAULT_EDGE, DEFAULT_FORMAT, DEFAULT_TAPE, EDGE_STYLES, PAGE_FORMATS, TAPE_STYLES, clamp, matInsets, materialOf, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS, tapeOffset, tornContours } from '../layout/carouselPlacement.js'
 import { backgroundFor, backgroundsForStyle } from '../layout/paperBackgrounds.js'
 import { footerFor } from '../layout/pageDecor.js'
+import { styleDecorFor } from '../layout/styleDecor.js'
 import '@fontsource/eb-garamond/latin-400.css'
 import '@fontsource/eb-garamond/latin-600.css'
 import '@fontsource/inter/latin-400.css'
@@ -152,11 +153,33 @@ function matPercents(box, format, material) {
   }
 }
 
-function ScatterFrame({ frame, index, total = 1, rhythm, showNumber = true, format = DEFAULT_FORMAT, material = undefined }) {
+function StyleDecor({ decor }) {
+  if (decor.kind === 'muse' && decor.rail) {
+    return (
+      <span className="scatter-style-decor scatter-style-decor--muse" aria-hidden="true">
+        <i className="scatter-style-decor__band" style={{ '--style-decor-accent': decor.band }} />
+        <b className="scatter-style-decor__rail">{decor.rail}</b>
+      </span>
+    )
+  }
+  if (decor.kind === 'weekend') {
+    return (
+      <span className="scatter-style-decor scatter-style-decor--weekend" aria-hidden="true">
+        <i className="scatter-style-decor__dot" style={{ '--style-decor-accent': decor.accent }} />
+        <b className="scatter-style-decor__archive">{decor.archive}</b>
+      </span>
+    )
+  }
+  return null
+}
+
+function ScatterFrame({ frame, index, total = 1, rhythm, showNumber = true, format = DEFAULT_FORMAT, material = undefined, styleId = 'gallery', decorExperiment = false }) {
   const spec = materialOf(material)
   const footer = footerFor(index, total)
+  const decor = decorExperiment ? styleDecorFor(styleId, index, total) : null
   return (
     <article className={`carousel-master__frame scatter-frame ${rhythm && frame.recipe ? `rhythm-frame rhythm-frame--${frame.recipe.id}` : ''}`}>
+      {decor && <StyleDecor decor={decor} />}
       {showNumber && (
         <footer className="scatter-frame__footer">
           <span className="scatter-frame__rule" aria-hidden="true" />
@@ -233,7 +256,7 @@ function StyleSwitcher({ activeId, onChange }) {
   )
 }
 
-export default function CarouselScatterPrototype({ rhythm = false, smart = false }) {
+export default function CarouselScatterPrototype({ rhythm = false, smart = false, decorExperiment = false }) {
   const params = new URLSearchParams(window.location.search)
   const requestedStyle = LEGACY_STYLE_BY_STRATEGY[params.get('variant')] ?? params.get('variant')
   const initial = STYLES.some((style) => style.id === requestedStyle) ? requestedStyle : 'gallery'
@@ -339,13 +362,13 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const exportStory = exportJob && photos.length ? planStory(photos, seed, style, rhythm, smart, exportFormat, material) : null
   return (
     <main
-      className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} ${smart ? 'smart-prototype' : ''} scatter-prototype--${activeId}`}
+      className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} ${smart ? 'smart-prototype' : ''} ${decorExperiment ? 'decor-experiment' : ''} scatter-prototype--${activeId}`}
       /* 背景只换这三个变量：预览与导出共用，所以换背景不需要改导出逻辑。 */
       style={{ '--paper-color': background.paper.color, '--paper-image': background.paper.image, '--paper-size': background.paper.size, '--paper-blend': background.paper.blend }}
     >
       <header className="carousel-master__header">
         <div>
-          <p>PROTOTYPE · V3 {smart ? '智能分页随机' : rhythm ? '五页基准节奏' : '受控随机片段'}</p>
+          <p>PROTOTYPE · V3 {decorExperiment ? '第二档排版装饰' : smart ? '智能分页随机' : rhythm ? '五页基准节奏' : '受控随机片段'}</p>
           <h1>{style.name}</h1>
           <span>{style.note}</span>
         </div>
@@ -370,6 +393,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
         <span>{story ? `已拒绝 ${story.rejected} 个候选位置 · 接受 ${story.overlaps} 处轻叠` : '正在计算'}</span>
         {smart && story && <span>智能分页：{story.pagePlan.join(' · ')} 张 / 页</span>}
         {smart && story && <span>{story.frames.length} 页输出</span>}
+        {decorExperiment && <span>装饰实验：Gallery 留白 · Muse type rail · Weekend archive tag</span>}
         {smart && story && story.frames.some((frame) => (frame.fittingScale ?? 1) < 1) && (
           <span>
             自动缩放 {story.frames.filter((frame) => (frame.fittingScale ?? 1) < 1).length} 页 · 最小 {Math.round(Math.min(...story.frames.map((frame) => frame.fittingScale ?? 1)) * 100)}%
@@ -448,7 +472,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
             style={{ '--scatter-page-count': story.frames.length, '--scatter-page-aspect': previewFormat.aspect }}
           >
             {story.frames.map((frame, index) => (
-              <ScatterFrame key={index} frame={frame} index={index} total={story.frames.length} rhythm={rhythm} showNumber={showNumbers} format={previewFormat} material={material} />
+              <ScatterFrame key={index} frame={frame} index={index} total={story.frames.length} rhythm={rhythm} showNumber={showNumbers} format={previewFormat} material={material} styleId={activeId} decorExperiment={decorExperiment} />
             ))}
           </div>
         )}
@@ -457,7 +481,9 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
       <aside className="carousel-master__rules">
         <span>本轮验证</span>
         <p>{smart
-          ? '系统先计算每页 2–4 张照片：十张以上优先给出五页，2 张页占主导、3 张页补足数量、4 张页最多一次。之后才在每页内生成多轮随机位置方案，留下完整放下且最自然的一轮。三种风格只改变纸面气质，不改变分页规则。'
+          ? decorExperiment
+            ? '这一轮只试风格专属的排版层：Muse 用页边 type rail 与窄色带，Weekend 用真实页序号的 archive tag 与小色块；Gallery 不新增物件。它不改变分页、照片尺寸或材质轴。'
+            : '系统先计算每页 2–4 张照片：十张以上优先给出五页，2 张页占主导、3 张页补足数量、4 张页最多一次。之后才在每页内生成多轮随机位置方案，留下完整放下且最自然的一轮。三种风格只改变纸面气质，不改变分页规则。'
           : rhythm
           ? '这一版只规定每页承担的观看角色；照片的具体位置、尺寸与轻叠仍由种子随机决定。请判断它是否让整组更有起伏，而没有牺牲当前的自由感。'
           : '随机位置只能在已确定的内容尺寸范围内移动；放不下的照片自动顺延到下一页。白边是更细的装裱边，也是保护照片内容的碰撞缓冲区。'}
@@ -482,7 +508,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
           >
             <div className="scatter-export__paper" />
             <div className="scatter-export__art">
-              <ScatterFrame frame={exportStory.frames[exportJob.index]} index={exportJob.index} total={exportStory.frames.length} rhythm={false} showNumber={showNumbers} format={exportFormat} material={material} />
+              <ScatterFrame frame={exportStory.frames[exportJob.index]} index={exportJob.index} total={exportStory.frames.length} rhythm={false} showNumber={showNumbers} format={exportFormat} material={material} styleId={activeId} decorExperiment={decorExperiment} />
             </div>
           </div>
         </div>

@@ -361,3 +361,70 @@
   background: currentColor;
   opacity: .6;
 }
+
+/* ---- 第二档风格专属排版装饰 -----------------------------------------------
+   这不是贴纸层。所有元素都被固定在页面的外沿留白，照片卡片从 4% / 11% 起放置，
+   所以不遮住内容区，也不会改变分页或几何碰撞。尺寸只用 cqw，预览与导出同比例。 */
+.scatter-style-decor {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Muse：页边小衬线 type rail + 低饱和窄色带。只在 2–3 页出现，作为阅读方向。 */
+.scatter-style-decor--muse {
+  top: 12%;
+  left: 1.1%;
+  width: 2.1%;
+  height: 42%;
+}
+
+.scatter-style-decor__band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: .8cqw;
+  background: var(--style-decor-accent);
+  opacity: .58;
+}
+
+.scatter-style-decor__rail {
+  position: absolute;
+  top: 1cqw;
+  left: .85cqw;
+  color: rgba(64, 54, 49, .72);
+  font-family: var(--font-serif);
+  font-size: 1.45cqw;
+  font-weight: 500;
+  letter-spacing: .12em;
+  line-height: 1;
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+/* Weekend：顶部档案标签 + 小色块。没有 EXIF 时只显示真实页序号，不伪造日期。 */
+.scatter-style-decor--weekend {
+  top: 3.2%;
+  right: 5.2%;
+  display: inline-flex;
+  align-items: center;
+  gap: 1.1cqw;
+  color: var(--scatter-ink-soft, rgba(60, 55, 45, .7));
+  font-family: var(--font-sans);
+}
+
+.scatter-style-decor__dot {
+  display: block;
+  width: 1.15cqw;
+  height: 1.15cqw;
+  background: var(--style-decor-accent);
+}
+
+.scatter-style-decor__archive {
+  font-size: 1.05cqw;
+  font-weight: 600;
+  letter-spacing: .18em;
+  white-space: nowrap;
+}
