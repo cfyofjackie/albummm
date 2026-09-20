@@ -21,10 +21,12 @@ export const BACKGROUND_MASTERS = [
   {
     id: 'field',
     label: '硬边色场',
-    note: '暖白底 + 一段氧化酒红：用边界，而非更多渐变，制造 editorial 张力。',
+    note: '跨第 2–3 页的主色场 + 尾部同色回声：用节奏，而非更多渐变，制造 editorial 张力。',
     paper: {
       color: '#efebe2',
-      image: 'linear-gradient(90deg, #efebe2 0 23%, #743d3d 23% 40%, #efebe2 40% 100%)',
+      // 主色场约 1.6 页宽：5 页时从第 2 页延到第 3 页中段；6 页时同样跨第 2–3 页。
+      // 74–81% 的低浓度回声在 6 页输出里落在倒数第二页，给整条带子一个收束提示。
+      image: 'linear-gradient(90deg, #efebe2 0 20%, #743d3d 20% 47%, #efebe2 47% 74%, rgba(116, 61, 61, .55) 74% 81%, #efebe2 81% 100%)',
       size: '100% 100%',
       blend: 'normal',
     },
