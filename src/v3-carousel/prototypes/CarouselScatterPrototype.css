@@ -63,6 +63,28 @@
   container-type: inline-size;
 }
 
+/* ---- 背景结构母板 ----------------------------------------------------------
+   PROTOTYPE：只试「背景是否能组织连续阅读」。它不接触照片卡片或几何层。
+   连续轨道作为每页独立的背景层，预览和离屏导出都会由 ScatterFrame 同时渲染。 */
+.scatter-background-master__edge {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 11%;
+  background: var(--background-master-accent);
+  pointer-events: none;
+}
+
+.background-experiment--night .scatter-frame::before {
+  background: linear-gradient(135deg, rgba(255, 255, 255, .05), transparent 42%);
+}
+
+.background-experiment--night .scatter-style-decor__rail {
+  color: rgba(245, 240, 229, .72);
+}
+
 .scatter-frame::before {
   position: absolute;
   inset: 0;
@@ -205,6 +227,12 @@
 }
 
 .scatter-prototype--muse .scatter-export__paper {
+  background-size: calc(var(--scatter-page-count, 5) * 1080px) 100%;
+}
+
+/* 必须写在 Muse 的旧渐变规则之后：背景母板可与任意风格叠加，
+   硬边色场的导出也要以整条作品带为参照，和预览保持同一段色场。 */
+.background-experiment--field .scatter-export__paper {
   background-size: calc(var(--scatter-page-count, 5) * 1080px) 100%;
 }
 
