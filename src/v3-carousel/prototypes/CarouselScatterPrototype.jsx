@@ -5,6 +5,11 @@ import { makeDemoPhotos } from '../../shared/demo.js'
 import { loadPhoto } from '../../shared/photo.js'
 import { BORDER_STYLES, DEFAULT_BORDER, DEFAULT_EDGE, DEFAULT_FORMAT, DEFAULT_TAPE, EDGE_STYLES, PAGE_FORMATS, TAPE_STYLES, clamp, matInsets, materialOf, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS, tapeOffset, tornContours } from '../layout/carouselPlacement.js'
 import { backgroundFor, backgroundsForStyle } from '../layout/paperBackgrounds.js'
+import { footerFor } from '../layout/pageDecor.js'
+import '@fontsource/eb-garamond/latin-400.css'
+import '@fontsource/eb-garamond/latin-600.css'
+import '@fontsource/inter/latin-400.css'
+import '@fontsource/inter/latin-500.css'
 import './CarouselMastersPrototype.css'
 import './CarouselScatterPrototype.css'
 
@@ -147,13 +152,20 @@ function matPercents(box, format, material) {
   }
 }
 
-function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAULT_FORMAT, material = undefined }) {
+function ScatterFrame({ frame, index, total = 1, rhythm, showNumber = true, format = DEFAULT_FORMAT, material = undefined }) {
   const spec = materialOf(material)
+  const footer = footerFor(index, total)
   return (
     <article className={`carousel-master__frame scatter-frame ${rhythm && frame.recipe ? `rhythm-frame rhythm-frame--${frame.recipe.id}` : ''}`}>
-      {showNumber && <span className="carousel-master__number">{String(index + 1).padStart(2, '0')}</span>}
+      {showNumber && (
+        <footer className="scatter-frame__footer">
+          <span className="scatter-frame__rule" aria-hidden="true" />
+          <span className="scatter-frame__page">{footer.page} / {footer.total}</span>
+          <span className="scatter-frame__meta">{footer.label}</span>
+        </footer>
+      )}
       {rhythm && frame.recipe && <span className="rhythm-frame__role">{frame.recipe.label}</span>}
-      {frame.placed.map(({ photo, x, y, w, h, rotate, mat: cardMat, tape, tear }, cardIndex) => {
+      {frame.placed.map(({ photo, x, y, w, h, rotate, mat: cardMat, tape, tear, labelText }, cardIndex) => {
         const mat = matPercents({ w, h, mat: cardMat }, format, spec)
         // 只有几何层挑中的那一张（每页一张）才撕。
         const torn = tear ? tornContours({ w, h, mat: cardMat }, format, spec, photo.id) : null
@@ -182,6 +194,13 @@ function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAUL
             {torn && <span className="scatter-card__fringe" style={{ clipPath: torn.paper.inner }} aria-hidden="true" />}
             {/* 照片本体用同一套轮廓裁 —— 照片自己就是撕口的形状（撕掉相纸一部分的效果）。 */}
             <img src={photo.previewSrc} alt="随机排版中的照片" style={{ clipPath: torn?.image.outer }} />
+            {/* micro-label：贴在卡片下方，不压照片内容；文字用照片在整组里的真实序号。 */}
+            {labelText && (
+              <span className="scatter-card__label">
+                <i className="scatter-card__label-tick" aria-hidden="true" />
+                {labelText}
+              </span>
+            )}
             {spec.tape.enabled && tape && (
               <span
                 className="scatter-tape"
@@ -305,6 +324,9 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
       await Promise.all([...node.querySelectorAll('img')].map((img) => (
         img.complete ? Promise.resolve() : new Promise((resolve) => { img.onload = resolve; img.onerror = resolve })
       )))
+      // 字体必须先加载完：html-to-image 把 DOM 画进 canvas，字体没就绪就会回退成系统字体，
+      // 于是「预览用了 EB Garamond / Inter，导出却是默认字体」，两边不一致。
+      if (document.fonts?.ready) await document.fonts.ready
       const blob = await toBlob(node, { pixelRatio: 1, cacheBust: false, backgroundColor: background.paper.color })
       if (blob) downloadBlob(blob, `albummm-v3-${format.id}-${String(index + 1).padStart(2, '0')}.png`)
       await new Promise((resolve) => setTimeout(resolve, 150))
@@ -426,7 +448,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
             style={{ '--scatter-page-count': story.frames.length, '--scatter-page-aspect': previewFormat.aspect }}
           >
             {story.frames.map((frame, index) => (
-              <ScatterFrame key={index} frame={frame} index={index} rhythm={rhythm} showNumber={showNumbers} format={previewFormat} material={material} />
+              <ScatterFrame key={index} frame={frame} index={index} total={story.frames.length} rhythm={rhythm} showNumber={showNumbers} format={previewFormat} material={material} />
             ))}
           </div>
         )}
@@ -460,7 +482,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
           >
             <div className="scatter-export__paper" />
             <div className="scatter-export__art">
-              <ScatterFrame frame={exportStory.frames[exportJob.index]} index={exportJob.index} rhythm={false} showNumber={showNumbers} format={exportFormat} material={material} />
+              <ScatterFrame frame={exportStory.frames[exportJob.index]} index={exportJob.index} total={exportStory.frames.length} rhythm={false} showNumber={showNumbers} format={exportFormat} material={material} />
             </div>
           </div>
         </div>

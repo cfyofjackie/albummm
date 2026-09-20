@@ -58,6 +58,11 @@
   background-blend-mode: var(--paper-blend, normal);
 }
 
+.scatter-frame {
+  /* 装饰用 cqw（= 页宽的 1%）：预览页宽 216–335px、导出页宽 1080px，比例完全一致。 */
+  container-type: inline-size;
+}
+
 .scatter-frame::before {
   position: absolute;
   inset: 0;
@@ -214,8 +219,6 @@
    整页会被裁成空白（只剩纸面背景）。 */
 .scatter-export .carousel-master__frame { height: 100%; border-right: 0; }
 .scatter-export .carousel-master__photo img { max-height: none; }
-/* 页码在 1080 宽的页面上要按比例放大：预览里 8px / 335px ≈ 导出的 26px / 1080px。 */
-.scatter-export .carousel-master__number { font-size: 26px; }
 
 .scatter-export[data-scatter-page="2"] .scatter-frame::before,
 .scatter-export[data-scatter-page="4"] .scatter-frame::before {
@@ -282,4 +285,79 @@
      第 1 页直接冲到最后一页）。注意这个属性只约束触摸甩动，滚轮/程序化滚动不受它约束。 */
   .scatter-frame { scroll-snap-align: start; scroll-snap-stop: always; }
   .rhythm-frame__role { font-size: 8px; }
+}
+
+/* ---- 排版层装饰：页脚条 + micro-label --------------------------------------
+   参考图里 90% 的装饰是「文字 + 细线 + 序号」，不是贴纸（见 validation-log.md §20）。
+   字体：EB Garamond（衬线，序号/标题）+ Inter（无衬线小号大写，micro-label），
+   都是自托管的 OFL 字体，导出前会 await document.fonts.ready。 */
+.scatter-prototype {
+  --font-serif: 'EB Garamond', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.scatter-frame__footer {
+  position: absolute;
+  right: 5.2%;
+  bottom: 3.4%;
+  left: 5.2%;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--scatter-ink-soft, rgba(60, 55, 45, .62));
+  font-family: var(--font-sans);
+  pointer-events: none;
+}
+
+/* 细线：页脚的分隔线（参考图里它出现的频率比任何贴纸都高） */
+.scatter-frame__rule {
+  flex: 1;
+  height: .1cqw;
+  min-height: 1px;
+  background: currentColor;
+  opacity: .42;
+  transform: translateY(-3px);
+}
+
+.scatter-frame__page {
+  font-family: var(--font-serif);
+  font-size: 2cqw;
+  letter-spacing: .06em;
+  font-variant-numeric: tabular-nums;
+}
+
+.scatter-frame__meta {
+  font-size: 1.05cqw;
+  font-weight: 500;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  opacity: .8;
+}
+
+/* micro-label：贴在卡片下方（位置由几何层预留，不压照片内容） */
+.scatter-card__label {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: .6%;
+  color: var(--scatter-ink-soft, rgba(60, 55, 45, .62));
+  font-family: var(--font-sans);
+  font-size: 1.05cqw;
+  font-weight: 500;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 标签前的短刻度：把文字和小色块串起来的那一小笔 */
+.scatter-card__label-tick {
+  display: block;
+  width: 1.4cqw;
+  height: 1px;
+  background: currentColor;
+  opacity: .6;
 }

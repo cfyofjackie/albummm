@@ -3,6 +3,8 @@
 // 不读 DOM、不依赖 React，方便用固定种子直接回归。
 
 import { paginatePhotos } from './carouselSmartPagination.js'
+// micro-label 的占位要并进安全盒（与胶带同一套做法），所以几何层要认识它。
+import { labelBox, labelPagesFor, labelTextFor } from './pageDecor.js'
 
 export const FRAME_ASPECT = .8 // 4:5 output pages（portrait 规格的页面比例，向后兼容）
 export const EXPORT_WIDTH = 1080
@@ -286,13 +288,15 @@ function safetyBox(box, format = DEFAULT_FORMAT, rotate = 0, material = DEFAULT_
     const extraY = Math.max(0, (box.w * sin + heightInWidthUnits * (cos - 1)) / 2) * format.aspect
     box0 = { x: inner.x - extraX, y: inner.y - extraY, w: inner.w + extraX * 2, h: inner.h + extraY * 2 }
   }
+  const label = box.label ? labelBox(box) : null
   const tape = tapeRect(box, format, material)
-  if (!tape) return box0
+  if (!tape && !label) return box0
   // 胶带占位并进安全盒（取并集，不是外扩）：这样别的照片内容不会落在胶带底下。
-  const x0 = Math.min(box0.x, tape.x)
-  const y0 = Math.min(box0.y, tape.y)
-  const x1 = Math.max(box0.x + box0.w, tape.x + tape.w)
-  const y1 = Math.max(box0.y + box0.h, tape.y + tape.h)
+  const parts = [box0, ...(tape ? [tape] : []), ...(label ? [label] : [])]
+  const x0 = Math.min(...parts.map((part) => part.x))
+  const y0 = Math.min(...parts.map((part) => part.y))
+  const x1 = Math.max(...parts.map((part) => part.x + part.w))
+  const y1 = Math.max(...parts.map((part) => part.y + part.h))
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
@@ -392,13 +396,13 @@ function acceptable(box, placed, style, format = DEFAULT_FORMAT, material = DEFA
   return cardOverlaps
 }
 
-function fallbackFor(photo, index, style, recipe, scale = 1, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL, tape = false) {
+function fallbackFor(photo, index, style, recipe, scale = 1, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL, tape = false, label = false) {
   const { w, h, mat } = sizeFor(photo, index === 0, () => .5, style, recipe, scale, format, material)
-  return { x: .1 + index * .08, y: .12 + index * .12, w, h, mat, tape, rotate: 0 }
+  return { x: .1 + index * .08, y: .12 + index * .12, w, h, mat, tape, label, rotate: 0 }
 }
 
-function safeFallback(photo, index, placed, style, recipe, scale = 1, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL, tape = false) {
-  const base = fallbackFor(photo, index, style, recipe, scale, format, material, tape)
+function safeFallback(photo, index, placed, style, recipe, scale = 1, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL, tape = false, label = false) {
+  const base = fallbackFor(photo, index, style, recipe, scale, format, material, tape, label)
   // 节奏页面不靠缩小回退；更细的搜索网格优先给当前页找到合法空位，
   // 避免一张陪衬图顺延后破坏下一页的“安静区”。
   const grid = [.04, .16, .28, .4, .52, .64, .76, .88]
@@ -418,7 +422,7 @@ function contentCollisions(placed, format = DEFAULT_FORMAT, material = DEFAULT_M
   ).length, 0)
 }
 
-export function placeFrame(photos, random, style, recipe = null, scale = 1, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
+export function placeFrame(photos, random, style, recipe = null, scale = 1, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL, labelPage = false) {
   const placed = []
   const unplaced = []
   let rejected = 0
@@ -429,10 +433,12 @@ export function placeFrame(photos, random, style, recipe = null, scale = 1, form
   const tapeCount = tapeCountFor(photos.length, material)
   photos.forEach((photo, index) => {
     const taped = index < tapeCount
+    // micro-label 贴在该页第一张卡片下方；它占的位置在放置时就要预留（并进安全盒）。
+    const labeled = labelPage && index === 0
     let chosen = null
     for (let attempt = 0; attempt < 80; attempt += 1) {
       const base = candidateFor(photo, placed.length === 0, random, style, placed[0], recipe, scale, format, material)
-      const candidate = taped ? { ...base, tape: true } : base
+      const candidate = { ...base, ...(taped ? { tape: true } : {}), ...(labeled ? { label: true } : {}) }
       const cardOverlaps = acceptable(candidate, placed, style, format, material)
       if (cardOverlaps == null) {
         rejected += 1
@@ -445,7 +451,7 @@ export function placeFrame(photos, random, style, recipe = null, scale = 1, form
     if (chosen) {
       placed.push({ photo, ...chosen })
     } else {
-      const fallback = safeFallback(photo, index, placed, style, recipe, scale, format, material, taped)
+      const fallback = safeFallback(photo, index, placed, style, recipe, scale, format, material, taped, labeled)
       if (fallback) {
         overlaps += fallback.cardOverlaps
         placed.push({ photo, ...fallback.box })
@@ -477,12 +483,12 @@ export function placeFrame(photos, random, style, recipe = null, scale = 1, form
 // 整页放不下时（超宽 + 超长配成一页的典型情况），按 FITTING_SCALES 统一下调尺寸重排，
 // 取「整页都放得下」的最大缩放——这取代了以前「让一张照片顺延成单图页」的行为。
 // 阶梯试到底仍有照片放不下时，才顺延成补充页，由 planSmartStory 兜住，不丢图。
-export function placeFrameBest(photos, seed, style, recipe, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
+export function placeFrameBest(photos, seed, style, recipe, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL, labelPage = false) {
   let best = null
   for (const scale of FITTING_SCALES) {
     let candidate = null
     for (let attempt = 0; attempt < 16; attempt += 1) {
-      const run = placeFrame(photos, rngFrom(seed + attempt * 7919), style, recipe, scale, format, material)
+      const run = placeFrame(photos, rngFrom(seed + attempt * 7919), style, recipe, scale, format, material, labelPage)
       const score = run.placed.length * 10000 - run.unplaced.length * 10000 - run.rejected * 2 - run.overlaps
       if (!candidate || score > candidate.score) candidate = { ...run, score, fittingScale: scale }
       if (run.unplaced.length === 0 && run.rejected === 0) break
@@ -501,9 +507,11 @@ export function planSmartStory(photos, seed, style, format = DEFAULT_FORMAT, mat
     photos: group,
     recipe: smartRecipeFor(group.length, style),
   }))
+  // 哪几页贴 micro-label：由页数计划决定（首尾优先），放置时就把位置预留出来。
+  const labelPages = new Set(labelPagesFor(groups.length))
   const frames = []
   groups.forEach(({ photos: group, recipe }, index) => {
-    const placedFrame = placeFrameBest(group, seed + index * 104729, style, recipe, format, material)
+    const placedFrame = placeFrameBest(group, seed + index * 104729, style, recipe, format, material, labelPages.has(index))
     frames.push({ ...placedFrame, recipe })
     let overflow = placedFrame.unplaced
     const overflowRecipe = smartRecipeFor(Math.min(4, Math.max(2, overflow.length)), style)
@@ -518,6 +526,10 @@ export function planSmartStory(photos, seed, style, format = DEFAULT_FORMAT, mat
       }
     }
   })
+  // micro-label 的文字用照片在整组里的真实序号（不是装饰性编造的内容）。
+  frames.forEach((frame) => frame.placed.forEach((card) => {
+    if (card.label) card.labelText = labelTextFor(photos.indexOf(card.photo))
+  }))
   return {
     frames,
     pagePlan: groups.map((group) => group.photos.length),
