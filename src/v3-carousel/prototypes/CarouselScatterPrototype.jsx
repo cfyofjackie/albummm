@@ -195,6 +195,11 @@ function ScatterFrame({ frame, index, total = 1, rhythm, showNumber = true, form
   const spec = materialOf(material)
   const footer = footerFor(index, total)
   const decor = decorExperiment ? styleDecorFor(styleId, index, total) : null
+  // 背景有明显材质时，最大的相纸可以保留一点层次；其余卡片贴近纸面，
+  // 才不会让整组照片同时悬在背景上方。
+  const anchorPhotoId = frame.placed.reduce((anchor, card) => (
+    !anchor || card.w * card.h > anchor.w * anchor.h ? card : anchor
+  ), null)?.photo.id
   return (
     <article className={`carousel-master__frame scatter-frame ${rhythm && frame.recipe ? `rhythm-frame rhythm-frame--${frame.recipe.id}` : ''}`}>
       <BackgroundMasterLayer master={backgroundMaster} index={index} total={total} />
@@ -217,7 +222,7 @@ function ScatterFrame({ frame, index, total = 1, rhythm, showNumber = true, form
         return (
           <figure
             key={photo.id}
-            className={`carousel-master__photo scatter-card${spec.edge.id === 'torn' ? ' scatter-card--torn' : ''}`}
+            className={`carousel-master__photo scatter-card${spec.edge.id === 'torn' ? ' scatter-card--torn' : ''}${photo.id === anchorPhotoId ? ' scatter-card--anchor' : ''}`}
             style={{
               left: `${x * 100}%`,
               top: `${y * 100}%`,
@@ -289,6 +294,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const [tapeId, setTapeId] = useState(DEFAULT_TAPE.id)
   const [backgroundId, setBackgroundId] = useState(null)
   const [backgroundMasterId, setBackgroundMasterId] = useState(() => (backgroundExperiment ? params.get('background') ?? 'native' : 'native'))
+  const [contactMode, setContactMode] = useState(() => (backgroundExperiment ? params.get('contact') ?? 'grounded' : 'lifted'))
   const [showNumbers, setShowNumbers] = useState(true)
   const inputRef = useRef(null)
   const style = STYLES.find((item) => item.id === activeId)
@@ -326,6 +332,15 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
     else next.set('background', id)
     window.history.replaceState(null, '', `?${next.toString()}`)
     setBackgroundMasterId(id)
+  }
+
+  const changeContactMode = (id) => {
+    const next = new URLSearchParams(window.location.search)
+    // 新版默认「贴合」；保留 lifted 只用于和改动前的悬浮相纸做视觉对照。
+    if (id === 'grounded') next.delete('contact')
+    else next.set('contact', id)
+    window.history.replaceState(null, '', `?${next.toString()}`)
+    setContactMode(id)
   }
 
   useEffect(() => {
@@ -393,7 +408,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const exportStory = exportJob && photos.length ? planStory(photos, seed, style, rhythm, smart, exportFormat, material) : null
   return (
     <main
-      className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} ${smart ? 'smart-prototype' : ''} ${decorExperiment ? 'decor-experiment' : ''} ${backgroundExperiment ? `background-experiment background-experiment--${backgroundMaster?.id ?? 'native'}` : ''} scatter-prototype--${activeId}`}
+      className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} ${smart ? 'smart-prototype' : ''} ${decorExperiment ? 'decor-experiment' : ''} ${backgroundExperiment ? `background-experiment background-experiment--${backgroundMaster?.id ?? 'native'} background-contact--${contactMode}` : ''} scatter-prototype--${activeId}`}
       /* 背景只换这三个变量：预览与导出共用，所以换背景不需要改导出逻辑。 */
       style={{ '--paper-color': background.paper.color, '--paper-image': background.paper.image, '--paper-size': background.paper.size, '--paper-blend': background.paper.blend, '--scatter-ink-soft': backgroundMaster?.ink }}
     >
@@ -487,15 +502,22 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
           </span>
         )}
         {backgroundExperiment ? (
-          <span className="scatter-prototype__control scatter-prototype__control--background-masters">
-            背景母板
-            <button type="button" className={backgroundMasterId === 'native' ? 'is-active' : ''} onClick={() => changeBackgroundMaster('native')}>原风格纸面</button>
-            {BACKGROUND_MASTERS.map((item) => (
-              <button key={item.id} type="button" className={item.id === backgroundMasterId ? 'is-active' : ''} title={item.note} onClick={() => changeBackgroundMaster(item.id)}>
-                {item.label}
-              </button>
-            ))}
-          </span>
+          <>
+            <span className="scatter-prototype__control scatter-prototype__control--background-masters">
+              背景母板
+              <button type="button" className={backgroundMasterId === 'native' ? 'is-active' : ''} onClick={() => changeBackgroundMaster('native')}>原风格纸面</button>
+              {BACKGROUND_MASTERS.map((item) => (
+                <button key={item.id} type="button" className={item.id === backgroundMasterId ? 'is-active' : ''} title={item.note} onClick={() => changeBackgroundMaster(item.id)}>
+                  {item.label}
+                </button>
+              ))}
+            </span>
+            <span className="scatter-prototype__control">
+              相纸状态
+              <button type="button" className={contactMode === 'grounded' ? 'is-active' : ''} onClick={() => changeContactMode('grounded')}>贴合感</button>
+              <button type="button" className={contactMode === 'lifted' ? 'is-active' : ''} onClick={() => changeContactMode('lifted')}>浮层感</button>
+            </span>
+          </>
         ) : (
           /* 背景属于风格：只列当前风格的背景，切换风格时自动回落到该风格的背景。 */
           <span className="scatter-prototype__control">

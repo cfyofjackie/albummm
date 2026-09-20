@@ -230,6 +230,30 @@
   content: '';
 }
 
+/* ---- 相纸贴合度 ----------------------------------------------------------
+   背景图有强材质时，原本每张相纸相同的投影会把它们都推到前景。
+   「贴合感」不改拍立得白边：缩短非主图阴影、只留下最大一张的轻层次，
+   再给白边一层低到几乎不可见的纸纤维。照片内容本体完全不受影响。 */
+.background-experiment.background-contact--grounded .scatter-card__paper {
+  filter: drop-shadow(0 1px 2px rgba(45, 38, 30, .1));
+}
+.background-experiment.background-contact--grounded .scatter-card--anchor .scatter-card__paper {
+  filter: drop-shadow(0 3px 5px rgba(45, 38, 30, .14));
+}
+.background-experiment.background-contact--grounded .scatter-card:not(.scatter-card--torn) .scatter-card__paper {
+  background-image:
+    repeating-linear-gradient(88deg, rgba(137, 126, 104, .028) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(-5deg, rgba(255, 255, 255, .2) 0 1px, transparent 1px 5px);
+  background-blend-mode: multiply, normal;
+}
+.background-experiment.background-contact--grounded .scatter-background-master--veil-flow::before {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(89deg, rgba(255, 255, 255, .17) 0 1px, transparent 1px 5px);
+  content: '';
+  opacity: .45;
+}
+
 /* ---- 离屏导出画布 ----------------------------------------------------------
    背景在预览里挂在整条带子上，所以导出单页时必须把同一张背景平移到本页的位置：
    网格用 background-position-x 位移（位相与连续带子完全一致，接缝无错位），
