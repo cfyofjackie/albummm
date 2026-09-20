@@ -1,6 +1,10 @@
 # V3 下一步开发交接
 
 > 给接手 V3 的开发者：先读 `direction.md`，再读 `development-guardrails.md`。后者是不可破坏的底线；本文件是下一步的优先顺序。
+>
+> **最新状态与设计问题清单请看 `handover-to-codex.md`**（写于 `281be5e`）：它包含当前已实现的设计系统、
+> 待决定的设计问题（D1–D10）、已知的坑与验证方式。本文件的部分路线已被后续决定覆盖，以
+> `development-guardrails.md` 与 `validation-log.md`（§1–§20）为准。
 
 ## 1. 当前结论
 
