@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { toBlob } from 'html-to-image'
 import { makeDemoPhotos } from '../../shared/demo.js'
 import { loadPhoto } from '../../shared/photo.js'
-import { BORDER_STYLES, DEFAULT_BORDER, DEFAULT_EDGE, DEFAULT_FORMAT, DEFAULT_TAPE, EDGE_STYLES, PAGE_FORMATS, TAPE_STYLES, clamp, matInsets, materialOf, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS, tornContours } from '../layout/carouselPlacement.js'
+import { BORDER_STYLES, DEFAULT_BORDER, DEFAULT_EDGE, DEFAULT_FORMAT, DEFAULT_TAPE, EDGE_STYLES, PAGE_FORMATS, TAPE_STYLES, clamp, matInsets, materialOf, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS, tapeOffset, tornContours } from '../layout/carouselPlacement.js'
 import { backgroundFor, backgroundsForStyle } from '../layout/paperBackgrounds.js'
 import './CarouselMastersPrototype.css'
 import './CarouselScatterPrototype.css'
@@ -149,8 +149,6 @@ function matPercents(box, format, material) {
 
 function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAULT_FORMAT, material = undefined }) {
   const spec = materialOf(material)
-  // 胶带的位置：从卡片上缘越出，一半在卡片上、一半贴纸底；由几何层决定哪几张带胶带。
-  const tapeHeight = (spec.tape.thickness * format.width) / format.height * 100
   return (
     <article className={`carousel-master__frame scatter-frame ${rhythm && frame.recipe ? `rhythm-frame rhythm-frame--${frame.recipe.id}` : ''}`}>
       {showNumber && <span className="carousel-master__number">{String(index + 1).padStart(2, '0')}</span>}
@@ -159,6 +157,9 @@ function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAUL
         const mat = matPercents({ w, h, mat: cardMat }, format, spec)
         // 只有几何层挑中的那一张（每页一张）才撕。
         const torn = tear ? tornContours({ w, h, mat: cardMat }, format, spec, photo.id) : null
+        // 胶带高度：thickness 是「页宽单位」，而 CSS 的 height % 是相对**卡片高度**的，
+        // 所以要除以这张卡片的高度 h（曾经漏了这一步，胶带只有设计厚度的 40%，细得像根线）。
+        const tapeHeight = (spec.tape.thickness * format.width / format.height) / h * 100
         return (
           <figure
             key={photo.id}
@@ -185,8 +186,8 @@ function ScatterFrame({ frame, index, rhythm, showNumber = true, format = DEFAUL
               <span
                 className="scatter-tape"
                 style={{
-                  // 与几何层 tapeRect 同一套算法：下端停在照片内容上边界，上端越出卡片。
-                  top: `${-Math.max(0, spec.tape.thickness - mat.px.top / format.width) / h * 100}%`,
+                  // 位置来自几何层的 tapeOffset：压在相纸外缘上，一半在白边、一半越出卡片。
+                  top: `${tapeOffset({ w, h, mat: cardMat }, format, spec) / h * 100}%`,
                   rotate: `${cardIndex % 2 ? 4.5 : -3.5}deg`,
                 }}
                 aria-hidden="true"

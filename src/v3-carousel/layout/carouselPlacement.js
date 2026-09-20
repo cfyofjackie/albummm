@@ -161,20 +161,27 @@ export function matInsets(box, format = DEFAULT_FORMAT, material = DEFAULT_MATER
   return { x: side, top: side, bottom: side + Math.round(chin) }
 }
 
-// 胶带的实际矩形（页面坐标）：长度按卡片宽度、居中贴在卡片上缘；
-// **下端恰好停在照片内容的上边界**（不遮内容），上端越出卡片外框。
-// 越出多少取决于白边厚度：白边越厚，胶带越少越出，看起来就像"压住相纸边缘"。
+// 胶带贴在**相纸外缘**上（不是贴着照片内容的上边界）：一半落在白边上、一半越出到纸面。
+// 这样拍立得那种宽白边才会呈现「胶带压住相纸边」的样子。
+// 唯一约束：压在纸上的那一半不得超过白边厚度（matTop），所以照片内容永远不会被胶带盖住。
+export function tapeOffset(card, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
+  const spec = materialOf(material).tape
+  if (!spec.enabled) return 0
+  const mat = card.mat ?? matInsets(card, format, material)
+  const height = spec.thickness
+  const onPaper = Math.min(height * (spec.protrude ?? .5), mat.top / format.width)
+  return onPaper - height // 相对卡片上缘的偏移（负值 = 越出到卡片外）
+}
+
+// 胶带的实际矩形（页面坐标）：长度按卡片宽度居中，垂直位置由 tapeOffset 决定。
 export function tapeRect(card, format = DEFAULT_FORMAT, material = DEFAULT_MATERIAL) {
   const spec = materialOf(material).tape
   if (!spec.enabled || !card?.tape) return null
-  const matTop = (card.mat?.top ?? matInsets(card, format, material).top) / format.width
-  const height = spec.thickness
-  const out = Math.max(0, height - matTop)
   return {
     x: card.x + card.w / 2 - card.w * spec.lengthScale / 2,
-    y: card.y - out,
+    y: card.y + tapeOffset(card, format, material),
     w: card.w * spec.lengthScale,
-    h: height,
+    h: spec.thickness,
   }
 }
 

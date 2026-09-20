@@ -515,6 +515,35 @@ describe('V3 材质三轴：边框 / 边缘 / 胶带', () => {
     expect(first.paper.outer).not.toBe(other.paper.outer)
   })
 
+  it('胶带贴在相纸外缘上：拍立得时会跨过外缘，白边薄时只压白边、不遮内容', () => {
+    const sample = { x: .2, y: .3, w: .4, h: .4, tape: true }
+    const thin = materialOf({ border: BORDER_STYLES.none, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.washi })
+    const thick = materialOf({ border: BORDER_STYLES.polaroid, edge: EDGE_STYLES.straight, tape: TAPE_STYLES.washi })
+    for (const material of [thin, thick]) {
+      const card = { ...sample, mat: matInsets(sample, DEFAULT_FORMAT, material) }
+      const tape = tapeRect(card, DEFAULT_FORMAT, material)
+      const matTop = card.mat.top / DEFAULT_FORMAT.width
+      const label = material.border.label
+      // 1) 胶带下缘不得超过照片内容的上边界（永远不遮照片）
+      expect(tape.y + tape.h, `${label} 压到照片内容`).toBeLessThanOrEqual(card.y + matTop + 1e-9)
+      // 2) 胶带必须同时压住纸面与相纸：上缘在卡片外、下缘在卡片内
+      expect(tape.y, `${label} 没有越出卡片`).toBeLessThan(card.y)
+      expect(tape.y + tape.h, `${label} 没有压在卡片上`).toBeGreaterThan(card.y)
+    }
+    // 3) 拍立得的宽白边下，胶带是「一半一半」跨在外缘上（而不是整条缩在白边里面）
+    const thickCard = { ...sample, mat: matInsets(sample, DEFAULT_FORMAT, thick) }
+    const thickTape = tapeRect(thickCard, DEFAULT_FORMAT, thick)
+    const above = thickCard.y - thickTape.y
+    const below = thickTape.y + thickTape.h - thickCard.y
+    expect(above).toBeGreaterThan(0)
+    expect(below).toBeGreaterThan(0)
+    expect(above / thickTape.h, '拍立得下胶带应约一半在卡片外').toBeCloseTo(.5, 2)
+    // 4) 白边很薄时，压住纸面的那部分被白边厚度卡住，其余全部越出到卡片外
+    const thinCard = { ...sample, mat: matInsets(sample, DEFAULT_FORMAT, thin) }
+    const thinTape = tapeRect(thinCard, DEFAULT_FORMAT, thin)
+    expect(thinTape.y + thinTape.h - thinCard.y).toBeCloseTo(thinCard.mat.top / DEFAULT_FORMAT.width, 9)
+  })
+
   it('胶带条数 = 页内照片数 − 1，至少 1 条', () => {
     const washi = materialOf({ tape: TAPE_STYLES.washi })
     expect(tapeCountFor(2, washi)).toBe(1)
