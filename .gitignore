@@ -4,3 +4,4 @@ dist/
 # 教学工作区（不入库）
 learning/
 check/
+.DS_Store

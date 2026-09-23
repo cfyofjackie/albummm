@@ -484,7 +484,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
           </button>
         </span>
       )}
-      {backgroundExperiment ? (
+      {backgroundExperiment && (
         <>
           <span className="scatter-prototype__control scatter-prototype__control--background-masters">
             背景母板
@@ -501,16 +501,6 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
             <button type="button" className={contactMode === 'lifted' ? 'is-active' : ''} onClick={() => changeContactMode('lifted')}>浮层感</button>
           </span>
         </>
-      ) : (
-        /* 背景属于风格：只列当前风格的背景，切换风格时自动回落到该风格的背景。 */
-        <span className="scatter-prototype__control">
-          背景
-          {backgroundsForStyle(activeId).map((item) => (
-            <button key={item.id} type="button" className={item.id === background.id ? 'is-active' : ''} onClick={() => setBackgroundId(item.id)}>
-              {item.label}
-            </button>
-          ))}
-        </span>
       )}
     </>
   )
@@ -548,6 +538,36 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
           ))}
         </div>
       </header>
+
+      {!backgroundExperiment && (
+        /* 背景属于风格：只列当前风格的背景，切换风格时自动回落到该风格的背景。
+           色样直接用背景自己的 CSS 值渲染（底色 + 网格/颗粒），预览即真实纸面。 */
+        <section className="carousel-master__backgrounds" aria-label="选择背景纸面">
+          <span className="carousel-master__backgrounds-label">背景</span>
+          <div className="carousel-master__backgrounds-row">
+            {backgroundsForStyle(activeId).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`carousel-master__swatch${item.id === background.id ? ' is-active' : ''}`}
+                aria-pressed={item.id === background.id}
+                onClick={() => setBackgroundId(item.id)}
+              >
+                <i
+                  aria-hidden="true"
+                  style={{
+                    backgroundColor: item.paper.color,
+                    backgroundImage: item.paper.image,
+                    backgroundSize: item.paper.size,
+                    backgroundBlendMode: item.paper.blend,
+                  }}
+                />
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {smart ? (
         <section className="carousel-master__panels" aria-label="排版选项与开发指标">

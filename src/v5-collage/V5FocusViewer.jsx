@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
-import { downloadBlob, exportFocusPng } from './focusExport.js'
+import { EXPORT_TIERS, downloadBlob, exportFocusImage } from './focusExport.js'
 import { focusCameraFor, focusFrameFor, focusScaleFor, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 420
@@ -24,7 +24,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const [camera, setCamera] = useState(openingCamera)
   const [visible, setVisible] = useState(false)
   const [leaving, setLeaving] = useState(false)
-  const [exporting, setExporting] = useState(false)
+  const [exportingId, setExportingId] = useState(null)
   const [viewport, setViewport] = useState(viewportSize)
   const frame = useMemo(() => focusFrameFor(viewport), [viewport.height, viewport.width])
 
@@ -63,23 +63,28 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   }
 
   const moveToTile = (tile) => {
-    if (leaving || tile.id === selectedId) return
-    setSelectedId(tile.id)
+    if (leaving) return
+    // 再点当前选中的照片 = 返回完整拼贴；点其他照片只移动镜头。
+    if (tile.id === selectedId) {
+      closeViewer()
+      return
+    }
     // 浏览其他照片时保持同一镜头倍率，只平移整张高清拼贴。
+    setSelectedId(tile.id)
     setCamera((current) => focusCameraFor(tile, boardRect, frame, current.scale))
   }
 
-  const exportCurrentView = async () => {
-    if (exporting) return
-    setExporting(true)
+  const exportCurrentView = async (tier) => {
+    if (exportingId) return
+    setExportingId(tier.id)
     try {
       // 与预览共用固定 4:3 成品框和同一份镜头坐标；外围窗口区域从不进入导出。
-      const blob = await exportFocusPng({ layout, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera })
-      downloadBlob(blob)
+      const blob = await exportFocusImage({ layout, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, tier })
+      downloadBlob(blob, `albummm-v5-focus-${tier.width}x${tier.height}.${tier.ext}`)
     } catch (error) {
       console.error('V5 focus export failed', error?.type, error?.target?.currentSrc || error?.target?.src || error)
     } finally {
-      setExporting(false)
+      setExportingId(null)
     }
   }
 
@@ -116,9 +121,22 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
         </div>
         <p className="v5-focus__frame-label" style={{ left: `${frame.left}px`, top: `${frame.top}px` }} aria-hidden="true">导出范围 · 4:3</p>
       </div>
-      <button type="button" className="v5-focus__export" onClick={exportCurrentView} disabled={exporting}>{exporting ? '正在导出…' : '导出 PNG'}</button>
+      <div className="v5-focus__exports">
+        {EXPORT_TIERS.map((tier) => (
+          <button
+            key={tier.id}
+            type="button"
+            className="v5-focus__export"
+            title={tier.note}
+            disabled={Boolean(exportingId)}
+            onClick={() => exportCurrentView(tier)}
+          >
+            {exportingId === tier.id ? '正在导出…' : tier.label}
+          </button>
+        ))}
+      </div>
       <button type="button" className="v5-focus__close" onClick={closeViewer} aria-label="返回完整拼贴">×</button>
-      <p className="v5-focus__hint">点击周围照片可平滑移动过去 · Esc 返回</p>
+      <p className="v5-focus__hint">点周围照片移动镜头 · 再点当前照片或按 Esc 返回</p>
     </section>
   )
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { makeDemoPhotos } from '../shared/demo.js'
 import { loadPhoto, releasePhotoSource } from '../shared/photo.js'
-import { ALLOWED_FORMATS, FRAME_MODES, REQUIRED_PHOTO_COUNT, acceptedFormatFor, buildReferenceLayout } from './layout.js'
+import { ALLOWED_FORMATS, FRAME_MODES, REQUIRED_PHOTO_COUNT, acceptedFormatFor, buildReferenceLayout, partitionUploads } from './layout.js'
 import { buildAutoDecorationPlacements } from './decorations.js'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
 import V5FocusViewer from './V5FocusViewer.jsx'
@@ -17,12 +17,28 @@ function fileProblem(file) {
   return ACCEPTED_MIME_TYPES.has(file.type) ? null : `${file.name} 不是 JPG、PNG 或 WebP 图片`
 }
 
-function formatCountMessage(accepted, rejected) {
-  if (accepted.length === REQUIRED_PHOTO_COUNT && !rejected.length) return null
-  const reasons = []
-  if (rejected.length) reasons.push(`${rejected.length} 张比例或格式不符合要求`)
-  if (accepted.length !== REQUIRED_PHOTO_COUNT) reasons.push(`目前可用 ${accepted.length} 张，需要正好 ${REQUIRED_PHOTO_COUNT} 张`)
-  return reasons.join('；')
+// 只读尺寸、不做完整加载：判定「选了多少张、合格几张」不需要生成预览和原图地址，
+// 只有最终采用的照片才走 loadPhoto（解码 + 1600px 预览 + blob URL）。
+function photoSizeOf(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const image = new Image()
+    image.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve({ width: image.naturalWidth, height: image.naturalHeight })
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve(null)
+    }
+    image.src = url
+  })
+}
+
+function uploadKindFor(file, size) {
+  if (fileProblem(file)) return 'type'
+  if (!size || !acceptedFormatFor(size)) return 'ratio'
+  return 'valid'
 }
 
 export default function V5CollagePrototype() {
@@ -71,22 +87,29 @@ export default function V5CollagePrototype() {
     event.target.value = ''
     if (!files.length) return
 
-    const typeErrors = files.map(fileProblem).filter(Boolean)
-    const imageFiles = files.filter((file) => !fileProblem(file))
     setLoading(true)
-    const loaded = await Promise.all(imageFiles.map(loadPhoto))
-    const accepted = loaded.filter((photo) => acceptedFormatFor(photo))
-    const rejected = loaded.filter((photo) => !acceptedFormatFor(photo))
-    const problem = formatCountMessage(accepted, rejected)
+    // 第一遍只读格式与尺寸；按选择顺序取前 10 张合规照片，其余文件不解码、不占内存。
+    const sizes = await Promise.all(files.map(photoSizeOf))
+    const summary = partitionUploads(files.map((file, index) => uploadKindFor(file, sizes[index])))
+    const loaded = await Promise.all(summary.adoptedIndexes.map((index) => loadPhoto(files[index])))
 
-    if (typeErrors.length || problem) {
+    if (loaded.length !== REQUIRED_PHOTO_COUNT) {
+      // 数量不足时整批保留原拼贴：正好 10 张是布局引擎的硬约束（见 layout.js）。
       loaded.forEach(releasePhotoSource)
-      setNotice([typeErrors[0], problem].filter(Boolean).join('；'))
+      const reasons = []
+      if (summary.ratioRejected) reasons.push(`${summary.ratioRejected} 张比例不符合要求`)
+      if (summary.typeRejected) reasons.push(`${summary.typeRejected} 张不是 JPG、PNG 或 WebP`)
+      setNotice(`合规照片只有 ${loaded.length} 张，这个模板需要正好 ${REQUIRED_PHOTO_COUNT} 张${reasons.length ? `（${reasons.join('；')}）` : ''}；已保留原拼贴。`)
       setLoading(false)
       return
     }
-    replacePhotos(accepted)
-    setNotice('已换成你上传的 10 张照片。所有图片都按原始比例完整显示。')
+
+    replacePhotos(loaded)
+    const extras = []
+    if (summary.unusedValid) extras.push(`另有 ${summary.unusedValid} 张未使用`)
+    if (summary.ratioRejected) extras.push(`${summary.ratioRejected} 张比例不符合要求`)
+    if (summary.typeRejected) extras.push(`${summary.typeRejected} 张不是 JPG、PNG 或 WebP`)
+    setNotice(`已使用前 ${REQUIRED_PHOTO_COUNT} 张合规照片${extras.length ? `（${extras.join('；')}）` : ''}。所有图片都按原始比例完整显示。`)
     setLoading(false)
   }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOARD_RATIO, FRAME_MODES, REQUIRED_PHOTO_COUNT, acceptedFormatFor, buildReferenceLayout, selectLayoutProfile } from './layout.js'
+import { BOARD_RATIO, FRAME_MODES, REQUIRED_PHOTO_COUNT, acceptedFormatFor, buildReferenceLayout, partitionUploads, selectLayoutProfile } from './layout.js'
 import { buildAutoDecorationPlacements, rectanglesOverlap, rotatedBounds } from './decorations.js'
 
 const photos = Array.from({ length: REQUIRED_PHOTO_COUNT }, (_, index) => ({
@@ -86,5 +86,48 @@ describe('V5 reference collage layout', () => {
     expect(selectLayoutProfile(landscapePhotos)).toBe('landscape')
     expect(selectLayoutProfile(squarePhotos)).toBe('square')
     expect(selectLayoutProfile(photos)).toBe('mixed')
+  })
+})
+
+describe('upload partitioning（超过 10 张时保留前 10 张合规照片）', () => {
+  const V = 'valid'
+  const R = 'ratio'
+  const T = 'type'
+
+  it('adopts exactly ten valid photos', () => {
+    const summary = partitionUploads(Array.from({ length: 10 }, () => V))
+    expect(summary.adoptedIndexes).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    expect(summary.unusedValid).toBe(0)
+    expect(summary.ratioRejected).toBe(0)
+    expect(summary.typeRejected).toBe(0)
+  })
+
+  it('keeps the first ten in selection order and reports the rest as unused', () => {
+    const summary = partitionUploads(Array.from({ length: 11 }, () => V))
+    expect(summary.adoptedIndexes).toHaveLength(10)
+    expect(summary.unusedValid).toBe(1)
+  })
+
+  it('keeps ten valid photos even when invalid files are mixed in', () => {
+    // 11 张合规 + 2 张比例不合规 + 2 张格式不合规：采用前 10 张，1 张未使用。
+    const summary = partitionUploads([V, T, V, R, V, V, T, V, R, V, V, V, V, V, V])
+    expect(summary.adoptedIndexes).toHaveLength(10)
+    expect(summary.unusedValid).toBe(1)
+    expect(summary.ratioRejected).toBe(2)
+    expect(summary.typeRejected).toBe(2)
+  })
+
+  it('never drops an adopted photo because of files after it', () => {
+    // 前 10 张里有 1 张比例不合规：第 11 张合规照片应当补位，而不是整批被丢。
+    const summary = partitionUploads([V, V, V, V, V, V, V, V, R, V, V])
+    expect(summary.adoptedIndexes).toHaveLength(10)
+    expect(summary.adoptedIndexes).toContain(10)
+    expect(summary.ratioRejected).toBe(1)
+  })
+
+  it('reports the shortfall when fewer than ten photos are valid', () => {
+    const summary = partitionUploads([...Array.from({ length: 9 }, () => V), R])
+    expect(summary.adoptedIndexes).toHaveLength(9)
+    expect(summary.ratioRejected).toBe(1)
   })
 })

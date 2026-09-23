@@ -1,8 +1,15 @@
 import { exportTransformFor } from './focusGeometry.js'
 
-const OUTPUT_WIDTH = 2400
-const OUTPUT_HEIGHT = 1800
 const BOARD_ASPECT = 4 / 3
+
+// 导出档位：「日常保存 / 高清留存」两个可理解的选项，无损 PNG 保留为归档选项而非默认。
+// JPEG 质量先用经验值；最终默认档以真机上的实际体积 + 100% 查看观感校准
+// （docs/next-optimization-review.md §G），不预先承诺固定 MB 数。
+export const EXPORT_TIERS = [
+  { id: 'daily', label: '日常保存', note: '1600×1200 JPG · 体积小，适合分享', width: 1600, height: 1200, mime: 'image/jpeg', quality: .85, ext: 'jpg' },
+  { id: 'hifi', label: '高清留存', note: '2400×1800 JPG · 细节更完整', width: 2400, height: 1800, mime: 'image/jpeg', quality: .92, ext: 'jpg' },
+  { id: 'lossless', label: '无损 PNG', note: '2400×1800 PNG · 无损归档', width: 2400, height: 1800, mime: 'image/png', quality: undefined, ext: 'png' },
+]
 
 const PATHS = {
   spark: 'M21 3v12M21 27v12M3 21h12M27 21h12M8 8l7 7m12 12 7 7m0-26-7 7M15 27 8 34',
@@ -109,18 +116,18 @@ function drawTile(ctx, tile, index, frameMode, image, unitX, unitY, originX, ori
   ctx.restore()
 }
 
-export async function exportFocusPng({ layout, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera }) {
+export async function exportFocusImage({ layout, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, tier = EXPORT_TIERS[1] }) {
   const canvas = document.createElement('canvas')
-  canvas.width = OUTPUT_WIDTH
-  canvas.height = OUTPUT_HEIGHT
+  canvas.width = tier.width
+  canvas.height = tier.height
   const ctx = canvas.getContext('2d')
   ctx.fillStyle = '#e6e5e0'
-  ctx.fillRect(0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT)
-  const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera, { width: OUTPUT_WIDTH, height: OUTPUT_HEIGHT })
+  ctx.fillRect(0, 0, tier.width, tier.height)
+  const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera, { width: tier.width, height: tier.height })
   ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements); ctx.restore()
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc)])))
   layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index).forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
-  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+  return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))
 }
 
 export function downloadBlob(blob, filename = 'v5-focus-collage.png') {

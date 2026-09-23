@@ -233,3 +233,19 @@ export function buildReferenceLayout(photos, frameMode = FRAME_MODES.none.id) {
     profile,
   }))
 }
+
+// 一次选择的上传判定结果：按用户给的顺序，每项是 'type'（格式无效）、'ratio'（比例不合规）或 'valid'。
+// 规则：取前 REQUIRED_PHOTO_COUNT 张 valid 用于模板；其余 valid 跳过并计数，绝不因超额丢弃已入选的照片。
+export function partitionUploads(kinds) {
+  const adoptedIndexes = []
+  let unusedValid = 0
+  let ratioRejected = 0
+  let typeRejected = 0
+  kinds.forEach((kind, index) => {
+    if (kind === 'type') { typeRejected += 1; return }
+    if (kind === 'ratio') { ratioRejected += 1; return }
+    if (adoptedIndexes.length < REQUIRED_PHOTO_COUNT) adoptedIndexes.push(index)
+    else unusedValid += 1
+  })
+  return { adoptedIndexes, unusedValid, ratioRejected, typeRejected }
+}
