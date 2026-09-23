@@ -1,232 +1,183 @@
-// PROTOTYPE — V4 Gallery overview layout.
-// The board establishes one compact, band-built photo group. The algorithm
-// only adapts its frames to real image ratios and makes bounded seed variations.
+// V4 Gallery — public layout API.
+//
+// This module is the only thing the page and the tests import. It holds no
+// algorithm: it looks up the active template's skeleton and hands it to the one
+// generic solver in ./solver.js. Everything a template contributes is data, which
+// is what lets later templates be cheap.
+//
+// The export surface here is deliberately unchanged from before the refactor, so
+// the page did not have to move.
 
-export const BOARD_WIDTH = 100
-export const BOARD_HEIGHT = 125
+import {
+  BOARD_HEIGHT,
+  BOARD_WIDTH,
+  MAX_RATIO,
+  MIN_RATIO,
+  aspectOf,
+  buildQueue,
+  intersectionOf,
+  overlapArea,
+  overlaps,
+  seededRandom,
+} from './geometry.js'
+import { MAX_SOLVED_PHOTOS, fitToBoard, solveSkeleton, toEntries } from './solver.js'
+import { formatReport, hasEnclosedVoid, verifyContract } from './contract.js'
+import { describeSuggestion, validateSkeleton, zoneOf } from './skeleton.js'
+import { DEFAULT_BOARD, boardFor } from './board.js'
+import { overviewTextFor } from './text.js'
+import { capability } from './capabilities/index.js'
+import { pack } from './capabilities/skyline.js'
+import { DEFAULT_TEMPLATE_ID, allTemplates, getTemplate, validateAllTemplates } from '../templates/index.js'
 
-// Layout coordinates use percentage points of the board's width. Converting a
-// physical height back to the board's 4:5 coordinate space needs this factor.
-const FRAME_ASPECT = BOARD_WIDTH / BOARD_HEIGHT
-const SAFE_WIDTH = 76
-const SAFE_HEIGHT = 78
-const GUTTER = 1.25
+export { BOARD_HEIGHT, BOARD_WIDTH, MAX_RATIO, MIN_RATIO, aspectOf, intersectionOf, overlapArea, overlaps, seededRandom }
+export { buildQueue, normalizeAspect, clamp } from './geometry.js'
+export { RATIO_HINT, RECOMMENDED_FORMATS, REFUSED_FORMATS, describeRejection, isAcceptedRatio, nearestFormat, partitionByRatio, ratioOf } from './ratioPolicy.js'
+export { describeSuggestion, validateSkeleton, zoneOf } from './skeleton.js'
+export { DEFAULT_BOARD, BOARD_PRESETS, boardAspectStyle, boardFor, boardRatioKey, supportedBoardRatios } from './board.js'
+export { MAX_SOLVED_PHOTOS } from './solver.js'
+export { formatReport, verifyContract, hasEnclosedVoid } from './contract.js'
+export { registeredCapabilities } from './capabilities/index.js'
+export { allTemplates, DEFAULT_TEMPLATE_ID, getTemplate, validateAllTemplates } from '../templates/index.js'
 
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+// Static typography preset for the default template, so the photo block can be
+// judged inside the composition it was designed for.
+export const OVERVIEW_TEXT = overviewTextFor(getTemplate(DEFAULT_TEMPLATE_ID))
+// Typography for whichever template is active. A second template brings its own
+// composition rather than borrowing the first one's words.
+export { overviewTextFor }
 
-export function aspectOf(photo) {
-  return photo.aspect || photo.width / photo.height
+const solveOptions = (seed) => ({ seed, voidDetector: hasEnclosedVoid })
+
+export function buildGalleryOverview(photos, seed = 'gallery-01', templateId = DEFAULT_TEMPLATE_ID) {
+  return solveTemplateWith(getTemplate(templateId), photos, seed)
 }
 
-export function seededRandom(seed) {
-  let value = 2166136261
-  for (const char of String(seed)) {
-    value ^= char.charCodeAt(0)
-    value = Math.imul(value, 16777619)
+// Solve with an explicit skeleton — the entry point a template picker will use,
+// and the one the golden fixture and tests drive directly.
+export function solveTemplateWith(skeleton, photos, seed = 'gallery-01') {
+  const entries = toEntries(photos)
+  if (!entries.length) return []
+  const best = solveSkeleton(entries, skeleton, solveOptions(seed))
+  if (!best) return []
+  const board = boardFor(skeleton)
+  // A family whose frames are rotated needs a centre-anchored fit, because a
+  // rotation happens about the centre; everything else uses the shared
+  // corner-anchored one.
+  if (typeof best.placed.materialize === 'function') {
+    return best.placed.materialize(zoneOf(skeleton), board)
   }
-  return () => {
-    value += 0x6d2b79f5
-    let next = value
-    next = Math.imul(next ^ (next >>> 15), next | 1)
-    next ^= next + Math.imul(next ^ (next >>> 7), next | 61)
-    return ((next ^ (next >>> 14)) >>> 0) / 4294967296
-  }
+  return fitToBoard(best.placed, best, skeleton, board)
 }
 
-export function overlaps(a, b) {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
-}
+// Debug/pacing helper: the solver's internal decisions, so the geometry can be
+// inspected without guessing from the rendered page.
+export function describeOverview(photos, seed = 'gallery-01', templateId = DEFAULT_TEMPLATE_ID) {
+  const skeleton = getTemplate(templateId)
+  const entries = toEntries(photos)
+  if (!entries.length) return null
+  const best = solveSkeleton(entries, skeleton, solveOptions(seed))
+  if (!best) return null
+  const rotatable = typeof best.placed.materialize === 'function'
+  const layout = solveTemplateWith(skeleton, photos, seed)
+  const pitch = best.colW + best.gutter
 
-export function overlapArea(a, b) {
-  if (!overlaps(a, b)) return 0
-  return Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x))
-    * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y))
-}
-
-export function intersectionOf(a, b) {
-  if (!overlaps(a, b)) return null
-  const x = Math.max(a.x, b.x)
-  const y = Math.max(a.y, b.y)
   return {
-    x,
-    y,
-    width: Math.min(a.x + a.width, b.x + b.width) - x,
-    height: Math.min(a.y + a.height, b.y + b.height) - y,
+    cols: best.cols,
+    colW: best.colW,
+    gutter: best.gutter,
+    order: best.order,
+    capability: best.capability,
+    score: best.scored,
+    contract: verifyContract(layout, skeleton),
+    tiles: best.placed.tiles
+      ? best.placed.tiles.map((tile) => {
+        const rendered = layout.find((entry) => entry.id === tile.item.photo.id)
+        return {
+          index: tile.item.index,
+          span: Math.max(1, Math.min(best.cols, Math.round((tile.item.placed * pitch + best.gutter) / pitch))),
+          natural: { x: tile.x, y: tile.y, width: tile.width, height: tile.height },
+          board: { x: rendered.x, y: rendered.y, width: rendered.width, height: rendered.height },
+          ratio: tile.item.placed,
+          original: tile.item.original,
+          clamped: tile.item.clamped,
+        }
+      })
+      : [],
+    frames: rotatable
+      ? layout.map((tile) => ({
+        id: tile.id,
+        centreX: tile.centreX,
+        centreY: tile.centreY,
+        width: tile.width,
+        height: tile.height,
+        tilt: tile.tilt,
+      }))
+      : [],
   }
 }
 
-function roleFor(index) {
-  if (index === 0) return 'main'
-  if (index < 3) return 'secondary'
-  return 'detail'
-}
+// Diagnostic entry point: every candidate the solver considered, so the objective
+// can be tuned against real numbers instead of guesses. Works for any capability,
+// because it asks each one for its own candidates.
+export function sweepCandidates(photos, seed = 'gallery-01', templateId = DEFAULT_TEMPLATE_ID) {
+  const skeleton = getTemplate(templateId)
+  const entries = toEntries(photos)
+  const zones = zoneOf(skeleton)
+  const [gutterMin, gutterMax] = skeleton.cluster.gutter
+  const { unitScale } = skeleton.cluster
+  const target = {
+    seed,
+    width: zones.width,
+    height: zones.height,
+    ratio: zones.width / zones.height,
+    unitRows: unitScale.rows,
+    unitBase: unitScale.base,
+    unitGrowth: unitScale.growth,
+    blockRatio: skeleton.cluster.blockRatio,
+    maxTileRatio: skeleton.cluster.maxTileRatio,
+    voidDetector: hasEnclosedVoid,
+  }
 
-function photoRows(indices) {
-  if (indices.length <= 3) return [indices]
   const rows = []
-  let cursor = 0
-  while (cursor < indices.length) {
-    const remaining = indices.length - cursor
-    const count = remaining === 4 ? 2 : Math.min(3, remaining)
-    rows.push(indices.slice(cursor, cursor + count))
-    cursor += count
+  for (const capabilityName of skeleton.pipeline) {
+    const engine = capability(capabilityName)
+    for (const block of engine.blocks(entries, skeleton, { seed, zones, gutterMin, gutterMax, unitScale })) {
+      const scored = engine.score(block, { ...target, colW: block.colW, gutter: block.gutter })
+      rows.push({
+        k: zones.width ? block.colW / zones.width : 0,
+        colW: block.colW,
+        cols: block.cols ?? scored.columns,
+        order: block.order,
+        capability: capabilityName,
+        rows: block.rowCounts,
+        blockRatio: scored.blockRatio,
+        total: scored.total,
+        coverage: scored.coverage,
+        shape: scored.shape,
+        fill: scored.fill,
+        band: scored.band,
+        tileScale: scored.tileScale,
+        dead: scored.deadColumns,
+        finite: Number.isFinite(scored.total),
+      })
+    }
   }
   return rows
-}
-
-function rowFrames(photos, indices, targetWidth, x, y) {
-  const aspectTotal = indices.reduce((total, index) => total + aspectOf(photos[index]), 0)
-  const height = (targetWidth - GUTTER * (indices.length - 1)) / aspectTotal
-  let cursor = x
-  return indices.map((index) => {
-    const width = height * aspectOf(photos[index])
-    const frame = { x: cursor, y, width, height, photo: photos[index], index, role: roleFor(index) }
-    cursor += width + GUTTER
-    return frame
-  })
-}
-
-function orderedDetails(photos, excluded) {
-  const preferred = [3, 5, 2, 1, 9, 6, 7, 8, 4]
-  return preferred
-    .filter((index) => index < photos.length && !excluded.has(index))
-    .concat(photos.map((_, index) => index).filter((index) => !excluded.has(index) && !preferred.includes(index)))
-}
-
-function weaveFrames(photos, random) {
-  const portrait = photos
-    .map((photo, index) => ({ index, aspect: aspectOf(photo) }))
-    .filter(({ index, aspect }) => index !== 0 && aspect < .92)
-    .sort((a, b) => a.aspect - b.aspect)[0]
-  if (!portrait || photos.length < 8) return null
-
-  const spineIndex = portrait.index
-  const remaining = orderedDetails(photos, new Set([0, spineIndex]))
-  const top = remaining.splice(0, 2)
-  const middle = remaining.splice(0, 2)
-  const rightTop = remaining.shift()
-  const rightBottom = remaining.shift()
-  if (top.length < 2 || middle.length < 2 || rightTop == null || rightBottom == null) return null
-
-  const topHeight = 15
-  const topWidth = top.reduce((width, index) => width + aspectOf(photos[index]) * topHeight, GUTTER)
-  const middleHeight = (topWidth - GUTTER) / middle.reduce((sum, index) => sum + aspectOf(photos[index]), 0)
-  const spineHeight = topHeight + GUTTER + middleHeight
-  const spineWidth = spineHeight * aspectOf(photos[spineIndex])
-  const frames = [
-    ...rowFrames(photos, top, topWidth, 0, 0),
-    ...rowFrames(photos, middle, topWidth, 0, topHeight + GUTTER),
-    {
-      x: topWidth + GUTTER,
-      y: 0,
-      width: spineWidth,
-      height: spineHeight,
-      photo: photos[spineIndex],
-      index: spineIndex,
-      role: roleFor(spineIndex),
-    },
-  ]
-
-  const rightX = topWidth + GUTTER + spineWidth + GUTTER
-  frames.push({
-    x: rightX,
-    y: 0,
-    width: aspectOf(photos[rightTop]) * topHeight,
-    height: topHeight,
-    photo: photos[rightTop],
-    index: rightTop,
-    role: roleFor(rightTop),
-  })
-  frames.push({
-    x: rightX,
-    y: topHeight + GUTTER,
-    width: aspectOf(photos[rightBottom]) * middleHeight,
-    height: middleHeight,
-    photo: photos[rightBottom],
-    index: rightBottom,
-    role: roleFor(rightBottom),
-  })
-
-  let y = spineHeight + GUTTER
-  const lower = remaining.splice(0, 2)
-  if (lower.length) {
-    const lowerWidth = lower.length === 1 ? 28 : 54
-    const row = rowFrames(photos, lower, lowerWidth, 6 + (random() - .5) * 2, y)
-    frames.push(...row)
-    y += row[0].height + GUTTER
-  }
-
-  const mainWidth = clamp(aspectOf(photos[0]) * 34, 31, 46)
-  frames.push({
-    x: 13 + (random() - .5) * 3,
-    y,
-    width: mainWidth,
-    height: mainWidth / aspectOf(photos[0]),
-    photo: photos[0],
-    index: 0,
-    role: 'main',
-  })
-  return frames
-}
-
-function physicalBounds(frames) {
-  const left = Math.min(...frames.map((frame) => frame.x))
-  const top = Math.min(...frames.map((frame) => frame.y))
-  const right = Math.max(...frames.map((frame) => frame.x + frame.width))
-  const bottom = Math.max(...frames.map((frame) => frame.y + frame.height))
-  return { left, top, width: right - left, height: bottom - top }
-}
-
-// Tight justified photo bands create one continuous, irregular collage block.
-// Each band's height is derived from the selected photos' real proportions, so
-// there are no fixed-ratio boxes, crop windows, or masonry holes.
-export function buildGalleryOverview(photos, seed = 'gallery-01') {
-  const selected = photos.slice(0, 10)
-  if (!selected.length) return []
-  const random = seededRandom(seed)
-  const frames = weaveFrames(selected, random) || []
-  if (!frames.length) {
-    const detailOrder = orderedDetails(selected, new Set([0]))
-    let y = 0
-    photoRows(detailOrder).forEach((indices, rowIndex) => {
-      const targetWidth = indices.length === 2 ? 56 : 68
-      const baseInset = rowIndex % 3 === 1 ? 0 : rowIndex % 3 === 2 ? 8 : 10
-      const x = baseInset + (random() - .5) * 2
-      const row = rowFrames(selected, indices, targetWidth, x, y)
-      frames.push(...row)
-      y += row[0].height + GUTTER
-    })
-    const main = selected[0]
-    const mainWidth = clamp(aspectOf(main) * 34, 31, 46)
-    frames.push({ x: 13 + (random() - .5) * 3, y, width: mainWidth, height: mainWidth / aspectOf(main), photo: main, index: 0, role: 'main' })
-  }
-
-  const bounds = physicalBounds(frames)
-  const scale = Math.min(SAFE_WIDTH / bounds.width, SAFE_HEIGHT / bounds.height, 1)
-  const offsetX = (BOARD_WIDTH - bounds.width * scale) / 2
-  const offsetY = (BOARD_WIDTH - bounds.height * scale) / 2
-
-  return frames.map((frame) => ({
-    photo: frame.photo,
-    id: frame.photo.id,
-    role: frame.role,
-    zIndex: frame.index + 1,
-    x: offsetX + (frame.x - bounds.left) * scale,
-    y: (offsetY + (frame.y - bounds.top) * scale) * FRAME_ASPECT,
-    width: frame.width * scale,
-    height: frame.height * scale * FRAME_ASPECT,
-  })).sort((a, b) => a.zIndex - b.zIndex)
 }
 
 export function obscurersFor(selected, layout) {
   return layout.filter((tile) => tile.zIndex > selected.zIndex && overlaps(tile, selected))
 }
 
-// The viewport, not the photo, moves. This keeps every image in the same
-// collage coordinate system while bringing the selected frame closer.
-export function focusCameraFor(tile) {
-  const visualSize = Math.max(tile.width, tile.height / FRAME_ASPECT)
-  const scale = clamp(68 / visualSize, 1.35, 2.6)
+// The viewport, not the photo, moves. This keeps every image in the same collage
+// coordinate system while bringing the selected frame closer.
+export function focusCameraFor(tile, board = DEFAULT_BOARD) {
+  // A tile's height is a percent of board HEIGHT, so it converts into the same units
+  // as its width through the board before the two can be compared.
+  const visualSize = Math.max(tile.width, board.toWidthUnits(tile.height))
+  const scale = Math.max(1.35, Math.min(2.6, 68 / visualSize))
+  // The camera moves in the overview's own percentage space, which is board percent
+  // on both axes — so the vertical target stays in board-height percent.
   const centerX = tile.x + tile.width / 2
   const centerY = tile.y + tile.height / 2
   return {

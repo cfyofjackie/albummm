@@ -37,6 +37,9 @@ export async function loadPhoto(file) {
   bitmap.close()
 
   const previewSrc = canvas.toDataURL('image/jpeg', 0.85)
+  // 预览图只服务于普通拼贴页；原始文件的 object URL 留给局部高清查看。
+  // 不把整张原图转成 base64，避免十张大图常驻 JS 堆内存。
+  const originalSrc = URL.createObjectURL(file)
 
   // 预解码：翻页/放大揭示这张图时不需要临时解码（避免空白页或延迟上屏）
   const im = new Image()
@@ -50,5 +53,10 @@ export async function loadPhoto(file) {
     height,
     orientation: classify(width, height),
     previewSrc,
+    originalSrc,
   }
+}
+
+export function releasePhotoSource(photo) {
+  if (photo?.originalSrc?.startsWith('blob:')) URL.revokeObjectURL(photo.originalSrc)
 }
