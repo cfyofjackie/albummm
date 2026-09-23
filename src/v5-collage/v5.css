@@ -36,21 +36,24 @@
 .v5-collage__washi--0 { top: -3%; left: 28%; transform: rotate(-4deg); }
 .v5-collage__washi--6 { top: -2%; right: 12%; transform: rotate(5deg); }
 .v5-collage__clip { position: absolute; z-index: 5; top: -12%; right: 9%; width: 17%; height: 38%; overflow: visible; fill: none; stroke: #5c5b58; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.4; transform: rotate(12deg); }
-.v5-focus { position: fixed; z-index: 30; inset: 0; pointer-events: none; }
+.v5-focus { position: fixed; z-index: 30; inset: 0; pointer-events: none; --focus-ease: cubic-bezier(.22, .78, .22, 1); }
 .v5-focus::before { position: absolute; inset: 0; background: #2d2d2a; content: ""; opacity: 0; transition: opacity 180ms ease 70ms; }
 .v5-focus.is-visible::before { opacity: 1; }
 .v5-focus__viewport { position: absolute; inset: 0; overflow: hidden; background: #2d2d2a; opacity: 0; pointer-events: auto; transition: opacity 180ms ease 70ms; }
 .v5-focus.is-visible .v5-focus__viewport { opacity: 1; }
 .v5-focus__artboard { position: fixed; overflow: hidden; background: #e6e5e0; outline: 1px solid rgba(255, 255, 255, .72); box-shadow: 0 18px 54px rgba(0, 0, 0, .34); }
-.v5-focus__board { position: absolute; overflow: visible; transform-origin: top left; transition: transform 420ms cubic-bezier(.22, .78, .22, 1); }
+.v5-focus__board { position: absolute; overflow: visible; transform-origin: top left; transition: transform 420ms var(--focus-ease); }
 .v5-focus__photo { cursor: pointer; }
 .v5-focus__photo.is-selected { cursor: default; }
-/* 高清层：镜头动画结束后按最终屏幕尺寸覆盖在选中照片原位，绕过整板 scale 的低倍率光栅化。 */
-.v5-focus__hires { z-index: 1; cursor: zoom-out; animation: v5-hires-in 180ms ease; }
-@keyframes v5-hires-in { from { opacity: 0; } to { opacity: 1; } }
-/* 幽灵层：压在选中照片之上的邻居，只取与选中照片相交的部分、半透明显示，
-   恢复真实遮挡关系——高清层不再等于「置顶」。 */
-.v5-focus__ghost { z-index: 2; pointer-events: none; opacity: .45; animation: v5-hires-in 180ms ease; }
+/* 高清层 / 幽灵层：始终按当前镜头的像素矩形定位（不经 CSS scale，任何时刻原生分辨率）。
+   left/top/width/height 与整板 transform 同时长同缓动过渡——点击即出现、随镜头逐帧跟随。 */
+.v5-focus__hires, .v5-focus__ghost {
+  transition: left 420ms var(--focus-ease), top 420ms var(--focus-ease), width 420ms var(--focus-ease), height 420ms var(--focus-ease), transform 420ms var(--focus-ease);
+}
+.v5-focus__hires { z-index: 1; cursor: zoom-out; }
+/* 幽灵层：压在选中照片之上的邻居，只取与选中照片相交的部分、半透明显示（透明度
+   由 JS 的 OCCLUDER_ALPHA 内联），恢复真实遮挡关系——高清层不再等于「置顶」。 */
+.v5-focus__ghost { z-index: 2; pointer-events: none; }
 .v5-focus__frame-label { position: fixed; z-index: 2; margin: 0; padding: 5px 8px; border-radius: 4px; background: rgba(0,0,0,.42); color: rgba(255,255,255,.88); font-size: 10px; letter-spacing: .08em; pointer-events: none; transform: translateY(-100%); }
 .v5-focus__close { position: fixed; z-index: 2; top: calc(20px + env(safe-area-inset-top)); right: calc(22px + env(safe-area-inset-right)); width: 38px; height: 38px; border: 1px solid rgba(255,255,255,.72); border-radius: 50%; background: rgba(30,30,28,.68); color: #fff; font: 300 30px/32px Arial, sans-serif; opacity: 0; cursor: pointer; pointer-events: auto; transition: opacity 200ms ease 140ms, background 150ms ease; }
 .v5-focus__close:hover { background: rgba(30,30,28,.9); }
@@ -62,7 +65,7 @@
 .v5-focus__export:disabled { cursor: wait; opacity: .72; }
 .v5-focus__hint { position: fixed; z-index: 2; bottom: calc(18px + env(safe-area-inset-bottom)); left: 50%; margin: 0; padding: 8px 12px; border-radius: 999px; background: rgba(30,30,28,.68); color: #fff; font-size: 12px; transform: translateX(-50%); opacity: 0; pointer-events: none; transition: opacity 200ms ease 160ms; white-space: nowrap; }
 .v5-focus.is-visible .v5-focus__hint { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .v5-focus::before, .v5-focus__viewport, .v5-focus__board, .v5-focus__close, .v5-focus__export, .v5-focus__hint { transition-duration: 1ms; }.v5-focus__hires, .v5-focus__ghost { animation-duration: 1ms; } }
+@media (prefers-reduced-motion: reduce) { .v5-focus::before, .v5-focus__viewport, .v5-focus__board, .v5-focus__close, .v5-focus__export, .v5-focus__hint, .v5-focus__hires, .v5-focus__ghost { transition-duration: 1ms; } }
 /* 手机竖屏：标题与选项紧凑收拢，作品尽早进入视线；画布按可用宽度等比铺满。 */
 @media (max-width: 640px) {
   .v5-collage { padding: 16px 14px calc(30px + env(safe-area-inset-bottom)); }

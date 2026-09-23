@@ -1,4 +1,4 @@
-import { exportTransformFor } from './focusGeometry.js'
+import { OCCLUDER_ALPHA, exportTransformFor, findOccluders } from './focusGeometry.js'
 
 const BOARD_ASPECT = 4 / 3
 
@@ -116,7 +116,26 @@ function drawTile(ctx, tile, index, frameMode, image, unitX, unitY, originX, ori
   ctx.restore()
 }
 
-export async function exportFocusImage({ layout, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, tier = EXPORT_TIERS[1] }) {
+// 选中照片的旋转矩形轮廓（输出坐标），作为导出时幽灵层的裁剪范围。
+function tileOutlinePath(tile, transform) {
+  const centerX = transform.originX + (tile.x + tile.width / 2) * transform.unitX
+  const centerY = transform.originY + (tile.y + tile.height / 2) * transform.unitY
+  const halfW = tile.width * transform.unitX / 2
+  const halfH = tile.height * transform.unitY / 2
+  const rad = tile.rotate * Math.PI / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  const path = new Path2D()
+  ;[[-halfW, -halfH], [halfW, -halfH], [halfW, halfH], [-halfW, halfH]].forEach(([dx, dy], index) => {
+    const x = centerX + dx * cos - dy * sin
+    const y = centerY + dx * sin + dy * cos
+    index === 0 ? path.moveTo(x, y) : path.lineTo(x, y)
+  })
+  path.closePath()
+  return path
+}
+
+export async function exportFocusImage({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, tier = EXPORT_TIERS[1] }) {
   const canvas = document.createElement('canvas')
   canvas.width = tier.width
   canvas.height = tier.height
@@ -127,6 +146,19 @@ export async function exportFocusImage({ layout, frameMode, decorationEnabled, a
   ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements); ctx.restore()
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc)])))
   layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index).forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
+  // 与预览同一套遮挡规则：压在选中照片之上的部分同样以半透明重绘（裁剪到相交范围），
+  // 导出画面与放大预览保持一致。
+  const selectedTile = selectedId ? layout.find((tile) => tile.id === selectedId) : null
+  if (selectedTile) {
+    const outline = tileOutlinePath(selectedTile, { originX, originY, unitX, unitY })
+    findOccluders(layout, selectedTile).forEach((tile) => {
+      ctx.save()
+      ctx.clip(outline)
+      ctx.globalAlpha = OCCLUDER_ALPHA
+      drawTile(ctx, tile, layout.indexOf(tile), frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled)
+      ctx.restore()
+    })
+  }
   return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))
 }
 

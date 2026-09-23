@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
-import { rectanglesOverlap, rotatedBounds } from './decorations.js'
 import { EXPORT_TIERS, downloadBlob, exportFocusImage } from './focusExport.js'
-import { exportTransformFor, focusCameraFor, focusFrameFor, focusScaleFor, occluderClipPath, openingCamera } from './focusGeometry.js'
+import { OCCLUDER_ALPHA, findOccluders, focusCameraFor, focusFrameFor, focusScaleFor, occluderClipPath, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 420
 
@@ -19,13 +18,16 @@ function photoStyleFor(tile) {
   }
 }
 
-// 高清层 / 幽灵层都按最终屏幕尺寸绝对定位在画板坐标系里（不进整板的缩放层）。
-function overlayStyleFor(tile, transform) {
+// 高清层 / 幽灵层始终按「当前镜头状态下的最终像素矩形」定位（不经 CSS scale，
+// 任何时刻都是原生分辨率渲染）。left/top/width/height 的 CSS 过渡与整板的
+// transform 过渡同时长同缓动：整板平移/缩放时它们逐帧跟随，点击瞬间即出现。
+function overlayRectFor(tile, boardRect, frame, camera) {
+  const scale = camera.scale
   return {
-    left: `${transform.originX + tile.x * transform.unitX}px`,
-    top: `${transform.originY + tile.y * transform.unitY}px`,
-    width: `${tile.width * transform.unitX}px`,
-    height: `${tile.height * transform.unitY}px`,
+    left: `${boardRect.left - frame.left + camera.x + (scale * tile.x / 100) * boardRect.width}px`,
+    top: `${boardRect.top - frame.top + camera.y + (scale * tile.y / 100) * boardRect.height}px`,
+    width: `${(scale * tile.width / 100) * boardRect.width}px`,
+    height: `${(scale * tile.height / 100) * boardRect.height}px`,
     transform: `rotate(${tile.rotate}deg)`,
   }
 }
@@ -54,9 +56,8 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const [exportingId, setExportingId] = useState(null)
   const [viewport, setViewport] = useState(viewportSize)
   // 手机 Safari 对带 scale 的合成层常停留在动画起点的光栅化，整板放大后所有照片都发软。
-  // 动画结束后把选中的那张按最终屏幕尺寸、不经过 CSS scale 单独渲染一层（高清层），
-  // 点其他照片平移时先收回、动画结束再淡入到新选中的位置；周围拼贴维持整板渲染。
-  const [hiresTileId, setHiresTileId] = useState(null)
+  // 选中照片与压在它上面的遮挡者以「当前镜头下的像素矩形」独立渲染（不进缩放层），
+  // 用与整板相同的时长/缓动过渡，从点击那一帧起就跟随镜头运动，任何时刻都保持原生分辨率。
   const frame = useMemo(() => focusFrameFor(viewport), [viewport.height, viewport.width])
 
   useEffect(() => {
@@ -64,11 +65,6 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-  useEffect(() => {
-    setHiresTileId(null)
-    const timer = window.setTimeout(() => setHiresTileId(selectedId), TRANSITION_MS + 60)
-    return () => window.clearTimeout(timer)
-  }, [selectedId, frame.width, frame.height])
   useEffect(() => {
     const scale = focusScaleFor(initialTile, boardRect, frame)
     const animationFrame = requestAnimationFrame(() => {
@@ -94,7 +90,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     if (leaving) return
     setLeaving(true)
     setVisible(false)
-    setHiresTileId(null)
+    // 高清/幽灵层跟随镜头一起缩回原位，过渡结束后再卸载整个查看层。
     setCamera(openingCamera())
     window.setTimeout(onClose, TRANSITION_MS)
   }
@@ -116,7 +112,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     setExportingId(tier.id)
     try {
       // 与预览共用固定 4:3 成品框和同一份镜头坐标；外围窗口区域从不进入导出。
-      const blob = await exportFocusImage({ layout, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, tier })
+      const blob = await exportFocusImage({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, tier })
       downloadBlob(blob, `albummm-v5-focus-${tier.width}x${tier.height}.${tier.ext}`)
     } catch (error) {
       console.error('V5 focus export failed', error?.type, error?.target?.currentSrc || error?.target?.src || error)
@@ -125,18 +121,10 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     }
   }
 
-  const hiresTile = hiresTileId ? layout.find((tile) => tile.id === hiresTileId) : null
-  // 与整板缩放层、导出画布共用同一套坐标换算（unit = 每百分比多少 px），保证逐像素对齐。
-  const hiresTransform = hiresTile ? exportTransformFor(boardRect, frame, camera, { width: frame.width, height: frame.height }) : null
-  // 真正压在选中照片之上的邻居（z 序更高；z 相同时后来的在上）。高清层会把它们盖掉，
-  // 所以各出一份裁剪到选中照片范围内的高清幽灵拷贝，恢复「有东西盖在上面」的读感。
-  const occluders = hiresTile && hiresTransform
-    ? layout.filter((tile) => {
-        if (tile.id === hiresTile.id) return false
-        const above = tile.z > hiresTile.z || (tile.z === hiresTile.z && layout.indexOf(tile) > layout.indexOf(hiresTile))
-        return above && rectanglesOverlap(rotatedBounds(tile), rotatedBounds(hiresTile))
-      })
-    : []
+  const hiresTile = layout.find((tile) => tile.id === selectedId)
+  // 真正压在选中照片之上的邻居：高清层会把它们盖掉，所以各出一份裁剪到
+  // 选中照片范围内的高清幽灵拷贝，恢复「有东西盖在上面」的读感。
+  const occluders = findOccluders(layout, hiresTile)
 
   return (
     <section className={`v5-focus ${visible ? 'is-visible' : ''} ${leaving ? 'is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="高清拼贴查看">
@@ -168,18 +156,18 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
               </figure>
             ))}
           </div>
-          {hiresTile && hiresTransform && (
+          {hiresTile && (
             <FocusCard
               tile={hiresTile}
               index={layout.indexOf(hiresTile)}
               frameMode={frameMode}
               decorationEnabled={decorationEnabled}
               className="v5-focus__hires"
-              style={overlayStyleFor(hiresTile, hiresTransform)}
+              style={overlayRectFor(hiresTile, boardRect, frame, camera)}
               onClick={closeViewer}
             />
           )}
-          {hiresTile && hiresTransform && occluders.map((tile) => (
+          {hiresTile && occluders.map((tile) => (
             <FocusCard
               key={`ghost-${tile.id}`}
               tile={tile}
@@ -187,7 +175,11 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
               frameMode={frameMode}
               decorationEnabled={decorationEnabled}
               className="v5-focus__ghost"
-              style={{ ...overlayStyleFor(tile, hiresTransform), clipPath: occluderClipPath(hiresTile, tile, hiresTransform) }}
+              style={{
+                ...overlayRectFor(tile, boardRect, frame, camera),
+                clipPath: occluderClipPath(hiresTile, tile),
+                opacity: OCCLUDER_ALPHA,
+              }}
               ariaHidden
             />
           ))}
