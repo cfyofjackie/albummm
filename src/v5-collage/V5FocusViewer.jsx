@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
 import { EXPORT_TIERS, downloadBlob, exportFocusImage } from './focusExport.js'
-import { focusCameraFor, focusFrameFor, focusScaleFor, openingCamera } from './focusGeometry.js'
+import { exportTransformFor, focusCameraFor, focusFrameFor, focusScaleFor, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 420
 
@@ -26,6 +26,10 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const [leaving, setLeaving] = useState(false)
   const [exportingId, setExportingId] = useState(null)
   const [viewport, setViewport] = useState(viewportSize)
+  // 手机 Safari 对带 scale 的合成层常停留在动画起点的光栅化，整板放大后所有照片都发软。
+  // 动画结束后把选中的那张按最终屏幕尺寸、不经过 CSS scale 单独渲染一层（高清层），
+  // 点其他照片平移时先收回、动画结束再淡入到新选中的位置；周围拼贴维持整板渲染。
+  const [hiresTileId, setHiresTileId] = useState(null)
   const frame = useMemo(() => focusFrameFor(viewport), [viewport.height, viewport.width])
 
   useEffect(() => {
@@ -33,6 +37,11 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+  useEffect(() => {
+    setHiresTileId(null)
+    const timer = window.setTimeout(() => setHiresTileId(selectedId), TRANSITION_MS + 60)
+    return () => window.clearTimeout(timer)
+  }, [selectedId, frame.width, frame.height])
   useEffect(() => {
     const scale = focusScaleFor(initialTile, boardRect, frame)
     const animationFrame = requestAnimationFrame(() => {
@@ -58,6 +67,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     if (leaving) return
     setLeaving(true)
     setVisible(false)
+    setHiresTileId(null)
     setCamera(openingCamera())
     window.setTimeout(onClose, TRANSITION_MS)
   }
@@ -87,6 +97,10 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
       setExportingId(null)
     }
   }
+
+  const hiresTile = hiresTileId ? layout.find((tile) => tile.id === hiresTileId) : null
+  // 与整板缩放层、导出画布共用同一套坐标换算（unit = 每百分比多少 px），保证逐像素对齐。
+  const hiresTransform = hiresTile ? exportTransformFor(boardRect, frame, camera, { width: frame.width, height: frame.height }) : null
 
   return (
     <section className={`v5-focus ${visible ? 'is-visible' : ''} ${leaving ? 'is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="高清拼贴查看">
@@ -118,6 +132,23 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
               </figure>
             ))}
           </div>
+          {hiresTile && hiresTransform && (
+            <figure
+              className={`v5-collage__photo v5-collage__photo--${frameMode} v5-focus__hires`}
+              style={{
+                left: `${hiresTransform.originX + hiresTile.x * hiresTransform.unitX}px`,
+                top: `${hiresTransform.originY + hiresTile.y * hiresTransform.unitY}px`,
+                width: `${hiresTile.width * hiresTransform.unitX}px`,
+                height: `${hiresTile.height * hiresTransform.unitY}px`,
+                transform: `rotate(${hiresTile.rotate}deg)`,
+              }}
+              onClick={closeViewer}
+            >
+              {frameMode === 'polaroid' && <span className="v5-collage__paper" aria-hidden="true" />}
+              <img style={photoStyleFor(hiresTile)} src={hiresTile.photo.originalSrc || hiresTile.photo.previewSrc} alt="" />
+              <CardDecoration index={layout.indexOf(hiresTile)} enabled={decorationEnabled} />
+            </figure>
+          )}
         </div>
         <p className="v5-focus__frame-label" style={{ left: `${frame.left}px`, top: `${frame.top}px` }} aria-hidden="true">导出范围 · 4:3</p>
       </div>
