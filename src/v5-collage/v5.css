@@ -1,6 +1,8 @@
 .v5-collage { min-height: 100dvh; padding: clamp(20px, 4vw, 58px); background: #f2f1ed; color: #20201d; font-family: "Helvetica Neue", "PingFang SC", Arial, sans-serif; }
 .v5-collage__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; max-width: 1120px; margin: 0 auto; }
 .v5-collage__header p { margin: 0 0 10px; color: #74736d; font-size: 10px; letter-spacing: .14em; }
+.v5-collage__crumb { display: flex; align-items: baseline; gap: 10px; }
+.v5-collage__home { color: #403f39; font-size: 12px; letter-spacing: .06em; text-decoration: underline; text-decoration-color: #b5b3aa; text-underline-offset: 3px; }
 .v5-collage__header h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(28px, 4vw, 48px); font-weight: 400; letter-spacing: -.055em; }
 .v5-collage__header span { display: block; margin-top: 10px; color: #72716c; font-size: 13px; }
 .v5-collage__actions button { border: 1px solid #292925; padding: 11px 15px; background: #292925; color: #fff; font: inherit; font-size: 13px; cursor: pointer; }
@@ -44,14 +46,27 @@
 .v5-focus__photo { cursor: pointer; }
 .v5-focus__photo.is-selected { cursor: default; }
 .v5-focus__frame-label { position: fixed; z-index: 2; margin: 0; padding: 5px 8px; border-radius: 4px; background: rgba(0,0,0,.42); color: rgba(255,255,255,.88); font-size: 10px; letter-spacing: .08em; pointer-events: none; transform: translateY(-100%); }
-.v5-focus__close { position: fixed; z-index: 2; top: 20px; right: 22px; width: 38px; height: 38px; border: 1px solid rgba(255,255,255,.72); border-radius: 50%; background: rgba(30,30,28,.68); color: #fff; font: 300 30px/32px Arial, sans-serif; opacity: 0; cursor: pointer; pointer-events: auto; transition: opacity 200ms ease 140ms, background 150ms ease; }
+.v5-focus__close { position: fixed; z-index: 2; top: calc(20px + env(safe-area-inset-top)); right: calc(22px + env(safe-area-inset-right)); width: 38px; height: 38px; border: 1px solid rgba(255,255,255,.72); border-radius: 50%; background: rgba(30,30,28,.68); color: #fff; font: 300 30px/32px Arial, sans-serif; opacity: 0; cursor: pointer; pointer-events: auto; transition: opacity 200ms ease 140ms, background 150ms ease; }
 .v5-focus__close:hover { background: rgba(30,30,28,.9); }
 .v5-focus.is-visible .v5-focus__close { opacity: 1; }
-.v5-focus__export { position: fixed; z-index: 2; top: 22px; right: 72px; border: 1px solid rgba(255,255,255,.72); border-radius: 999px; padding: 8px 12px; background: rgba(30,30,28,.68); color: #fff; font: 12px/1 "Helvetica Neue", "PingFang SC", Arial, sans-serif; opacity: 0; cursor: pointer; pointer-events: auto; transition: opacity 200ms ease 140ms, background 150ms ease; }
+.v5-focus__export { position: fixed; z-index: 2; top: calc(22px + env(safe-area-inset-top)); right: calc(72px + env(safe-area-inset-right)); border: 1px solid rgba(255,255,255,.72); border-radius: 999px; padding: 8px 12px; background: rgba(30,30,28,.68); color: #fff; font: 12px/1 "Helvetica Neue", "PingFang SC", Arial, sans-serif; opacity: 0; cursor: pointer; pointer-events: auto; transition: opacity 200ms ease 140ms, background 150ms ease; }
 .v5-focus__export:hover:not(:disabled) { background: rgba(30,30,28,.9); }
 .v5-focus__export:disabled { cursor: wait; opacity: .72; }
 .v5-focus.is-visible .v5-focus__export { opacity: 1; }
-.v5-focus__hint { position: fixed; z-index: 2; bottom: 18px; left: 50%; margin: 0; padding: 8px 12px; border-radius: 999px; background: rgba(30,30,28,.68); color: #fff; font-size: 12px; transform: translateX(-50%); opacity: 0; pointer-events: none; transition: opacity 200ms ease 160ms; white-space: nowrap; }
+.v5-focus__hint { position: fixed; z-index: 2; bottom: calc(18px + env(safe-area-inset-bottom)); left: 50%; margin: 0; padding: 8px 12px; border-radius: 999px; background: rgba(30,30,28,.68); color: #fff; font-size: 12px; transform: translateX(-50%); opacity: 0; pointer-events: none; transition: opacity 200ms ease 160ms; white-space: nowrap; }
 .v5-focus.is-visible .v5-focus__hint { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .v5-focus::before, .v5-focus__viewport, .v5-focus__board, .v5-focus__close, .v5-focus__export, .v5-focus__hint { transition-duration: 1ms; } }
-@media (max-width: 640px) { .v5-collage { padding: 20px 14px 30px; }.v5-collage__header { display: block; }.v5-collage__actions { margin-top: 18px; }.v5-collage__stage { margin-inline: -14px; }.v5-collage__board { width: 100%; } }
+/* 手机竖屏：标题与选项紧凑收拢，作品尽早进入视线；画布按可用宽度等比铺满。 */
+@media (max-width: 640px) {
+  .v5-collage { padding: 16px 14px calc(30px + env(safe-area-inset-bottom)); }
+  .v5-collage__header { display: block; }
+  .v5-collage__actions { margin-top: 14px; }
+  .v5-collage__actions button { min-height: 44px; padding: 11px 18px; }
+  .v5-collage__hint { margin-top: 14px; }
+  .v5-collage__frame-toggle { margin-top: 10px; }
+  .v5-collage__frame-toggle button { min-height: 34px; padding: 5px 14px; }
+  .v5-collage__stage { margin-inline: -14px; margin-top: 18px; }
+  .v5-collage__board { width: 100%; }
+  .v5-focus__close { width: 44px; height: 44px; font-size: 34px; line-height: 42px; }
+  .v5-focus__export { padding: 12px 16px; }
+}

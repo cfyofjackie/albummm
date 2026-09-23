@@ -406,6 +406,114 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const story = photos.length ? planStory(photos, seed, style, rhythm, smart, previewFormat, material) : null
   const exportFormat = exportJob ? formatById(exportJob.formatId) : null
   const exportStory = exportJob && photos.length ? planStory(photos, seed, style, rhythm, smart, exportFormat, material) : null
+
+  // 排版状态拆成两组：指标（seed、碰撞等）进「开发指标」折叠面板，不再占正式手机首屏；
+  // 控件（预览规格、边框、边缘、胶带、页码、背景）进「排版选项」面板，功能保持可达。
+  const metricRows = (
+    <>
+      <span>seed {seed}</span>
+      <span>内容短边 ≥ 20%</span>
+      <span>横 ≤ 80% · 竖 ≤ 78%</span>
+      <span>外层卡片覆盖 ≤ {Math.round(style.overlap * 100)}%</span>
+      <span>照片内容区碰撞 {story?.contentCollisions ?? 0}</span>
+      <span>{story ? `已拒绝 ${story.rejected} 个候选位置 · 接受 ${story.overlaps} 处轻叠` : '正在计算'}</span>
+      {smart && story && <span>智能分页：{story.pagePlan.join(' · ')} 张 / 页</span>}
+      {smart && story && <span>{story.frames.length} 页输出</span>}
+      {decorExperiment && <span>装饰实验：Gallery 留白 · Muse type rail · Weekend archive tag</span>}
+      {backgroundExperiment && <span>背景实验：同一排版，只更换背景结构</span>}
+      {smart && story && story.frames.some((frame) => (frame.fittingScale ?? 1) < 1) && (
+        <span>
+          自动缩放 {story.frames.filter((frame) => (frame.fittingScale ?? 1) < 1).length} 页 · 最小 {Math.round(Math.min(...story.frames.map((frame) => frame.fittingScale ?? 1)) * 100)}%
+        </span>
+      )}
+      {rhythm && story && <span>{story.frames.length} 页输出</span>}
+      {rhythm && story && <span>节奏：{story.frames.slice(0, 5).map((frame) => frame.recipe?.label).filter(Boolean).join(' → ')}</span>}
+    </>
+  )
+  const controlRows = (
+    <>
+      {smart && (
+        <span className="scatter-prototype__control">
+          预览
+          {FORMATS.map((format) => (
+            <button
+              key={format.id}
+              type="button"
+              className={format.id === previewFormat.id ? 'is-active' : ''}
+              onClick={() => setPreviewFormatId(format.id)}
+            >
+              {format.label}
+            </button>
+          ))}
+        </span>
+      )}
+      {smart && (
+        <span className="scatter-prototype__control">
+          边框
+          {Object.values(BORDER_STYLES).map((item) => (
+            <button key={item.id} type="button" className={item.id === borderId ? 'is-active' : ''} onClick={() => setBorderId(item.id)}>
+              {item.label}
+            </button>
+          ))}
+        </span>
+      )}
+      {smart && (
+        <span className="scatter-prototype__control">
+          边缘
+          {Object.values(EDGE_STYLES).map((item) => (
+            <button key={item.id} type="button" className={item.id === edgeId ? 'is-active' : ''} onClick={() => setEdgeId(item.id)}>
+              {item.label}
+            </button>
+          ))}
+        </span>
+      )}
+      {smart && (
+        <span className="scatter-prototype__control">
+          胶带
+          {Object.values(TAPE_STYLES).map((item) => (
+            <button key={item.id} type="button" className={item.id === tapeId ? 'is-active' : ''} onClick={() => setTapeId(item.id)}>
+              {item.label}
+            </button>
+          ))}
+        </span>
+      )}
+      {smart && (
+        <span className="scatter-prototype__control">
+          <button type="button" className={showNumbers ? 'is-active' : ''} onClick={() => setShowNumbers(!showNumbers)}>
+            页码
+          </button>
+        </span>
+      )}
+      {backgroundExperiment ? (
+        <>
+          <span className="scatter-prototype__control scatter-prototype__control--background-masters">
+            背景母板
+            <button type="button" className={backgroundMasterId === 'native' ? 'is-active' : ''} onClick={() => changeBackgroundMaster('native')}>原风格纸面</button>
+            {BACKGROUND_MASTERS.map((item) => (
+              <button key={item.id} type="button" className={item.id === backgroundMasterId ? 'is-active' : ''} title={item.note} onClick={() => changeBackgroundMaster(item.id)}>
+                {item.label}
+              </button>
+            ))}
+          </span>
+          <span className="scatter-prototype__control">
+            相纸状态
+            <button type="button" className={contactMode === 'grounded' ? 'is-active' : ''} onClick={() => changeContactMode('grounded')}>贴合感</button>
+            <button type="button" className={contactMode === 'lifted' ? 'is-active' : ''} onClick={() => changeContactMode('lifted')}>浮层感</button>
+          </span>
+        </>
+      ) : (
+        /* 背景属于风格：只列当前风格的背景，切换风格时自动回落到该风格的背景。 */
+        <span className="scatter-prototype__control">
+          背景
+          {backgroundsForStyle(activeId).map((item) => (
+            <button key={item.id} type="button" className={item.id === background.id ? 'is-active' : ''} onClick={() => setBackgroundId(item.id)}>
+              {item.label}
+            </button>
+          ))}
+        </span>
+      )}
+    </>
+  )
   return (
     <main
       className={`carousel-master scatter-prototype ${rhythm ? 'rhythm-prototype' : ''} ${smart ? 'smart-prototype' : ''} ${decorExperiment ? 'decor-experiment' : ''} ${backgroundExperiment ? `background-experiment background-experiment--${backgroundMaster?.id ?? 'native'} background-contact--${contactMode}` : ''} scatter-prototype--${activeId}`}
@@ -414,14 +522,25 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
     >
       <header className="carousel-master__header">
         <div>
-          <p>PROTOTYPE · V3 {backgroundExperiment ? '背景结构母板' : decorExperiment ? '第二档排版装饰' : smart ? '智能分页随机' : rhythm ? '五页基准节奏' : '受控随机片段'}</p>
+          <p className="carousel-master__crumb">
+            <a className="carousel-master__home" href="#/">← 首页</a>
+            <span>{backgroundExperiment
+              ? 'PROTOTYPE · V3 背景结构母板'
+              : decorExperiment
+              ? 'PROTOTYPE · V3 第二档排版装饰'
+              : smart
+              ? '多页故事'
+              : rhythm
+              ? 'PROTOTYPE · V3 五页基准节奏'
+              : 'PROTOTYPE · V3 受控随机片段'}</span>
+          </p>
           <h1>{style.name}</h1>
           <span>{style.note}</span>
         </div>
         <div className="carousel-master__actions">
           <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={addPhotos} />
-          <button type="button" onClick={() => inputRef.current?.click()}>换一组照片</button>
-          <button type="button" onClick={() => setSeed(Math.floor(Math.random() * 1e9))}>换一组排法</button>
+          <button type="button" className="is-primary" onClick={() => inputRef.current?.click()}>换一组照片</button>
+          <button type="button" className="is-primary" onClick={() => setSeed(Math.floor(Math.random() * 1e9))}>换一组排法</button>
           {smart && FORMATS.map((format) => (
             <button key={format.id} type="button" disabled={Boolean(exportJob) || !story} onClick={() => exportPages(format)}>
               导出 {format.label}
@@ -430,106 +549,31 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
         </div>
       </header>
 
-      <section className="scatter-prototype__state" aria-label="排版状态">
-        <span>seed {seed}</span>
-        <span>内容短边 ≥ 20%</span>
-        <span>横 ≤ 80% · 竖 ≤ 78%</span>
-        <span>外层卡片覆盖 ≤ {Math.round(style.overlap * 100)}%</span>
-        <span>照片内容区碰撞 {story?.contentCollisions ?? 0}</span>
-        <span>{story ? `已拒绝 ${story.rejected} 个候选位置 · 接受 ${story.overlaps} 处轻叠` : '正在计算'}</span>
-        {smart && story && <span>智能分页：{story.pagePlan.join(' · ')} 张 / 页</span>}
-        {smart && story && <span>{story.frames.length} 页输出</span>}
-        {decorExperiment && <span>装饰实验：Gallery 留白 · Muse type rail · Weekend archive tag</span>}
-        {backgroundExperiment && <span>背景实验：同一排版，只更换背景结构</span>}
-        {smart && story && story.frames.some((frame) => (frame.fittingScale ?? 1) < 1) && (
-          <span>
-            自动缩放 {story.frames.filter((frame) => (frame.fittingScale ?? 1) < 1).length} 页 · 最小 {Math.round(Math.min(...story.frames.map((frame) => frame.fittingScale ?? 1)) * 100)}%
-          </span>
-        )}
-        {rhythm && story && <span>{story.frames.length} 页输出</span>}
-        {rhythm && story && <span>节奏：{story.frames.slice(0, 5).map((frame) => frame.recipe?.label).filter(Boolean).join(' → ')}</span>}
-        {exportJob && <span>正在导出 {exportJob.index + 1} / {exportJob.total} 页（{exportFormat?.label}）</span>}
-        {smart && (
-          <span className="scatter-prototype__control">
-            预览
-            {FORMATS.map((format) => (
-              <button
-                key={format.id}
-                type="button"
-                className={format.id === previewFormat.id ? 'is-active' : ''}
-                onClick={() => setPreviewFormatId(format.id)}
-              >
-                {format.label}
-              </button>
-            ))}
-          </span>
-        )}
-        {smart && (
-          <span className="scatter-prototype__control">
-            边框
-            {Object.values(BORDER_STYLES).map((item) => (
-              <button key={item.id} type="button" className={item.id === borderId ? 'is-active' : ''} onClick={() => setBorderId(item.id)}>
-                {item.label}
-              </button>
-            ))}
-          </span>
-        )}
-        {smart && (
-          <span className="scatter-prototype__control">
-            边缘
-            {Object.values(EDGE_STYLES).map((item) => (
-              <button key={item.id} type="button" className={item.id === edgeId ? 'is-active' : ''} onClick={() => setEdgeId(item.id)}>
-                {item.label}
-              </button>
-            ))}
-          </span>
-        )}
-        {smart && (
-          <span className="scatter-prototype__control">
-            胶带
-            {Object.values(TAPE_STYLES).map((item) => (
-              <button key={item.id} type="button" className={item.id === tapeId ? 'is-active' : ''} onClick={() => setTapeId(item.id)}>
-                {item.label}
-              </button>
-            ))}
-          </span>
-        )}
-        {smart && (
-          <span className="scatter-prototype__control">
-            <button type="button" className={showNumbers ? 'is-active' : ''} onClick={() => setShowNumbers(!showNumbers)}>
-              页码
-            </button>
-          </span>
-        )}
-        {backgroundExperiment ? (
-          <>
-            <span className="scatter-prototype__control scatter-prototype__control--background-masters">
-              背景母板
-              <button type="button" className={backgroundMasterId === 'native' ? 'is-active' : ''} onClick={() => changeBackgroundMaster('native')}>原风格纸面</button>
-              {BACKGROUND_MASTERS.map((item) => (
-                <button key={item.id} type="button" className={item.id === backgroundMasterId ? 'is-active' : ''} title={item.note} onClick={() => changeBackgroundMaster(item.id)}>
-                  {item.label}
-                </button>
-              ))}
-            </span>
-            <span className="scatter-prototype__control">
-              相纸状态
-              <button type="button" className={contactMode === 'grounded' ? 'is-active' : ''} onClick={() => changeContactMode('grounded')}>贴合感</button>
-              <button type="button" className={contactMode === 'lifted' ? 'is-active' : ''} onClick={() => changeContactMode('lifted')}>浮层感</button>
-            </span>
-          </>
-        ) : (
-          /* 背景属于风格：只列当前风格的背景，切换风格时自动回落到该风格的背景。 */
-          <span className="scatter-prototype__control">
-            背景
-            {backgroundsForStyle(activeId).map((item) => (
-              <button key={item.id} type="button" className={item.id === background.id ? 'is-active' : ''} onClick={() => setBackgroundId(item.id)}>
-                {item.label}
-              </button>
-            ))}
-          </span>
-        )}
-      </section>
+      {smart ? (
+        <section className="carousel-master__panels" aria-label="排版选项与开发指标">
+          <details className="carousel-master__panel">
+            <summary>
+              排版选项
+              <span className="carousel-master__panel-note">预览 {previewFormat.label}</span>
+            </summary>
+            <div className="carousel-master__panel-body">{controlRows}</div>
+          </details>
+          <details className="carousel-master__panel carousel-master__panel--dev">
+            <summary>开发指标</summary>
+            <div className="carousel-master__panel-body">{metricRows}</div>
+          </details>
+        </section>
+      ) : (
+        <section className="scatter-prototype__state" aria-label="排版状态">
+          {metricRows}
+          {controlRows}
+        </section>
+      )}
+      {exportJob && (
+        <p className="carousel-master__exporting" role="status">
+          正在导出 {exportJob.index + 1} / {exportJob.total} 页（{exportFormat?.label}）
+        </p>
+      )}
 
       <section className="carousel-master__stage" aria-label={smart ? '智能分页随机连续作品预览' : rhythm ? '五页节奏连续作品预览' : '五页随机连续作品预览'}>
         {loading || !story ? <p className="carousel-master__loading">正在计算卡片位置…</p> : (

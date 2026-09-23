@@ -1,0 +1,141 @@
+/* 首页：手机竖屏是设计基准，宽屏只是让同一列内容居中，不做第二套桌面布局。 */
+.home {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 560px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: calc(18px + env(safe-area-inset-top)) 22px calc(28px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+}
+
+.home__wordmark {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
+.home__intro { margin-top: clamp(28px, 7vh, 64px); }
+
+.home__intro h1 {
+  margin: 0;
+  font-family: Georgia, 'Songti SC', 'Times New Roman', serif;
+  font-size: clamp(30px, 8.2vw, 40px);
+  font-weight: 400;
+  letter-spacing: -.045em;
+  line-height: 1.22;
+}
+
+.home__intro p {
+  margin: 14px 0 0;
+  color: var(--ink-soft, #6b6a66);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* 两个作品入口：整张卡片就是一个触摸目标，间距留足手指误差。 */
+.home__entries {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: clamp(26px, 6vh, 52px);
+}
+
+.home__card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 18px 16px;
+  border: 1px solid var(--line, #e2e0da);
+  border-radius: 14px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 1px 2px rgba(26, 26, 24, .04);
+}
+
+.home__card:active { background: #f4f2ec; }
+
+.home__thumb {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 44px;
+  margin-bottom: 14px;
+}
+
+.home__thumb i { background: #e9e6de; border-radius: 2px; }
+
+/* 多页故事：三张 4:5 页面连成一条带子 */
+.home__thumb--story i { width: 26px; height: 34px; }
+.home__thumb--story i:nth-child(2) { height: 40px; background: #d9d4c8; }
+
+/* 单张拼贴：一张 4:3 画布里错落几张照片 */
+.home__thumb--collage {
+  position: relative;
+  align-items: stretch;
+  display: grid;
+  width: 59px;
+  height: 44px;
+  padding: 4px;
+  background: #e9e6de;
+  border-radius: 3px;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+}
+.home__thumb--collage i { width: auto; height: auto; }
+.home__thumb--collage i:nth-child(1) { margin-top: 3px; background: #cfc9bb; }
+.home__thumb--collage i:nth-child(3) { margin-bottom: 3px; background: #d9d4c8; }
+
+.home__card-eyebrow {
+  color: var(--ink-soft, #6b6a66);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .16em;
+}
+
+.home__card-title {
+  margin-top: 6px;
+  font-family: Georgia, 'Songti SC', serif;
+  font-size: 20px;
+  letter-spacing: -.02em;
+}
+
+.home__card-desc {
+  margin-top: 8px;
+  color: var(--ink-soft, #6b6a66);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.home__card-go {
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #1a1a18);
+}
+
+.home__foot {
+  margin-top: auto;
+  padding-top: 32px;
+}
+
+.home__foot p {
+  margin: 0;
+  color: #97948c;
+  font-size: 11px;
+  letter-spacing: .04em;
+}
+
+.app-loading {
+  margin: 0;
+  padding: 40vh 20px 0;
+  color: var(--ink-soft, #6b6a66);
+  text-align: center;
+  font-size: 13px;
+}
+
+@media (min-width: 700px) {
+  .home { min-height: 100vh; }
+}

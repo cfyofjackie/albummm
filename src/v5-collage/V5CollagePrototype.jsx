@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { makeDemoPhotos } from '../../src/shared/demo.js'
-import { loadPhoto, releasePhotoSource } from '../../src/shared/photo.js'
+import { makeDemoPhotos } from '../shared/demo.js'
+import { loadPhoto, releasePhotoSource } from '../shared/photo.js'
 import { ALLOWED_FORMATS, FRAME_MODES, REQUIRED_PHOTO_COUNT, acceptedFormatFor, buildReferenceLayout } from './layout.js'
 import { buildAutoDecorationPlacements } from './decorations.js'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
@@ -108,9 +108,12 @@ export default function V5CollagePrototype() {
     <main className="v5-collage">
       <header className="v5-collage__header">
         <div>
-          <p>V5 · REFERENCE LAYOUT 01</p>
+          <p className="v5-collage__crumb">
+            <a className="v5-collage__home" href="#/">← 首页</a>
+            <span>单张拼贴</span>
+          </p>
           <h1>十张照片，一种排布。</h1>
-          <span>只验证排布：边框与手帐涂鸦均可独立切换。</span>
+          <span>边框与手帐涂鸦可以独立切换，随时点开单张看高清。</span>
         </div>
         <div className="v5-collage__actions">
           <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={chooseFiles} />

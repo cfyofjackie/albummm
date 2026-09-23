@@ -27,6 +27,94 @@
   letter-spacing: .13em;
 }
 
+/* 面包屑行：返回首页 + 当前作品的正式名称（或实验名）。 */
+.carousel-master__crumb {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.carousel-master__home {
+  color: #403e38;
+  font-size: 12px;
+  letter-spacing: .06em;
+  text-decoration: underline;
+  text-decoration-color: #b5b1a6;
+  text-underline-offset: 3px;
+}
+
+.carousel-master__actions button.is-primary {
+  border-color: #2a2925;
+  background: #2a2925;
+  color: #f7f5ef;
+}
+
+.carousel-master__actions button.is-primary:disabled {
+  border-color: #8d8a82;
+  background: #8d8a82;
+  color: #e5e2da;
+}
+
+/* 排版选项 / 开发指标折叠面板：正式手机界面首屏只留标题行，功能保持可达。 */
+.carousel-master__panels {
+  width: min(100%, 1080px);
+  margin: 0 auto 12px;
+}
+
+.carousel-master__panel {
+  border-top: 1px solid #ccc8be;
+}
+
+.carousel-master__panel:last-child {
+  border-bottom: 1px solid #ddd9cf;
+}
+
+.carousel-master__panel summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  color: #6e6a61;
+  font-size: 11px;
+  letter-spacing: .13em;
+  cursor: pointer;
+  list-style: none;
+}
+
+.carousel-master__panel summary::-webkit-details-marker { display: none; }
+
+.carousel-master__panel summary::after {
+  color: #97948c;
+  content: '+';
+  font-size: 15px;
+}
+
+.carousel-master__panel[open] summary::after { content: '–'; }
+
+.carousel-master__panel-note { letter-spacing: .06em; }
+
+.carousel-master__panel--dev summary { color: #97948c; }
+
+.carousel-master__panel-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 2px 0 14px;
+  color: #6e6a61;
+  font-size: 10px;
+  letter-spacing: .03em;
+}
+
+.carousel-master__exporting {
+  width: min(100%, 1080px);
+  margin: 0 auto 12px;
+  color: #45423a;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .03em;
+}
+
 .carousel-master__header h1 {
   margin: 9px 0 4px;
   font-size: clamp(23px, 3vw, 35px);
@@ -143,7 +231,7 @@
 .carousel-master__switcher {
   position: fixed;
   z-index: 20;
-  bottom: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom));
   left: 50%;
   display: grid;
   grid-template-columns: 40px auto 40px;
@@ -236,9 +324,13 @@
 .carousel-master--weekend .carousel-master__photo { box-shadow: 0 7px 13px rgba(39, 35, 27, .19); }
 
 @media (max-width: 620px) {
-  .carousel-master { padding: 24px 16px 104px; }
-  .carousel-master__header { display: grid; margin-bottom: 18px; }
+  .carousel-master { padding: 20px 16px calc(104px + env(safe-area-inset-bottom)); }
+  .carousel-master__header { display: grid; margin-bottom: 14px; gap: 14px; }
   .carousel-master__actions { justify-content: flex-start; }
+  /* 手指目标：主操作和面板里的开关都加大触摸面积。 */
+  .carousel-master__actions button { min-height: 40px; padding: 0 16px; }
+  .scatter-prototype__control button { min-height: 32px; padding: 0 12px; }
+  .carousel-master__panel summary { min-height: 46px; }
   .carousel-master__stage { margin-right: -16px; width: calc(100% + 16px); border-right: 0; }
   .carousel-master__strip { grid-template-columns: repeat(5, 220px); min-width: 1100px; aspect-ratio: auto; height: 275px; }
   .carousel-master__photo img { max-height: 250px; }
