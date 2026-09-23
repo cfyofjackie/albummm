@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
+import { rectanglesOverlap, rotatedBounds } from './decorations.js'
 import { EXPORT_TIERS, downloadBlob, exportFocusImage } from './focusExport.js'
-import { exportTransformFor, focusCameraFor, focusFrameFor, focusScaleFor, openingCamera } from './focusGeometry.js'
+import { exportTransformFor, focusCameraFor, focusFrameFor, focusScaleFor, occluderClipPath, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 420
 
@@ -16,6 +17,32 @@ function photoStyleFor(tile) {
     width: `${(tile.content.width / tile.width) * 100}%`,
     height: `${(tile.content.height / tile.height) * 100}%`,
   }
+}
+
+// 高清层 / 幽灵层都按最终屏幕尺寸绝对定位在画板坐标系里（不进整板的缩放层）。
+function overlayStyleFor(tile, transform) {
+  return {
+    left: `${transform.originX + tile.x * transform.unitX}px`,
+    top: `${transform.originY + tile.y * transform.unitY}px`,
+    width: `${tile.width * transform.unitX}px`,
+    height: `${tile.height * transform.unitY}px`,
+    transform: `rotate(${tile.rotate}deg)`,
+  }
+}
+
+function FocusCard({ tile, index, frameMode, decorationEnabled, className = '', style, onClick, ariaHidden = false }) {
+  return (
+    <figure
+      className={`v5-collage__photo v5-collage__photo--${frameMode} ${className}`}
+      style={style}
+      onClick={onClick}
+      aria-hidden={ariaHidden || undefined}
+    >
+      {frameMode === 'polaroid' && <span className="v5-collage__paper" aria-hidden="true" />}
+      <img style={photoStyleFor(tile)} src={tile.photo.originalSrc || tile.photo.previewSrc} alt="" />
+      <CardDecoration index={index} enabled={decorationEnabled} />
+    </figure>
+  )
 }
 
 export default function V5FocusViewer({ layout, initialTileId, boardRect, frameMode, decorationEnabled, autoPlacements, onClose }) {
@@ -101,6 +128,15 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const hiresTile = hiresTileId ? layout.find((tile) => tile.id === hiresTileId) : null
   // 与整板缩放层、导出画布共用同一套坐标换算（unit = 每百分比多少 px），保证逐像素对齐。
   const hiresTransform = hiresTile ? exportTransformFor(boardRect, frame, camera, { width: frame.width, height: frame.height }) : null
+  // 真正压在选中照片之上的邻居（z 序更高；z 相同时后来的在上）。高清层会把它们盖掉，
+  // 所以各出一份裁剪到选中照片范围内的高清幽灵拷贝，恢复「有东西盖在上面」的读感。
+  const occluders = hiresTile && hiresTransform
+    ? layout.filter((tile) => {
+        if (tile.id === hiresTile.id) return false
+        const above = tile.z > hiresTile.z || (tile.z === hiresTile.z && layout.indexOf(tile) > layout.indexOf(hiresTile))
+        return above && rectanglesOverlap(rotatedBounds(tile), rotatedBounds(hiresTile))
+      })
+    : []
 
   return (
     <section className={`v5-focus ${visible ? 'is-visible' : ''} ${leaving ? 'is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="高清拼贴查看">
@@ -133,22 +169,28 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
             ))}
           </div>
           {hiresTile && hiresTransform && (
-            <figure
-              className={`v5-collage__photo v5-collage__photo--${frameMode} v5-focus__hires`}
-              style={{
-                left: `${hiresTransform.originX + hiresTile.x * hiresTransform.unitX}px`,
-                top: `${hiresTransform.originY + hiresTile.y * hiresTransform.unitY}px`,
-                width: `${hiresTile.width * hiresTransform.unitX}px`,
-                height: `${hiresTile.height * hiresTransform.unitY}px`,
-                transform: `rotate(${hiresTile.rotate}deg)`,
-              }}
+            <FocusCard
+              tile={hiresTile}
+              index={layout.indexOf(hiresTile)}
+              frameMode={frameMode}
+              decorationEnabled={decorationEnabled}
+              className="v5-focus__hires"
+              style={overlayStyleFor(hiresTile, hiresTransform)}
               onClick={closeViewer}
-            >
-              {frameMode === 'polaroid' && <span className="v5-collage__paper" aria-hidden="true" />}
-              <img style={photoStyleFor(hiresTile)} src={hiresTile.photo.originalSrc || hiresTile.photo.previewSrc} alt="" />
-              <CardDecoration index={layout.indexOf(hiresTile)} enabled={decorationEnabled} />
-            </figure>
+            />
           )}
+          {hiresTile && hiresTransform && occluders.map((tile) => (
+            <FocusCard
+              key={`ghost-${tile.id}`}
+              tile={tile}
+              index={layout.indexOf(tile)}
+              frameMode={frameMode}
+              decorationEnabled={decorationEnabled}
+              className="v5-focus__ghost"
+              style={{ ...overlayStyleFor(tile, hiresTransform), clipPath: occluderClipPath(hiresTile, tile, hiresTransform) }}
+              ariaHidden
+            />
+          ))}
         </div>
         <p className="v5-focus__frame-label" style={{ left: `${frame.left}px`, top: `${frame.top}px` }} aria-hidden="true">导出范围 · 4:3</p>
       </div>
