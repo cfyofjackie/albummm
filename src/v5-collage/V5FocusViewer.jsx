@@ -4,7 +4,6 @@ import { EXPORT_TIERS, downloadBlob, exportFocusImage } from './focusExport.js'
 import { findOccluders, focusCameraFor, focusFrameFor, focusScaleFor, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 420
-const HANDOFF_MS = 90
 
 function viewportSize() {
   return { width: window.innerWidth, height: window.innerHeight }
@@ -19,17 +18,10 @@ function photoStyleFor(tile) {
   }
 }
 
-// 高清层只在镜头停稳后按实际像素尺寸渲染；动画中仅移动整板合成层。
-function overlayRectFor(tile, boardRect, camera) {
-  const scale = camera.scale
-  return {
-    left: `${boardRect.left + camera.x + (scale * tile.x / 100) * boardRect.width}px`,
-    top: `${boardRect.top + camera.y + (scale * tile.y / 100) * boardRect.height}px`,
-    width: `${(scale * tile.width / 100) * boardRect.width}px`,
-    height: `${(scale * tile.height / 100) * boardRect.height}px`,
-    transform: `rotate(${tile.rotate}deg)`,
-  }
-}
+// 高清层只在镜头停稳后挂载；它不按视口像素定位，而是放进与整板共用同一组
+// 镜头坐标、同一条 transform 过渡的同步层里，按拼贴百分比定位。镜头无论
+// 放大、切换还是返回，它都与整板逐帧同轨迹（纯 transform 合成动画，不走
+// left/top 布局过渡），关闭时即时启程、全程保持原生清晰度。
 
 function FocusCard({ tile, index, frameMode, decorationEnabled, className = '', style, onClick, ariaHidden = false, useOriginal = false }) {
   return (
@@ -56,12 +48,10 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const [decodedOriginalIds, setDecodedOriginalIds] = useState(() => new Set())
   const [visible, setVisible] = useState(false)
   const [frameActive, setFrameActive] = useState(false)
-  const [handoff, setHandoff] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [exportingId, setExportingId] = useState(null)
   const settleTimerRef = useRef(null)
   const closeTimerRef = useRef(null)
-  const handoffTimerRef = useRef(null)
   const frameMountedRef = useRef(false)
   // iOS Safari 可能把缩放中的整板光栅化得偏软；镜头落定后用独立高清层补回清晰度。
   const selectedTile = layout.find((tile) => tile.id === selectedId)
@@ -110,7 +100,6 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   useEffect(() => () => {
     window.clearTimeout(settleTimerRef.current)
     window.clearTimeout(closeTimerRef.current)
-    window.clearTimeout(handoffTimerRef.current)
   }, [])
   useEffect(() => {
     const scale = focusScaleFor(initialTile, boardRect, frame)
@@ -137,21 +126,14 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
 
   const closeViewer = () => {
     if (leaving) return
+    // 高清层在同步层里与整板同轨迹飞回，无需先淡出交接：点击下一帧即启程，
+    // 全程保持原生清晰度，动画结束后随查看层一起卸载。
     window.clearTimeout(settleTimerRef.current)
     setLeaving(true)
     setFrameActive(false)
-    const startClose = () => {
-      setHandoff(false)
-      setDetailReady(false)
-      setVisible(false)
-      setCamera(openingCamera())
-      closeTimerRef.current = window.setTimeout(onClose, TRANSITION_MS)
-    }
-    if (detailReady || frameActive) {
-      setHandoff(true)
-      window.clearTimeout(handoffTimerRef.current)
-      handoffTimerRef.current = window.setTimeout(startClose, HANDOFF_MS)
-    } else startClose()
+    setVisible(false)
+    setCamera(openingCamera())
+    closeTimerRef.current = window.setTimeout(onClose, TRANSITION_MS)
   }
 
   useEffect(() => {
@@ -167,19 +149,11 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
       closeViewer()
       return
     }
-    // 静止时先把高清层交回快照，再移动镜头，避免直接卸载造成亮度与遮挡突变。
-    const startMove = () => {
-      setHandoff(false)
-      setDetailReady(false)
-      setSelectedId(tile.id)
-      setCamera((current) => focusCameraFor(tile, boardRect, frame, current.scale))
-      settleDetail()
-    }
-    if (detailReady) {
-      setHandoff(true)
-      window.clearTimeout(handoffTimerRef.current)
-      handoffTimerRef.current = window.setTimeout(startMove, HANDOFF_MS)
-    } else startMove()
+    // 新选中照片的高清层立刻按旧镜头坐标出现在快照正上方（几何完全重合），
+    // 随后与整板一起飞向新镜头，全程清晰；切换动作点击即开始。
+    setSelectedId(tile.id)
+    setCamera((current) => focusCameraFor(tile, boardRect, frame, current.scale))
+    settleDetail()
   }
 
   const exportCurrentView = async (tier) => {
@@ -197,7 +171,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   }
 
   return (
-    <section className={`v5-focus ${visible ? 'is-visible' : ''} ${frameActive ? 'is-framed' : ''} ${handoff ? 'is-handoff' : ''} ${leaving ? 'is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="高清拼贴查看">
+    <section className={`v5-focus ${visible ? 'is-visible' : ''} ${frameActive ? 'is-framed' : ''} ${leaving ? 'is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="高清拼贴查看">
       <div className="v5-focus__viewport">
         <div className="v5-focus__artboard">
           <div className="v5-focus__frame-backing" style={{ left: frame.left, top: frame.top, width: frame.width, height: frame.height }} aria-hidden="true" />
@@ -232,40 +206,46 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
             ))}
           </div>
           {detailReady && selectedTile && (
-            <FocusCard
-              tile={selectedTile}
-              index={layout.indexOf(selectedTile)}
-              frameMode={frameMode}
-              decorationEnabled={decorationEnabled}
-              className="v5-focus__hires"
-              style={overlayRectFor(selectedTile, boardRect, camera)}
-              onClick={closeViewer}
-              useOriginal={decodedOriginalIds.has(selectedTile.id)}
-            />
-          )}
-          {detailReady && selectedTile && occluders.map((tile) => {
-            const maskImage = occluderMaskImage(selectedTile, tile)
-            return (
+            <div
+              className="v5-focus__detail"
+              style={{ left: `${boardRect.left}px`, top: `${boardRect.top}px`, width: `${boardRect.width}px`, height: `${boardRect.height}px`, transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.scale})` }}
+            >
               <FocusCard
-                key={`ghost-${tile.id}`}
-                tile={tile}
-                index={layout.indexOf(tile)}
+                tile={selectedTile}
+                index={layout.indexOf(selectedTile)}
                 frameMode={frameMode}
                 decorationEnabled={decorationEnabled}
-                className="v5-focus__ghost"
-                style={{
-                  ...overlayRectFor(tile, boardRect, camera),
-                  clipPath: occluderClipPath(selectedTile, tile),
-                  maskImage,
-                  WebkitMaskImage: maskImage,
-                  maskSize: '100% 100%',
-                  WebkitMaskSize: '100% 100%',
-                }}
-                ariaHidden
-                useOriginal={decodedOriginalIds.has(tile.id)}
+                className="v5-focus__hires"
+                style={{ left: `${selectedTile.x}%`, top: `${selectedTile.y}%`, width: `${selectedTile.width}%`, height: `${selectedTile.height}%`, transform: `rotate(${selectedTile.rotate}deg)` }}
+                onClick={closeViewer}
+                useOriginal={decodedOriginalIds.has(selectedTile.id)}
               />
-            )
-          })}
+              {occluders.map((tile) => {
+                const maskImage = occluderMaskImage(selectedTile, tile)
+                return (
+                  <FocusCard
+                    key={`ghost-${tile.id}`}
+                    tile={tile}
+                    index={layout.indexOf(tile)}
+                    frameMode={frameMode}
+                    decorationEnabled={decorationEnabled}
+                    className="v5-focus__ghost"
+                    style={{
+                      left: `${tile.x}%`, top: `${tile.y}%`, width: `${tile.width}%`, height: `${tile.height}%`,
+                      transform: `rotate(${tile.rotate}deg)`,
+                      clipPath: occluderClipPath(selectedTile, tile),
+                      maskImage,
+                      WebkitMaskImage: maskImage,
+                      maskSize: '100% 100%',
+                      WebkitMaskSize: '100% 100%',
+                    }}
+                    ariaHidden
+                    useOriginal={decodedOriginalIds.has(tile.id)}
+                  />
+                )
+              })}
+            </div>
+          )}
           <div className="v5-focus__frame-mask" style={{ top: 0, left: 0, right: 0, height: frame.top }} aria-hidden="true" />
           <div className="v5-focus__frame-mask" style={{ top: frame.top + frame.height, left: 0, right: 0, bottom: 0 }} aria-hidden="true" />
           <div className="v5-focus__frame-mask" style={{ top: frame.top, left: 0, width: frame.left, height: frame.height }} aria-hidden="true" />
@@ -281,7 +261,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
             type="button"
             className="v5-focus__export"
             title={tier.note}
-            disabled={Boolean(exportingId) || !detailReady || leaving || handoff}
+            disabled={Boolean(exportingId) || !detailReady || leaving}
             onClick={() => exportCurrentView(tier)}
           >
             {exportingId === tier.id ? '正在导出…' : tier.label}
