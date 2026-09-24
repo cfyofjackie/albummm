@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OCCLUDER_ALPHA, exportTransformFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleFor, occluderClipPath, openingCamera } from './focusGeometry.js'
+import { OCCLUDER_ALPHA, exportTransformFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleFor, occluderClipPath, occluderClipPoints, openingCamera } from './focusGeometry.js'
 
 const boardRect = { left: 40, top: 300, width: 880, height: 660 }
 const viewport = { width: 960, height: 760 }
@@ -10,6 +10,9 @@ const tile = {
 describe('V5 focus camera', () => {
   it('starts aligned with the original board before moving', () => {
     expect(openingCamera()).toEqual({ scale: 1, x: 0, y: 0 })
+    const frame = focusFrameFor(viewport)
+    expect(frame.left).toBeGreaterThan(0)
+    expect(frame.top).toBeGreaterThan(0)
   })
 
   it('centers the selected photo while keeping a bounded useful zoom', () => {
@@ -46,10 +49,28 @@ describe('occluder clip path（幽灵层只露出遮挡者与选中照片相交�
   })
 
   it('maps the corners into the ghost local box accounting for the ghost rotation', () => {
-    // 幽灵层绕自身中心顺时针转 90°：局部 (40,40) 会显示在视口 (60,40)。
+    // 4:3 画布上横纵百分比的物理长度不同。
     const selected = { x: 55, y: 35, width: 10, height: 10, rotate: 0 }
     const ghost = { x: 0, y: 0, width: 100, height: 100, rotate: 90 }
-    expect(occluderClipPath(selected, ghost)).toBe('polygon(35% 45%, 35% 35%, 45% 35%, 45% 45%)')
+    expect(occluderClipPath(selected, ghost)).toBe('polygon(38.75% 43.33%, 38.75% 30%, 46.25% 30%, 46.25% 43.33%)')
+  })
+
+  it('projects rotated corners back onto the selected card in physical board coordinates', () => {
+    const selected = { x: 10, y: 20, width: 30, height: 40, rotate: -8 }
+    const ghost = { x: 5, y: 15, width: 60, height: 80, rotate: 5 }
+    const [localX, localY] = occluderClipPoints(selected, ghost)[0]
+    const ghostCenterX = ghost.x + ghost.width / 2
+    const ghostCenterY = (ghost.y + ghost.height / 2) * 3 / 4
+    const localPhysicalX = (localX / 100 - .5) * ghost.width
+    const localPhysicalY = (localY / 100 - .5) * ghost.height * 3 / 4
+    const ghostRad = ghost.rotate * Math.PI / 180
+    const projectedX = ghostCenterX + localPhysicalX * Math.cos(ghostRad) - localPhysicalY * Math.sin(ghostRad)
+    const projectedY = ghostCenterY + localPhysicalX * Math.sin(ghostRad) + localPhysicalY * Math.cos(ghostRad)
+    const selectedRad = selected.rotate * Math.PI / 180
+    const expectedX = selected.x + selected.width / 2 - selected.width / 2 * Math.cos(selectedRad) + selected.height * 3 / 8 * Math.sin(selectedRad)
+    const expectedY = (selected.y + selected.height / 2) * 3 / 4 - selected.width / 2 * Math.sin(selectedRad) - selected.height * 3 / 8 * Math.cos(selectedRad)
+    expect(projectedX).toBeCloseTo(expectedX)
+    expect(projectedY).toBeCloseTo(expectedY)
   })
 
   it('keeps four vertices for rotated selections', () => {
@@ -73,7 +94,7 @@ describe('findOccluders（谁真正压在选中照片之上）', () => {
   it('keeps only neighbours above in stacking order that overlap the selection', () => {
     const selected = layout.find((tile) => tile.id === 'selected')
     const ids = findOccluders(layout, selected).map((tile) => tile.id)
-    expect(ids).toEqual(['higher-z', 'same-z-later'])
+    expect(ids).toEqual(['same-z-later', 'higher-z'])
   })
 
   it('returns no occluders for the topmost photo', () => {

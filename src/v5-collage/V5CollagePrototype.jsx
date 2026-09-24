@@ -5,6 +5,7 @@ import { ALLOWED_FORMATS, FRAME_MODES, REQUIRED_PHOTO_COUNT, acceptedFormatFor, 
 import { buildAutoDecorationPlacements } from './decorations.js'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
 import V5FocusViewer from './V5FocusViewer.jsx'
+import { renderBoardPreview } from './focusExport.js'
 import './v5.css'
 
 const ACCEPTED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -44,6 +45,7 @@ function uploadKindFor(file, size) {
 export default function V5CollagePrototype() {
   const inputRef = useRef(null)
   const boardRef = useRef(null)
+  const boardPreviewImageRef = useRef(null)
   const photosRef = useRef([])
   const [photos, setPhotos] = useState([])
   const [notice, setNotice] = useState('')
@@ -51,6 +53,7 @@ export default function V5CollagePrototype() {
   const [frameMode, setFrameMode] = useState(FRAME_MODES.none.id)
   const [decorationMode, setDecorationMode] = useState(DECORATION_MODES.none.id)
   const [focusRequest, setFocusRequest] = useState(null)
+  const [boardPreviewSrc, setBoardPreviewSrc] = useState(null)
 
   const replacePhotos = (nextPhotos) => {
     photosRef.current.forEach(releasePhotoSource)
@@ -81,6 +84,40 @@ export default function V5CollagePrototype() {
     [photos, frameMode],
   )
   const autoDecorationPlacements = useMemo(() => buildAutoDecorationPlacements(layout), [layout])
+
+  useEffect(() => {
+    setBoardPreviewSrc(null)
+    if (!layout.length) return
+    let cancelled = false
+    let previewUrl = null
+    const render = () => {
+      renderBoardPreview({
+        layout, frameMode, decorationEnabled: decorationMode === DECORATION_MODES.scrapbook.id,
+        autoPlacements: autoDecorationPlacements, width: boardRef.current?.clientWidth || 960,
+      }).then(async (blob) => {
+        if (cancelled || !blob) return
+        previewUrl = URL.createObjectURL(blob)
+        const image = new Image()
+        image.src = previewUrl
+        try { await image.decode?.() } catch {
+          URL.revokeObjectURL(previewUrl)
+          previewUrl = null
+          return
+        }
+        if (cancelled) return
+        boardPreviewImageRef.current = image
+        setBoardPreviewSrc(previewUrl)
+      }).catch(() => {})
+    }
+    const idleId = window.requestIdleCallback ? window.requestIdleCallback(render, { timeout: 1000 }) : window.setTimeout(render, 50)
+    return () => {
+      cancelled = true
+      if (window.cancelIdleCallback) window.cancelIdleCallback(idleId)
+      else window.clearTimeout(idleId)
+      boardPreviewImageRef.current = null
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+  }, [layout, frameMode, decorationMode, autoDecorationPlacements])
 
   const chooseFiles = async (event) => {
     const files = [...event.target.files]
@@ -113,18 +150,10 @@ export default function V5CollagePrototype() {
     setLoading(false)
   }
 
-  const preloadOriginal = (photo) => {
-    if (!photo?.originalSrc) return
-    const image = new Image()
-    image.src = photo.originalSrc
-    image.decode?.().catch(() => {})
-  }
-
   const openFocus = (tile) => {
     const boardRect = boardRef.current?.getBoundingClientRect()
     if (!boardRect) return
-    preloadOriginal(tile.photo)
-    setFocusRequest({ tileId: tile.id, boardRect: { left: boardRect.left, top: boardRect.top, width: boardRect.width, height: boardRect.height } })
+    setFocusRequest({ tileId: tile.id, boardPreviewSrc, boardRect: { left: boardRect.left, top: boardRect.top, width: boardRect.width, height: boardRect.height } })
   }
 
   return (
@@ -197,7 +226,6 @@ export default function V5CollagePrototype() {
                     zIndex: tile.z, transform: `rotate(${tile.rotate}deg)`,
                   }}
                   onClick={() => openFocus(tile)}
-                  onPointerEnter={() => preloadOriginal(tile.photo)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
@@ -224,6 +252,7 @@ export default function V5CollagePrototype() {
           frameMode={frameMode}
           decorationEnabled={decorationMode === DECORATION_MODES.scrapbook.id}
           autoPlacements={autoDecorationPlacements}
+          boardPreviewSrc={focusRequest.boardPreviewSrc}
           onClose={() => setFocusRequest(null)}
         />
       )}

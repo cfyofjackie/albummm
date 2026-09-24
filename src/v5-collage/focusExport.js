@@ -1,4 +1,4 @@
-import { OCCLUDER_ALPHA, exportTransformFor, findOccluders } from './focusGeometry.js'
+import { OCCLUDER_ALPHA, OCCLUDER_EDGE_FRACTION, exportTransformFor, findOccluders } from './focusGeometry.js'
 
 const BOARD_ASPECT = 4 / 3
 
@@ -116,6 +116,26 @@ function drawTile(ctx, tile, index, frameMode, image, unitX, unitY, originX, ori
   ctx.restore()
 }
 
+// 镜头移动时只缩放这一张已排好的预览图，避免 Safari 同时重绘十张旋转照片。
+// 独立高清层仍在镜头停稳后从原图渲染。
+export async function renderBoardPreview({ layout, frameMode, decorationEnabled, autoPlacements, width }) {
+  const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.previewSrc)])))
+  if (images.size !== layout.length || [...images.values()].some((image) => !image)) return null
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(width * 1.5))
+  canvas.height = Math.max(1, Math.round(canvas.width / BOARD_ASPECT))
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  ctx.fillStyle = '#e6e5e0'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  const unitX = canvas.width / 100
+  const unitY = canvas.height / 100
+  ctx.save(); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements); ctx.restore()
+  layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index)
+    .forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, 0, 0, decorationEnabled))
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+}
+
 // 选中照片的旋转矩形轮廓（输出坐标），作为导出时幽灵层的裁剪范围。
 function tileOutlinePath(tile, transform) {
   const centerX = transform.originX + (tile.x + tile.width / 2) * transform.unitX
@@ -146,16 +166,40 @@ export async function exportFocusImage({ layout, selectedId, frameMode, decorati
   ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements); ctx.restore()
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc)])))
   layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index).forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
-  // 与预览同一套遮挡规则：压在选中照片之上的部分同样以半透明重绘（裁剪到相交范围），
-  // 导出画面与放大预览保持一致。
+  // 先把选中照片完整盖回原拼贴，再在相交范围内重画遮挡者。
+  // 仅在原拼贴上增加半透明遮挡者，无法显露原本被盖住的内容。
   const selectedTile = selectedId ? layout.find((tile) => tile.id === selectedId) : null
   if (selectedTile) {
+    drawTile(ctx, selectedTile, layout.indexOf(selectedTile), frameMode, images.get(selectedTile.id), unitX, unitY, originX, originY, decorationEnabled)
+    const occluders = findOccluders(layout, selectedTile)
+    if (!occluders.length) return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))
     const outline = tileOutlinePath(selectedTile, { originX, originY, unitX, unitY })
-    findOccluders(layout, selectedTile).forEach((tile) => {
+    const edgeCanvas = document.createElement('canvas')
+    edgeCanvas.width = tier.width
+    edgeCanvas.height = tier.height
+    const edgeCtx = edgeCanvas.getContext('2d')
+    occluders.forEach((tile) => {
       ctx.save()
       ctx.clip(outline)
       ctx.globalAlpha = OCCLUDER_ALPHA
       drawTile(ctx, tile, layout.indexOf(tile), frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled)
+      ctx.restore()
+
+      // 只给遮挡者的 alpha 加柔边，不模糊照片像素。边缘仍接近原本的不透明度。
+      edgeCtx.clearRect(0, 0, tier.width, tier.height)
+      drawTile(edgeCtx, tile, layout.indexOf(tile), frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled)
+      const edgeWidth = Math.min(tile.width * unitX, tile.height * unitY) * OCCLUDER_EDGE_FRACTION
+      edgeCtx.save()
+      edgeCtx.globalCompositeOperation = 'destination-in'
+      edgeCtx.filter = `blur(${edgeWidth / 4}px)`
+      edgeCtx.strokeStyle = '#fff'
+      edgeCtx.lineWidth = edgeWidth
+      edgeCtx.lineJoin = 'round'
+      edgeCtx.stroke(outline)
+      edgeCtx.restore()
+      ctx.save()
+      ctx.clip(outline)
+      ctx.drawImage(edgeCanvas, 0, 0)
       ctx.restore()
     })
   }

@@ -1,13 +1,17 @@
 import { rectanglesOverlap, rotatedBounds } from './decorations.js'
+import { BOARD_RATIO } from './layout.js'
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 
 // 选中照片的「玻璃化」遮挡者：相交区域内遮挡者的不透明度。
 // 预览（DOM）与导出（canvas）共用这一个数值。
 export const OCCLUDER_ALPHA = 0.3
+export const OCCLUDER_EDGE_FRACTION = 0.03
 
 export function focusFrameFor(viewport) {
-  const width = Math.min(viewport.width, viewport.height * 4 / 3)
+  // 四周留出可见的浅色边距，用户始终能辨认 4:3 导出范围。
+  const inset = Math.min(48, Math.max(20, Math.min(viewport.width, viewport.height) * .04))
+  const width = Math.min(viewport.width - inset * 2, (viewport.height - inset * 2) * 4 / 3)
   const height = width * 3 / 4
   return { left: (viewport.width - width) / 2, top: (viewport.height - height) / 2, width, height }
 }
@@ -31,6 +35,7 @@ export function focusCameraFor(tile, boardRect, frame, scale) {
 }
 
 export function openingCamera() {
+  // 全屏静止容器中的快照与普通画布使用同一组视口坐标。
   return { scale: 1, x: 0, y: 0 }
 }
 
@@ -57,19 +62,17 @@ export function findOccluders(layout, selectedTile) {
     if (tile.id === selectedTile.id) return false
     const above = tile.z > selectedTile.z || (tile.z === selectedTile.z && layout.indexOf(tile) > selectedIndex)
     return above && rectanglesOverlap(rotatedBounds(tile), rotatedBounds(selectedTile))
-  })
+  }).sort((a, b) => a.z - b.z || layout.indexOf(a) - layout.indexOf(b))
 }
 
-// 幽灵层的裁剪形状：选中照片（含自身旋转）的四个角换算进幽灵层自己的
-// 盒子坐标，用百分比表达——与镜头无关，所以从点击那一帧到动画结束
-// 都是同一个值，不需要随动画重算。
-export function occluderClipPath(selectedTile, ghostTile) {
+// 先换算到物理画布坐标再旋转。横向 1% 与纵向 1% 在 4:3 画布上并不等长。
+export function occluderClipPoints(selectedTile, ghostTile) {
   const halfW = selectedTile.width / 2
-  const halfH = selectedTile.height / 2
+  const halfH = selectedTile.height / BOARD_RATIO / 2
   const selectedCenterX = selectedTile.x + halfW
-  const selectedCenterY = selectedTile.y + halfH
+  const selectedCenterY = (selectedTile.y + selectedTile.height / 2) / BOARD_RATIO
   const ghostCenterX = ghostTile.x + ghostTile.width / 2
-  const ghostCenterY = ghostTile.y + ghostTile.height / 2
+  const ghostCenterY = (ghostTile.y + ghostTile.height / 2) / BOARD_RATIO
   const selectedRad = selectedTile.rotate * Math.PI / 180
   const inverseGhostRad = -ghostTile.rotate * Math.PI / 180
   const cosS = Math.cos(selectedRad)
@@ -83,8 +86,21 @@ export function occluderClipPath(selectedTile, ghostTile) {
     const rx = px - ghostCenterX
     const ry = py - ghostCenterY
     const localX = (rx * cosG - ry * sinG) / ghostTile.width * 100 + 50
-    const localY = (rx * sinG + ry * cosG) / ghostTile.height * 100 + 50
-    return `${Math.round(localX * 100) / 100}% ${Math.round(localY * 100) / 100}%`
+    const localY = (rx * sinG + ry * cosG) / (ghostTile.height / BOARD_RATIO) * 100 + 50
+    return [localX, localY]
   })
-  return `polygon(${points.join(', ')})`
+  return points
+}
+
+export function occluderClipPath(selectedTile, ghostTile) {
+  const points = occluderClipPoints(selectedTile, ghostTile)
+  return `polygon(${points.map(([x, y]) => `${Math.round(x * 100) / 100}% ${Math.round(y * 100) / 100}%`).join(', ')})`
+}
+
+// 遮挡者在选中照片的边缘保持接近原本的不透明度，向内逐渐降至 30%。
+// SVG 只用于 alpha 蒙版，照片像素本身不会被模糊。
+export function occluderMaskImage(selectedTile, ghostTile) {
+  const points = occluderClipPoints(selectedTile, ghostTile).map(([x, y]) => `${x},${y}`).join(' ')
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none"><defs><filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="0.75"/></filter></defs><polygon points="${points}" fill="white" fill-opacity="${OCCLUDER_ALPHA}"/><polygon points="${points}" fill="none" stroke="white" stroke-width="${OCCLUDER_EDGE_FRACTION * 100}" stroke-linejoin="round" filter="url(#soft)"/></svg>`
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
 }
