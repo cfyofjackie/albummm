@@ -47,7 +47,6 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const [detailReady, setDetailReady] = useState(false)
   const [decodedOriginalIds, setDecodedOriginalIds] = useState(() => new Set())
   const [visible, setVisible] = useState(false)
-  const [frameActive, setFrameActive] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [exportingId, setExportingId] = useState(null)
   const settleTimerRef = useRef(null)
@@ -80,7 +79,6 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     window.clearTimeout(settleTimerRef.current)
     // transitionend 对齐真正停下的那一帧；计时器只处理未派发事件的浏览器。
     settleTimerRef.current = window.setTimeout(() => {
-      setFrameActive(true)
       setDetailReady(true)
     }, TRANSITION_MS + 100)
   }
@@ -88,7 +86,6 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const finishMotion = (event) => {
     if (event.target !== event.currentTarget || event.propertyName !== 'transform' || leaving) return
     window.clearTimeout(settleTimerRef.current)
-    setFrameActive(true)
     setDetailReady(true)
   }
 
@@ -130,7 +127,6 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     // 全程保持原生清晰度，动画结束后随查看层一起卸载。
     window.clearTimeout(settleTimerRef.current)
     setLeaving(true)
-    setFrameActive(false)
     setVisible(false)
     setCamera(openingCamera())
     closeTimerRef.current = window.setTimeout(onClose, TRANSITION_MS)
@@ -170,8 +166,11 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     }
   }
 
+  // 画框（外框线 + 遮带）固定在视口上，与镜头动画零耦合：随查看层打开即显示。
+  // 若等镜头停稳才显示，停稳后画框才浮现，看起来就像突然被裁切进取景框。
+  // 需要等停稳的只有高清细节层（解码换源），见 detailReady。
   return (
-    <section className={`v5-focus ${visible ? 'is-visible' : ''} ${frameActive ? 'is-framed' : ''} ${leaving ? 'is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="高清拼贴查看">
+    <section className={`v5-focus ${visible ? 'is-visible' : ''} ${visible && !leaving ? 'is-framed' : ''} ${leaving ? 'is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="高清拼贴查看">
       <div className="v5-focus__viewport">
         <div className="v5-focus__artboard">
           <div className="v5-focus__frame-backing" style={{ left: frame.left, top: frame.top, width: frame.width, height: frame.height }} aria-hidden="true" />
