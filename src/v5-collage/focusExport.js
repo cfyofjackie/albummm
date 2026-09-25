@@ -121,8 +121,11 @@ function drawTile(ctx, tile, index, frameMode, image, unitX, unitY, originX, ori
 export async function renderBoardPreview({ layout, frameMode, decorationEnabled, autoPlacements, width }) {
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.previewSrc)])))
   if (images.size !== layout.length || [...images.values()].some((image) => !image)) return null
+  // 放大动画期间屏幕上只有这张快照：分辨率给到板面宽度的 3 倍（2.5–3.4 倍的
+  // 镜头倍率下仍接近 1:1），否则动画全程都是被拉大的糊图，停稳才变清晰。
+  // 宽度设上限约束内存；内容是照片，用 JPEG 编码更快、体积更小。
   const canvas = document.createElement('canvas')
-  canvas.width = Math.max(1, Math.round(width * 1.5))
+  canvas.width = Math.min(2400, Math.max(1, Math.round(width * 3)))
   canvas.height = Math.max(1, Math.round(canvas.width / BOARD_ASPECT))
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
@@ -133,7 +136,7 @@ export async function renderBoardPreview({ layout, frameMode, decorationEnabled,
   ctx.save(); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements); ctx.restore()
   layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index)
     .forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, 0, 0, decorationEnabled))
-  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85))
 }
 
 // 选中照片的旋转矩形轮廓（输出坐标），作为导出时幽灵层的裁剪范围。

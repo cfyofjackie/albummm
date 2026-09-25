@@ -98,8 +98,18 @@ export default function V5CollagePrototype() {
         if (cancelled || !blob) return
         previewUrl = URL.createObjectURL(blob)
         const image = new Image()
+        // 等 onload 即可（blob URL 此时已可绘制）；decode 只作为预解码提示并行
+        // 触发、不参与等待——部分环境（页面隐藏/自动化）里 decode 可能永不返回，
+        // 一旦等待它整条快照管线就会卡死。
+        const loaded = new Promise((resolve, reject) => {
+          image.onload = resolve
+          image.onerror = reject
+        })
         image.src = previewUrl
-        try { await image.decode?.() } catch {
+        image.decode?.().catch(() => {})
+        try {
+          await loaded
+        } catch {
           URL.revokeObjectURL(previewUrl)
           previewUrl = null
           return
