@@ -48,7 +48,8 @@
 /* 高清同步层：与整板共用同一组镜头坐标和同一条 transform 过渡（见组件内注释），
    放大 / 切换 / 返回都与整板逐帧同轨迹，动作即时开始，不走先淡出再移动的交接等待。 */
 .v5-focus__detail { position: absolute; z-index: 2; pointer-events: none; transform-origin: top left; transition: transform 420ms var(--focus-ease); }
-/* 高清层与柔边遮挡只在镜头停稳后挂载，挂载时轻轻淡入。 */
+/* 高清层打开即挂载（几何与快照重合，挂载不可见），原图解码后换源逐渐变清；
+   挂载时的 110ms 淡入只为切换目标照片时柔化衔接。 */
 .v5-focus__hires, .v5-focus__ghost { animation: v5-focus-detail-in 110ms ease-out both; }
 @keyframes v5-focus-detail-in { from { opacity: 0; } to { opacity: 1; } }
 .v5-focus__hires { cursor: zoom-out; pointer-events: auto; }

@@ -18,10 +18,12 @@ function photoStyleFor(tile) {
   }
 }
 
-// 高清层只在镜头停稳后挂载；它不按视口像素定位，而是放进与整板共用同一组
-// 镜头坐标、同一条 transform 过渡的同步层里，按拼贴百分比定位。镜头无论
-// 放大、切换还是返回，它都与整板逐帧同轨迹（纯 transform 合成动画，不走
-// left/top 布局过渡），关闭时即时启程、全程保持原生清晰度。
+// 高清层在查看层打开时立即挂载（不等镜头停稳）；它不按视口像素定位，而是放进
+// 与整板共用同一组镜头坐标、同一条 transform 过渡的同步层里，按拼贴百分比定位。
+// 几何与整板快照里的同一张照片逐像素重合，挂载不可见。先渲染 1600px 预览图——
+// 在最高 3.4 倍镜头下已接近屏幕 1:1，全程清晰；原图解码完成后换源，点开后逐渐
+// 变得更清楚，而不是等停稳才从糊图突然变清。镜头无论放大、切换还是返回，它都
+// 与整板逐帧同轨迹（纯 transform 合成动画，不走 left/top 布局过渡），关闭时即时启程。
 
 function FocusCard({ tile, index, frameMode, decorationEnabled, className = '', style, onClick, ariaHidden = false, useOriginal = false }) {
   return (
@@ -44,7 +46,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const [viewport, setViewport] = useState(viewportSize)
   const frame = useMemo(() => focusFrameFor(viewport), [viewport.height, viewport.width])
   const [camera, setCamera] = useState(openingCamera)
-  const [detailReady, setDetailReady] = useState(false)
+  const [settled, setSettled] = useState(false)
   const [decodedOriginalIds, setDecodedOriginalIds] = useState(() => new Set())
   const [visible, setVisible] = useState(false)
   const [leaving, setLeaving] = useState(false)
@@ -52,14 +54,16 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const settleTimerRef = useRef(null)
   const closeTimerRef = useRef(null)
   const frameMountedRef = useRef(false)
-  // iOS Safari 可能把缩放中的整板光栅化得偏软；镜头落定后用独立高清层补回清晰度。
+  // iOS Safari 可能把缩放中的整板快照光栅化得偏软；高清层打开即覆盖选中照片补回清晰度。
   const selectedTile = layout.find((tile) => tile.id === selectedId)
   const occluders = useMemo(() => findOccluders(layout, selectedTile), [layout, selectedTile])
 
   useEffect(() => {
-    if (!detailReady || leaving) return
+    if (leaving) return
     let active = true
-    // 原图的解码和高清层的换源都放在镜头停稳之后，避免 Safari 在缩放时抢主线程。
+    // 原图的解码和高清层的换源都在打开/切换的那一刻开始，与镜头动画并行；
+    // 解码完成后换源，照片在动画过程中就逐渐变清。decode() 离主线程执行，
+    // 不会像整板重绘那样抢动画的主线程。
     ;[selectedTile, ...occluders].filter(Boolean).forEach((tile) => {
       const source = tile.photo.originalSrc
       if (!source || source === tile.photo.previewSrc || decodedOriginalIds.has(tile.id)) return
@@ -73,20 +77,21 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
       else image.onload = ready
     })
     return () => { active = false }
-  }, [detailReady, selectedTile, occluders, leaving])
+  }, [selectedTile, occluders, leaving])
 
+  // settled 只服务导出：镜头停稳前不开放导出按钮。高清层本身不等停稳。
   const settleDetail = () => {
     window.clearTimeout(settleTimerRef.current)
     // transitionend 对齐真正停下的那一帧；计时器只处理未派发事件的浏览器。
     settleTimerRef.current = window.setTimeout(() => {
-      setDetailReady(true)
+      setSettled(true)
     }, TRANSITION_MS + 100)
   }
 
   const finishMotion = (event) => {
     if (event.target !== event.currentTarget || event.propertyName !== 'transform' || leaving) return
     window.clearTimeout(settleTimerRef.current)
-    setDetailReady(true)
+    setSettled(true)
   }
 
   useEffect(() => {
@@ -116,7 +121,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     if (!visible) return
     const tile = layout.find((item) => item.id === selectedId) || initialTile
     const scale = focusScaleFor(tile, boardRect, frame)
-    setDetailReady(false)
+    setSettled(false)
     setCamera(focusCameraFor(tile, boardRect, frame, scale))
     settleDetail()
   }, [frame.height, frame.width, frame.left, frame.top])
@@ -153,7 +158,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   }
 
   const exportCurrentView = async (tier) => {
-    if (exportingId || !detailReady) return
+    if (exportingId || !settled) return
     setExportingId(tier.id)
     try {
       // 与预览共用固定 4:3 成品框和同一份镜头坐标；外围窗口区域从不进入导出。
@@ -168,7 +173,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
 
   // 画框（外框线 + 遮带）固定在视口上，与镜头动画零耦合：随查看层打开即显示。
   // 若等镜头停稳才显示，停稳后画框才浮现，看起来就像突然被裁切进取景框。
-  // 需要等停稳的只有高清细节层（解码换源），见 detailReady。
+  // 高清细节层同样打开即挂载（见组件顶部注释）；settled 只控制导出按钮。
   return (
     <section className={`v5-focus ${visible ? 'is-visible' : ''} ${visible && !leaving ? 'is-framed' : ''} ${leaving ? 'is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="高清拼贴查看">
       <div className="v5-focus__viewport">
@@ -204,7 +209,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
               </figure>
             ))}
           </div>
-          {detailReady && selectedTile && (
+          {selectedTile && (
             <div
               className="v5-focus__detail"
               style={{ left: `${boardRect.left}px`, top: `${boardRect.top}px`, width: `${boardRect.width}px`, height: `${boardRect.height}px`, transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.scale})` }}
@@ -260,7 +265,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
             type="button"
             className="v5-focus__export"
             title={tier.note}
-            disabled={Boolean(exportingId) || !detailReady || leaving}
+            disabled={Boolean(exportingId) || !settled || leaving}
             onClick={() => exportCurrentView(tier)}
           >
             {exportingId === tier.id ? '正在导出…' : tier.label}
