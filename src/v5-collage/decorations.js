@@ -8,7 +8,7 @@ export const AUTO_DECORATION_ASSETS = [
   { id: 'camera', width: 12, height: 9, rotate: 4 },
 ]
 
-const BOARD_RATIO = 4 / 3
+const DEFAULT_BOARD_RATIO = 4 / 3
 const EDGE_GUTTER = 2.5
 const PHOTO_GUTTER = 1.2
 const MAX_AUTO_DECORATIONS = 2
@@ -31,19 +31,19 @@ function withinBoard(rect) {
 }
 
 // 保守包围盒让装饰即使落在照片旋转后的角上，也不会与照片重叠。
-export function rotatedBounds({ x, y, width, height, rotate = 0 }) {
+export function rotatedBounds({ x, y, width, height, rotate = 0, boardRatio = DEFAULT_BOARD_RATIO }) {
   const theta = Math.abs(rotate) * Math.PI / 180
   if (!theta) return { x, y, width, height }
-  const physicalHeight = height / BOARD_RATIO
+  const physicalHeight = height / boardRatio
   const extraX = (width * (Math.cos(theta) - 1) + physicalHeight * Math.sin(theta)) / 2
-  const extraY = (width * Math.sin(theta) + physicalHeight * (Math.cos(theta) - 1)) / 2 * BOARD_RATIO
+  const extraY = (width * Math.sin(theta) + physicalHeight * (Math.cos(theta) - 1)) / 2 * boardRatio
   return { x: x - extraX, y: y - extraY, width: width + extraX * 2, height: height + extraY * 2 }
 }
 
-function distanceBetweenRects(a, b) {
+function distanceBetweenRects(a, b, boardRatio) {
   const xGap = Math.max(b.x - (a.x + a.width), a.x - (b.x + b.width), 0)
   const yGap = Math.max(b.y - (a.y + a.height), a.y - (b.y + b.height), 0)
-  return Math.hypot(xGap, yGap / BOARD_RATIO)
+  return Math.hypot(xGap, yGap / boardRatio)
 }
 
 function seedFor(photos) {
@@ -63,7 +63,7 @@ function candidateCenters() {
 
 const CANDIDATE_CENTERS = candidateCenters()
 
-function bestPlacement(asset, occupied, seed, excluded) {
+function bestPlacement(asset, occupied, seed, excluded, boardRatio) {
   const candidates = CANDIDATE_CENTERS
     .map((center, index) => ({
       ...center,
@@ -71,19 +71,20 @@ function bestPlacement(asset, occupied, seed, excluded) {
       // 只用作同分时的稳定排序，页面刷新不会让素材跳位置。
       tieBreaker: (seed + index * 19) % 17,
     }))
-    .map((candidate) => ({ ...candidate, safetyBounds: rotatedBounds({ ...candidate.rect, rotate: asset.rotate }) }))
+    .map((candidate) => ({ ...candidate, safetyBounds: rotatedBounds({ ...candidate.rect, rotate: asset.rotate, boardRatio }) }))
     .filter((candidate) => withinBoard(candidate.safetyBounds))
     .filter((candidate) => !occupied.some((other) => overlap(candidate.safetyBounds, other, PHOTO_GUTTER)))
-    .filter((candidate) => !excluded.some((other) => distanceBetweenRects(candidate.safetyBounds, other) < 8))
+    .filter((candidate) => !excluded.some((other) => distanceBetweenRects(candidate.safetyBounds, other, boardRatio) < 8))
     .map((candidate) => ({
       ...candidate,
-      clearance: Math.min(...occupied.map((other) => distanceBetweenRects(candidate.safetyBounds, other))),
+      clearance: Math.min(...occupied.map((other) => distanceBetweenRects(candidate.safetyBounds, other, boardRatio))),
     }))
     .sort((a, b) => b.clearance - a.clearance || a.tieBreaker - b.tieBreaker)
   return candidates[0] || null
 }
 
 export function buildAutoDecorationPlacements(layout, max = MAX_AUTO_DECORATIONS) {
+  const boardRatio = layout[0]?.boardRatio || DEFAULT_BOARD_RATIO
   const occupied = layout.map(rotatedBounds)
   const seed = seedFor(layout.map((tile) => tile.photo))
   const placements = []
@@ -100,7 +101,7 @@ export function buildAutoDecorationPlacements(layout, max = MAX_AUTO_DECORATIONS
           return {
             asset: scaledAsset,
             assetIndex,
-            candidate: bestPlacement(scaledAsset, occupied, seed + index * 11 + assetIndex, placements.map((placement) => placement.safetyBounds)),
+            candidate: bestPlacement(scaledAsset, occupied, seed + index * 11 + assetIndex, placements.map((placement) => placement.safetyBounds), boardRatio),
           }
         })
         .filter((option) => option.candidate)

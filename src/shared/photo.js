@@ -52,6 +52,7 @@ export async function loadPhoto(file) {
     width,
     height,
     orientation: classify(width, height),
+    file,
     previewSrc,
     originalSrc,
   }

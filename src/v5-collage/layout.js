@@ -1,6 +1,11 @@
 // V5 的第一个模板只解决一件事：十张照片按参考图的阅读节奏散开、交叠。
 // 坐标为画布百分比；横向数值相对宽度，纵向数值相对高度。
 export const BOARD_RATIO = 4 / 3
+export const PORTRAIT_BOARD_RATIO = 3 / 4
+export const BOARD_FORMATS = [
+  { id: 'landscape', label: '4:3 横版', ratio: BOARD_RATIO },
+  { id: 'portrait', label: '3:4 竖版', ratio: PORTRAIT_BOARD_RATIO },
+]
 export const REQUIRED_PHOTO_COUNT = 10
 export const FRAME_MODES = {
   none: { id: 'none', label: '无边框' },
@@ -82,6 +87,34 @@ const SLOT_SETS = {
   ],
 }
 
+const PORTRAIT_SLOTS = {
+  landscape: [
+    [28, 11], [72, 11], [25, 30], [71, 30], [30, 49],
+    [75, 49], [26, 68], [70, 68], [29, 87], [73, 87],
+  ],
+  mixed: [
+    [18, 16], [50, 16], [82, 16], [30, 37], [70, 37],
+    [18, 62], [50, 62], [82, 62], [30, 85], [70, 85],
+  ],
+  portrait: [
+    [18, 16], [50, 16], [82, 16], [30, 37], [70, 37],
+    [18, 62], [50, 62], [82, 62], [30, 85], [70, 85],
+  ],
+  square: [
+    [18, 16], [50, 16], [82, 16], [30, 37], [70, 37],
+    [18, 62], [50, 62], [82, 62], [30, 85], [70, 85],
+  ],
+}
+
+function portraitSlots(profile) {
+  return PORTRAIT_SLOTS[profile].map(([centerX, centerY], index) => ({
+    centerX, centerY,
+    rotate: [-5, 3, 6, 4, -4, -3, 2, -5, 5, -3][index],
+    z: [4, 5, 3, 6, 4, 5, 7, 4, 3, 6][index],
+    preferredRatio: profile === 'landscape' ? 4 / 3 : profile === 'portrait' ? 3 / 4 : profile === 'square' ? 1 : index % 3 === 1 ? 4 / 3 : 3 / 4,
+  }))
+}
+
 function orientationFor(photo) {
   const ratio = photo.width / photo.height
   if (ratio > 1.05) return 'landscape'
@@ -123,32 +156,33 @@ const rectArea = (rect) => rect.width * rect.height
 const intersection = (a, b) => Math.max(0, Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x))
   * Math.max(0, Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y))
 
-function rotatedBounds(rect, rotate) {
+function rotatedBounds(rect, rotate, boardRatio) {
   const theta = Math.abs(rotate) * Math.PI / 180
   if (!theta) return rect
-  const physicalHeight = rect.height / BOARD_RATIO
+  const physicalHeight = rect.height / boardRatio
   const extraX = Math.max(0, (rect.width * (Math.cos(theta) - 1) + physicalHeight * Math.sin(theta)) / 2)
-  const extraY = Math.max(0, (rect.width * Math.sin(theta) + physicalHeight * (Math.cos(theta) - 1)) / 2) * BOARD_RATIO
+  const extraY = Math.max(0, (rect.width * Math.sin(theta) + physicalHeight * (Math.cos(theta) - 1)) / 2) * boardRatio
   return { x: rect.x - extraX, y: rect.y - extraY, width: rect.width + extraX * 2, height: rect.height + extraY * 2 }
 }
 
 // 计算原图在锚点附近的完整尺寸。图片比例始终等于原图比例；`height` 以画布
 // 高度为单位，因此要经过横向 4:3 画布的换算。这是避免拉伸和悄悄裁切的唯一几何步骤。
-function contentFor(photo, scale = 1) {
+function contentFor(photo, scale = 1, boardRatio = BOARD_RATIO) {
   const aspect = photo.width / photo.height
   // physical area = width * height / BOARD_RATIO = width² / aspect.
   // 因此横图会更宽、竖图会更高，但两者的实际占地完全相同。
-  const width = Math.sqrt(TILE_PHYSICAL_AREA * scale * scale * aspect)
-  const height = (width * BOARD_RATIO) / aspect
+  const area = boardRatio === PORTRAIT_BOARD_RATIO ? 850 : TILE_PHYSICAL_AREA
+  const width = Math.sqrt(area * scale * scale * aspect)
+  const height = (width * boardRatio) / aspect
   return { width, height }
 }
 
-function cardAt(photo, slot, frameMode, scale = 1, offset = { x: 0, y: 0 }) {
-  const contentSize = contentFor(photo, scale)
+function cardAt(photo, slot, frameMode, scale = 1, offset = { x: 0, y: 0 }, boardRatio = BOARD_RATIO) {
+  const contentSize = contentFor(photo, scale, boardRatio)
   const hasFrame = frameMode === FRAME_MODES.polaroid.id
   const side = hasFrame ? POLAROID_INSET.side : 0
-  const top = side * BOARD_RATIO
-  const bottom = hasFrame ? POLAROID_INSET.bottom * BOARD_RATIO : 0
+  const top = side * boardRatio
+  const bottom = hasFrame ? POLAROID_INSET.bottom * boardRatio : 0
   const width = contentSize.width + side * 2
   const height = contentSize.height + top + bottom
   const x = slot.centerX + offset.x - width / 2
@@ -162,8 +196,8 @@ function cardAt(photo, slot, frameMode, scale = 1, offset = { x: 0, y: 0 }) {
   }
 }
 
-function isWithinBoard(card, rotate) {
-  const bounds = rotatedBounds(card, rotate)
+function isWithinBoard(card, rotate, boardRatio) {
+  const bounds = rotatedBounds(card, rotate, boardRatio)
   return bounds.x >= 1 && bounds.y >= 1 && bounds.x + bounds.width <= 99 && bounds.y + bounds.height <= 99
 }
 
@@ -182,11 +216,11 @@ const CANDIDATE_OFFSETS = candidateOffsets()
 
 // V3 的关键经验是把外框与内容区分开判定。V5 为了保持参考图的密度，允许极少量
 // 照片边缘相叠，但不会让一张照片的大块内容被另一张吃掉；旋转造成的外扩也纳入判定。
-function isSafeFramedCard(candidate, placed, rotate) {
-  if (!isWithinBoard(candidate, rotate)) return false
-  const contentSafety = rotatedBounds(candidate.content, rotate)
+function isSafeFramedCard(candidate, placed, rotate, boardRatio) {
+  if (!isWithinBoard(candidate, rotate, boardRatio)) return false
+  const contentSafety = rotatedBounds(candidate.content, rotate, boardRatio)
   return placed.every((other) => {
-    const otherContentSafety = rotatedBounds(other.content, other.rotate)
+    const otherContentSafety = rotatedBounds(other.content, other.rotate, boardRatio)
     const contentOverlapRatio = intersection(contentSafety, otherContentSafety) / Math.min(rectArea(contentSafety), rectArea(otherContentSafety))
     if (contentOverlapRatio > .08) return false
     const overlapRatio = intersection(candidate, other) / Math.min(rectArea(candidate), rectArea(other))
@@ -195,7 +229,7 @@ function isSafeFramedCard(candidate, placed, rotate) {
   })
 }
 
-function buildFramedLayout(assignments, profile) {
+function buildFramedLayout(assignments, profile, boardRatio) {
   // 边框会扩大每张外卡片；优先只做一次全局等比缩小，再在各自锚点附近寻找安全位置。
   // 不允许为了放下某一张图而单独改变它的比例或尺寸。
   for (const scale of POLAROID_SCALES) {
@@ -203,34 +237,36 @@ function buildFramedLayout(assignments, profile) {
     for (let index = 0; index < assignments.length; index += 1) {
       const { photo, slot } = assignments[index]
       const found = CANDIDATE_OFFSETS
-        .map((offset) => cardAt(photo, slot, FRAME_MODES.polaroid.id, scale, offset))
-        .find((candidate) => isSafeFramedCard(candidate, placed, slot.rotate))
+        .map((offset) => cardAt(photo, slot, FRAME_MODES.polaroid.id, scale, offset, boardRatio))
+        .find((candidate) => isSafeFramedCard(candidate, placed, slot.rotate, boardRatio))
       if (!found) break
-      placed.push({ ...found, id: photo.id, photo, rotate: slot.rotate, z: slot.z, profile })
+      placed.push({ ...found, id: photo.id, photo, rotate: slot.rotate, z: slot.z, profile, boardRatio })
     }
     if (placed.length === assignments.length) return placed
   }
 
   // 所有允许比例都在候选缩放内可解；这个回退仅防止未来修改锚点时页面变空。
   return assignments.map(({ photo, slot }) => {
-    return { ...cardAt(photo, slot, FRAME_MODES.polaroid.id, POLAROID_SCALES.at(-1)), id: photo.id, photo, rotate: slot.rotate, z: slot.z, profile }
+    return { ...cardAt(photo, slot, FRAME_MODES.polaroid.id, POLAROID_SCALES.at(-1), { x: 0, y: 0 }, boardRatio), id: photo.id, photo, rotate: slot.rotate, z: slot.z, profile, boardRatio }
   })
 }
 
-export function buildReferenceLayout(photos, frameMode = FRAME_MODES.none.id) {
+export function buildReferenceLayout(photos, frameMode = FRAME_MODES.none.id, boardRatio = BOARD_RATIO) {
   if (photos.length !== REQUIRED_PHOTO_COUNT) {
     throw new Error(`这个模板需要 ${REQUIRED_PHOTO_COUNT} 张照片。`)
   }
   const profile = selectLayoutProfile(photos)
-  const assignments = assignPhotosToSlots(photos, SLOT_SETS[profile])
-  if (frameMode === FRAME_MODES.polaroid.id) return buildFramedLayout(assignments, profile)
+  const slots = boardRatio === PORTRAIT_BOARD_RATIO ? portraitSlots(profile) : SLOT_SETS[profile]
+  const assignments = assignPhotosToSlots(photos, slots)
+  if (frameMode === FRAME_MODES.polaroid.id) return buildFramedLayout(assignments, profile, boardRatio)
   return assignments.map(({ photo, slot }) => ({
     id: photo.id,
     photo,
-    ...cardAt(photo, slot, FRAME_MODES.none.id),
+    ...cardAt(photo, slot, FRAME_MODES.none.id, 1, { x: 0, y: 0 }, boardRatio),
     rotate: slot.rotate,
     z: slot.z,
     profile,
+    boardRatio,
   }))
 }
 

@@ -29,8 +29,8 @@ export default function HomePage() {
             <i /><i /><i /><i />
           </span>
           <span className="home__card-eyebrow">单张拼贴</span>
-          <span className="home__card-title">一张 4:3 的拼贴作品</span>
-          <span className="home__card-desc">十张照片排进同一个画面，可以点开看每张的高清原图，整张导出。</span>
+          <span className="home__card-title">一张横版或竖版拼贴</span>
+          <span className="home__card-desc">十张照片排进 4:3 或 3:4 画面，点开看高清原图，也可导出整张作品。</span>
           <span className="home__card-go">开始创作<span aria-hidden="true"> →</span></span>
         </a>
       </nav>

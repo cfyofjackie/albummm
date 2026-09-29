@@ -8,11 +8,11 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 export const OCCLUDER_ALPHA = 0.3
 export const OCCLUDER_EDGE_FRACTION = 0.03
 
-export function focusFrameFor(viewport) {
-  // 四周留出可见的浅色边距，用户始终能辨认 4:3 导出范围。
+export function focusFrameFor(viewport, boardRatio = BOARD_RATIO) {
+  // 四周留出可见的浅色边距，用户始终能辨认导出范围。
   const inset = Math.min(48, Math.max(20, Math.min(viewport.width, viewport.height) * .04))
-  const width = Math.min(viewport.width - inset * 2, (viewport.height - inset * 2) * 4 / 3)
-  const height = width * 3 / 4
+  const width = Math.min(viewport.width - inset * 2, (viewport.height - inset * 2) * boardRatio)
+  const height = width / boardRatio
   return { left: (viewport.width - width) / 2, top: (viewport.height - height) / 2, width, height }
 }
 
@@ -67,12 +67,13 @@ export function findOccluders(layout, selectedTile) {
 
 // 先换算到物理画布坐标再旋转。横向 1% 与纵向 1% 在 4:3 画布上并不等长。
 export function occluderClipPoints(selectedTile, ghostTile) {
+  const boardRatio = selectedTile.boardRatio || BOARD_RATIO
   const halfW = selectedTile.width / 2
-  const halfH = selectedTile.height / BOARD_RATIO / 2
+  const halfH = selectedTile.height / boardRatio / 2
   const selectedCenterX = selectedTile.x + halfW
-  const selectedCenterY = (selectedTile.y + selectedTile.height / 2) / BOARD_RATIO
+  const selectedCenterY = (selectedTile.y + selectedTile.height / 2) / boardRatio
   const ghostCenterX = ghostTile.x + ghostTile.width / 2
-  const ghostCenterY = (ghostTile.y + ghostTile.height / 2) / BOARD_RATIO
+  const ghostCenterY = (ghostTile.y + ghostTile.height / 2) / boardRatio
   const selectedRad = selectedTile.rotate * Math.PI / 180
   const inverseGhostRad = -ghostTile.rotate * Math.PI / 180
   const cosS = Math.cos(selectedRad)
@@ -86,7 +87,7 @@ export function occluderClipPoints(selectedTile, ghostTile) {
     const rx = px - ghostCenterX
     const ry = py - ghostCenterY
     const localX = (rx * cosG - ry * sinG) / ghostTile.width * 100 + 50
-    const localY = (rx * sinG + ry * cosG) / (ghostTile.height / BOARD_RATIO) * 100 + 50
+    const localY = (rx * sinG + ry * cosG) / (ghostTile.height / boardRatio) * 100 + 50
     return [localX, localY]
   })
   return points

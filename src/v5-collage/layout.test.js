@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOARD_RATIO, FRAME_MODES, REQUIRED_PHOTO_COUNT, acceptedFormatFor, buildReferenceLayout, partitionUploads, selectLayoutProfile } from './layout.js'
+import { BOARD_RATIO, FRAME_MODES, PORTRAIT_BOARD_RATIO, REQUIRED_PHOTO_COUNT, acceptedFormatFor, buildReferenceLayout, partitionUploads, selectLayoutProfile } from './layout.js'
 import { buildAutoDecorationPlacements, rectanglesOverlap, rotatedBounds } from './decorations.js'
 
 const photos = Array.from({ length: REQUIRED_PHOTO_COUNT }, (_, index) => ({
@@ -86,6 +86,27 @@ describe('V5 reference collage layout', () => {
     expect(selectLayoutProfile(landscapePhotos)).toBe('landscape')
     expect(selectLayoutProfile(squarePhotos)).toBe('square')
     expect(selectLayoutProfile(photos)).toBe('mixed')
+  })
+
+  it('keeps rotated cards inside a 3:4 board across photo mixes and frame choices', () => {
+    for (const kind of ['landscape', 'portrait', 'square', 'mixed']) {
+      const input = Array.from({ length: REQUIRED_PHOTO_COUNT }, (_, index) => {
+        const aspect = kind === 'mixed' ? (index % 2 ? 4 / 3 : 3 / 4) : kind === 'landscape' ? 4 / 3 : kind === 'portrait' ? 3 / 4 : 1
+        return { id: `${kind}-${index}`, width: aspect * 1200, height: 1200 }
+      })
+      for (const frameMode of [FRAME_MODES.none.id, FRAME_MODES.polaroid.id]) {
+        const layout = buildReferenceLayout(input, frameMode, PORTRAIT_BOARD_RATIO)
+        expect(layout).toHaveLength(REQUIRED_PHOTO_COUNT)
+        layout.forEach((tile) => {
+          const bounds = rotatedBounds(tile)
+          expect(bounds.x).toBeGreaterThanOrEqual(0)
+          expect(bounds.y).toBeGreaterThanOrEqual(0)
+          expect(bounds.x + bounds.width).toBeLessThanOrEqual(100)
+          expect(bounds.y + bounds.height).toBeLessThanOrEqual(100)
+          expect(tile.content.width * PORTRAIT_BOARD_RATIO / tile.content.height).toBeCloseTo(tile.photo.width / tile.photo.height)
+        })
+      }
+    }
   })
 })
 

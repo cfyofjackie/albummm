@@ -1,11 +1,12 @@
 /* 首页：手机竖屏是设计基准，宽屏只是让同一列内容居中，不做第二套桌面布局。 */
 .home {
+  touch-action: pan-y;
   box-sizing: border-box;
   width: 100%;
   max-width: 560px;
   min-height: 100dvh;
   margin: 0 auto;
-  padding: calc(18px + env(safe-area-inset-top)) 22px calc(28px + env(safe-area-inset-bottom));
+  padding: calc(18px + env(safe-area-inset-top)) 22px calc(104px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
 }

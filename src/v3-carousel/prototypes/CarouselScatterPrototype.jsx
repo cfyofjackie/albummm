@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { toBlob } from 'html-to-image'
 import { makeDemoPhotos } from '../../shared/demo.js'
-import { loadPhoto } from '../../shared/photo.js'
+import { loadPhoto, releasePhotoSource } from '../../shared/photo.js'
+import { countWorks, loadWork, MAX_WORKS, newWorkId, photoRecords, restorePhotos, saveWork } from '../../shared/works.js'
 import { BORDER_STYLES, DEFAULT_BORDER, DEFAULT_EDGE, DEFAULT_FORMAT, DEFAULT_TAPE, EDGE_STYLES, PAGE_FORMATS, TAPE_STYLES, clamp, matInsets, materialOf, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS, tapeOffset, tornContours } from '../layout/carouselPlacement.js'
 import { backgroundFor, backgroundsForStyle } from '../layout/paperBackgrounds.js'
 import { BACKGROUND_MASTERS, backgroundMasterFor } from '../layout/backgroundMasters.js'
@@ -296,7 +297,16 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const [backgroundMasterId, setBackgroundMasterId] = useState(() => (backgroundExperiment ? params.get('background') ?? 'native' : 'native'))
   const [contactMode, setContactMode] = useState(() => (backgroundExperiment ? params.get('contact') ?? 'grounded' : 'lifted'))
   const [showNumbers, setShowNumbers] = useState(true)
+  const [workId, setWorkId] = useState(null)
+  const [userPhotos, setUserPhotos] = useState(false)
+  const [saveStatus, setSaveStatus] = useState('')
+  const photosRef = useRef([])
   const inputRef = useRef(null)
+  const replacePhotos = (next) => {
+    photosRef.current.forEach(releasePhotoSource)
+    photosRef.current = next
+    setPhotos(next)
+  }
   const style = STYLES.find((item) => item.id === activeId)
   const previewFormat = formatById(previewFormatId)
   const material = materialOf({ border: BORDER_STYLES[borderId], edge: EDGE_STYLES[edgeId], tape: TAPE_STYLES[tapeId] })
@@ -308,15 +318,57 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
 
   useEffect(() => {
     let live = true
+    const requestedId = new URLSearchParams(window.location.hash.split('?')[1] || '').get('work')
+    if (requestedId) {
+      loadWork(requestedId).then(async (work) => {
+        if (!live) return
+        if (!work || work.type !== 'story') { setSaveStatus('找不到这份作品，请从“我的作品”重新打开。'); setLoading(false); return }
+        const restored = await restorePhotos(work.photos, loadPhoto)
+        if (!live) { restored.forEach(releasePhotoSource); return }
+        replacePhotos(restored)
+        setActiveId(work.settings?.activeId || 'gallery')
+        setSeed(work.settings?.seed ?? 4128)
+        setPreviewFormatId(work.settings?.previewFormatId || DEFAULT_FORMAT.id)
+        setBorderId(work.settings?.borderId || DEFAULT_BORDER.id)
+        setEdgeId(work.settings?.edgeId || DEFAULT_EDGE.id)
+        setTapeId(work.settings?.tapeId || DEFAULT_TAPE.id)
+        setBackgroundId(work.settings?.backgroundId ?? null)
+        setShowNumbers(work.settings?.showNumbers ?? true)
+        setWorkId(work.id)
+        setUserPhotos(true)
+        setLoading(false)
+      }).catch(() => { if (live) { setSaveStatus('读取作品失败。'); setLoading(false) } })
+      return () => { live = false }
+    }
     const requestedDemoCount = Number.parseInt(new URLSearchParams(window.location.search).get('demo'), 10)
     const demoCount = Number.isFinite(requestedDemoCount) ? clamp(requestedDemoCount, 1, 24) : 10
     makeDemoPhotos(demoCount).then((demo) => {
       if (!live) return
-      setPhotos(demo)
+      replacePhotos(demo)
       setLoading(false)
     })
     return () => { live = false }
   }, [])
+  useEffect(() => () => photosRef.current.forEach(releasePhotoSource), [])
+
+  useEffect(() => {
+    if (!smart || !userPhotos || !workId || !photos.length) return
+    let cancelled = false
+    setSaveStatus('正在保存…')
+    const save = async () => {
+      try {
+        const previous = await loadWork(workId)
+        const record = { id: workId, type: 'story', title: previous?.title || '多页故事', createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now(), settings: { activeId, seed, previewFormatId, borderId, edgeId, tapeId, backgroundId, showNumbers }, photos: photoRecords(photos), thumbnail: previous?.thumbnail || null }
+        await saveWork(record)
+        if (!cancelled) setSaveStatus('已保存到我的作品')
+        if (cancelled) return
+        const thumbnail = await fetch(photos[0].previewSrc).then((result) => result.blob())
+        if (!cancelled) await saveWork({ ...record, thumbnail })
+      } catch (error) { if (!cancelled) setSaveStatus(error?.message || '保存失败，请检查浏览器存储空间') }
+    }
+    void save()
+    return () => { cancelled = true }
+  }, [smart, userPhotos, workId, photos, activeId, seed, previewFormatId, borderId, edgeId, tapeId, backgroundId, showNumbers])
 
   const changeStyle = (id) => {
     const next = new URLSearchParams(window.location.search)
@@ -356,12 +408,31 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
 
   const addPhotos = async (event) => {
     const files = [...event.target.files].filter((file) => file.type.startsWith('image/')).slice(0, 24)
+    event.target.value = ''
     if (!files.length) return
+    if (!workId) {
+      try {
+        if (await countWorks() >= MAX_WORKS) { setSaveStatus(`本机最多保存 ${MAX_WORKS} 份作品，请先到“我的作品”删除一份。`); return }
+      } catch { setSaveStatus('无法访问本机作品库。'); return }
+    }
     setLoading(true)
-    setPhotos(await Promise.all(files.map(loadPhoto)))
+    const loaded = await Promise.all(files.map(loadPhoto))
+    const id = workId || newWorkId()
+    try {
+      const previous = workId ? await loadWork(workId) : null
+      await saveWork({ id, type: 'story', title: previous?.title || '多页故事', createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now(), settings: { activeId, seed, previewFormatId, borderId, edgeId, tapeId, backgroundId, showNumbers }, photos: photoRecords(loaded), thumbnail: previous?.thumbnail || null })
+    } catch (error) {
+      loaded.forEach(releasePhotoSource)
+      setSaveStatus(error?.message || '保存失败，请检查浏览器存储空间。')
+      setLoading(false)
+      return
+    }
+    replacePhotos(loaded)
+    if (!workId) window.history.replaceState(null, '', `#/story?work=${encodeURIComponent(id)}`)
+    setWorkId(id)
+    setUserPhotos(true)
     setSeed(Math.floor(Math.random() * 1e9))
     setLoading(false)
-    event.target.value = ''
   }
 
   // 逐页导出：把该页渲染到 1080 宽的离屏画布上（正好是几何计算所用的尺度），
@@ -526,6 +597,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
           </p>
           <h1>{style.name}</h1>
           <span>{style.note}</span>
+          {saveStatus && <span role="status">{saveStatus}</span>}
         </div>
         <div className="carousel-master__actions">
           <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={addPhotos} />

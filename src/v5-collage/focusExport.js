@@ -11,6 +11,15 @@ export const EXPORT_TIERS = [
   { id: 'lossless', label: '无损 PNG', note: '2400×1800 PNG · 无损归档', width: 2400, height: 1800, mime: 'image/png', quality: undefined, ext: 'png' },
 ]
 
+export function exportTiersFor(boardRatio = BOARD_ASPECT) {
+  if (boardRatio === BOARD_ASPECT) return EXPORT_TIERS
+  return EXPORT_TIERS.map((tier) => {
+    const width = tier.id === 'daily' ? 1200 : 1800
+    const height = tier.id === 'daily' ? 1600 : 2400
+    return { ...tier, width, height, note: tier.note.replace(/\d+×\d+/, `${width}×${height}`) }
+  })
+}
+
 const PATHS = {
   spark: 'M21 3v12M21 27v12M3 21h12M27 21h12M8 8l7 7m12 12 7 7m0-26-7 7M15 27 8 34',
   heart: 'M21 34C-2 21 9 4 21 15 33 4 44 21 21 34Z',
@@ -31,6 +40,18 @@ function loadImage(source) {
   })
 }
 
+async function drawBackground(ctx, background, width, height) {
+  ctx.fillStyle = background?.color || '#e6e5e0'
+  ctx.fillRect(0, 0, width, height)
+  if (!background?.image) return
+  const image = await loadImage(background.image)
+  if (!image) return
+  const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight)
+  const drawWidth = image.naturalWidth * scale
+  const drawHeight = image.naturalHeight * scale
+  ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight)
+}
+
 function strokePath(ctx, path) {
   ctx.stroke(new Path2D(path))
 }
@@ -48,11 +69,11 @@ function drawPathBox(ctx, path, { x, y, width, height, viewWidth, viewHeight, ro
   ctx.restore()
 }
 
-function drawAutoDecoration(ctx, placement) {
+function drawAutoDecoration(ctx, placement, backgroundColor) {
   const { id, x, y, width, height, rotate } = placement
   ctx.save()
   ctx.strokeStyle = '#252522'
-  ctx.fillStyle = '#e6e5e0'
+  ctx.fillStyle = backgroundColor
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
   if (id === 'flower') {
@@ -75,19 +96,19 @@ function drawAutoDecoration(ctx, placement) {
   ctx.restore()
 }
 
-function drawBoardDecorations(ctx, enabled, placements) {
+function drawBoardDecorations(ctx, enabled, placements, boardRatio, backgroundColor) {
   if (!enabled) return
   ctx.save()
   ctx.strokeStyle = '#252522'
   ctx.fillStyle = '#252522'
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  drawPathBox(ctx, PATHS.spark, { x: 5, y: 5, width: 4.2, height: 4.2 * BOARD_ASPECT, viewWidth: 42, viewHeight: 42, rotate: -12, lineWidth: 2.2 })
-  drawPathBox(ctx, PATHS.heart, { x: 91.5, y: 8, width: 3.5, height: 3.5 * BOARD_ASPECT, viewWidth: 42, viewHeight: 42, rotate: 12, lineWidth: 2.2 })
+  drawPathBox(ctx, PATHS.spark, { x: 5, y: 5, width: 4.2, height: 4.2 * boardRatio, viewWidth: 42, viewHeight: 42, rotate: -12, lineWidth: 2.2 })
+  drawPathBox(ctx, PATHS.heart, { x: 91.5, y: 8, width: 3.5, height: 3.5 * boardRatio, viewWidth: 42, viewHeight: 42, rotate: 12, lineWidth: 2.2 })
   drawPathBox(ctx, PATHS.loop, { x: 79, y: 87.07, width: 17, height: 6.93, viewWidth: 180, viewHeight: 78, rotate: -7, lineWidth: 1.6 })
   ctx.save(); ctx.font = '700 2px "Segoe Print", cursive'; ctx.translate(43, 7); ctx.rotate(-4 * Math.PI / 180); ctx.fillText('little things', 0, 0); ctx.restore()
   ctx.font = '3px sans-serif'; ctx.fillText('✦', 4, 92)
-  placements.forEach((placement) => drawAutoDecoration(ctx, placement))
+  placements.forEach((placement) => drawAutoDecoration(ctx, placement, backgroundColor))
   ctx.restore()
 }
 
@@ -118,7 +139,7 @@ function drawTile(ctx, tile, index, frameMode, image, unitX, unitY, originX, ori
 
 // 镜头移动时只缩放这一张已排好的预览图，避免 Safari 同时重绘十张旋转照片。
 // 独立高清层仍在镜头停稳后从原图渲染。
-export async function renderBoardPreview({ layout, frameMode, decorationEnabled, autoPlacements, width }) {
+export async function renderBoardPreview({ layout, frameMode, decorationEnabled, autoPlacements, width, targetWidth, background }) {
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.previewSrc)])))
   if (images.size !== layout.length || [...images.values()].some((image) => !image)) return null
   // 放大动画期间屏幕上只有这张快照：分辨率要按最坏情况给足——最高 3.4 倍镜头
@@ -128,15 +149,17 @@ export async function renderBoardPreview({ layout, frameMode, decorationEnabled,
   // 内容是照片，用 JPEG 编码更快、体积更小。
   const density = Math.min(window.devicePixelRatio || 1, 2)
   const canvas = document.createElement('canvas')
-  canvas.width = Math.min(4096, Math.max(1, Math.round(width * 3.4 * density)))
-  canvas.height = Math.max(1, Math.round(canvas.width / BOARD_ASPECT))
+  const boardRatio = layout[0]?.boardRatio || BOARD_ASPECT
+  // 竖版同样限制画布总像素，避免 Safari 在 4096×5461 快照上耗尽内存。
+  const maxWidth = Math.min(4096, Math.floor(Math.sqrt(16_000_000 * boardRatio)))
+  canvas.width = targetWidth || Math.min(maxWidth, Math.max(1, Math.round(width * 3.4 * density)))
+  canvas.height = Math.max(1, Math.round(canvas.width / boardRatio))
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
-  ctx.fillStyle = '#e6e5e0'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  await drawBackground(ctx, background, canvas.width, canvas.height)
   const unitX = canvas.width / 100
   const unitY = canvas.height / 100
-  ctx.save(); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements); ctx.restore()
+  ctx.save(); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
   layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index)
     .forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, 0, 0, decorationEnabled))
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85))
@@ -161,15 +184,21 @@ function tileOutlinePath(tile, transform) {
   return path
 }
 
-export async function exportFocusImage({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, tier = EXPORT_TIERS[1] }) {
+export async function exportFocusImage({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, tier = EXPORT_TIERS[1], background }) {
   const canvas = document.createElement('canvas')
   canvas.width = tier.width
   canvas.height = tier.height
   const ctx = canvas.getContext('2d')
-  ctx.fillStyle = '#e6e5e0'
+  ctx.fillStyle = background?.color || '#e6e5e0'
   ctx.fillRect(0, 0, tier.width, tier.height)
+  const boardRatio = layout[0]?.boardRatio || BOARD_ASPECT
   const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera, { width: tier.width, height: tier.height })
-  ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements); ctx.restore()
+  ctx.save()
+  ctx.beginPath(); ctx.rect(originX, originY, unitX * 100, unitY * 100); ctx.clip()
+  ctx.translate(originX, originY)
+  await drawBackground(ctx, background, unitX * 100, unitY * 100)
+  ctx.restore()
+  ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc)])))
   layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index).forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
   // 先把选中照片完整盖回原拼贴，再在相交范围内重画遮挡者。
@@ -209,6 +238,22 @@ export async function exportFocusImage({ layout, selectedId, frameMode, decorati
       ctx.restore()
     })
   }
+  return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))
+}
+
+export async function exportBoardImage({ layout, frameMode, decorationEnabled, autoPlacements, background, tier }) {
+  const canvas = document.createElement('canvas')
+  canvas.width = tier.width
+  canvas.height = tier.height
+  const ctx = canvas.getContext('2d')
+  const boardRatio = layout[0]?.boardRatio || BOARD_ASPECT
+  await drawBackground(ctx, background, canvas.width, canvas.height)
+  const unitX = canvas.width / 100
+  const unitY = canvas.height / 100
+  ctx.save(); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
+  const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc)])))
+  layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index)
+    .forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, 0, 0, decorationEnabled))
   return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))
 }
 

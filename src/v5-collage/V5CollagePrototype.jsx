@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { makeDemoPhotos } from '../shared/demo.js'
 import { loadPhoto, releasePhotoSource } from '../shared/photo.js'
-import { ALLOWED_FORMATS, FRAME_MODES, REQUIRED_PHOTO_COUNT, acceptedFormatFor, buildReferenceLayout, partitionUploads } from './layout.js'
+import { countWorks, loadWork, MAX_WORKS, newWorkId, photoRecords, restorePhotos, saveWork } from '../shared/works.js'
+import { ALLOWED_FORMATS, BOARD_FORMATS, BOARD_RATIO, FRAME_MODES, REQUIRED_PHOTO_COUNT, acceptedFormatFor, buildReferenceLayout, partitionUploads } from './layout.js'
 import { buildAutoDecorationPlacements } from './decorations.js'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
 import V5FocusViewer from './V5FocusViewer.jsx'
-import { renderBoardPreview } from './focusExport.js'
+import { downloadBlob, exportBoardImage, exportTiersFor, renderBoardPreview } from './focusExport.js'
+import { BACKGROUNDS, backgroundFor, backgroundStyle } from './backgrounds.js'
 import './v5.css'
 
 const ACCEPTED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -54,6 +56,13 @@ export default function V5CollagePrototype() {
   const [decorationMode, setDecorationMode] = useState(DECORATION_MODES.none.id)
   const [focusRequest, setFocusRequest] = useState(null)
   const [boardPreviewSrc, setBoardPreviewSrc] = useState(null)
+  const [boardRatio, setBoardRatio] = useState(BOARD_RATIO)
+  const [backgroundId, setBackgroundId] = useState('warm')
+  const [workId, setWorkId] = useState(null)
+  const [userPhotos, setUserPhotos] = useState(false)
+  const [saveStatus, setSaveStatus] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const background = backgroundFor(backgroundId)
 
   const replacePhotos = (nextPhotos) => {
     photosRef.current.forEach(releasePhotoSource)
@@ -63,6 +72,24 @@ export default function V5CollagePrototype() {
 
   useEffect(() => {
     let active = true
+    const requestedId = new URLSearchParams(window.location.hash.split('?')[1] || '').get('work')
+    if (requestedId) {
+      loadWork(requestedId).then(async (work) => {
+        if (!active) return
+        if (!work || work.type !== 'collage') { setNotice('找不到这份作品，请从“我的作品”重新打开。'); setLoading(false); return }
+        const restored = await restorePhotos(work.photos, loadPhoto)
+        if (!active) { restored.forEach(releasePhotoSource); return }
+        replacePhotos(restored)
+        setBoardRatio(work.settings?.boardRatio || BOARD_RATIO)
+        setBackgroundId(work.settings?.backgroundId || 'warm')
+        setFrameMode(work.settings?.frameMode || FRAME_MODES.none.id)
+        setDecorationMode(work.settings?.decorationMode || DECORATION_MODES.none.id)
+        setWorkId(work.id)
+        setUserPhotos(true)
+        setLoading(false)
+      }).catch(() => { if (active) { setNotice('读取作品失败，请返回“我的作品”重试。'); setLoading(false) } })
+      return () => { active = false }
+    }
     // 首屏仅使用本地生成的合规演示照片，让第一个模板能立刻被检查；用户上传后完全替换。
     makeDemoPhotos(20).then((demo) => {
       if (!active) {
@@ -80,8 +107,8 @@ export default function V5CollagePrototype() {
   useEffect(() => () => { photosRef.current.forEach(releasePhotoSource) }, [])
 
   const layout = useMemo(
-    () => (photos.length === REQUIRED_PHOTO_COUNT ? buildReferenceLayout(photos, frameMode) : []),
-    [photos, frameMode],
+    () => (photos.length === REQUIRED_PHOTO_COUNT ? buildReferenceLayout(photos, frameMode, boardRatio) : []),
+    [photos, frameMode, boardRatio],
   )
   const autoDecorationPlacements = useMemo(() => buildAutoDecorationPlacements(layout), [layout])
 
@@ -93,7 +120,7 @@ export default function V5CollagePrototype() {
     const render = () => {
       renderBoardPreview({
         layout, frameMode, decorationEnabled: decorationMode === DECORATION_MODES.scrapbook.id,
-        autoPlacements: autoDecorationPlacements, width: boardRef.current?.clientWidth || 960,
+        autoPlacements: autoDecorationPlacements, width: boardRef.current?.clientWidth || 960, background,
       }).then(async (blob) => {
         if (cancelled || !blob) return
         previewUrl = URL.createObjectURL(blob)
@@ -127,12 +154,47 @@ export default function V5CollagePrototype() {
       boardPreviewImageRef.current = null
       if (previewUrl) URL.revokeObjectURL(previewUrl)
     }
-  }, [layout, frameMode, decorationMode, autoDecorationPlacements])
+  }, [layout, frameMode, decorationMode, autoDecorationPlacements, background])
+
+  useEffect(() => {
+    if (!userPhotos || !workId || photos.length !== REQUIRED_PHOTO_COUNT) return
+    let cancelled = false
+    setSaveStatus('正在保存…')
+    const save = async () => {
+      try {
+        const previous = await loadWork(workId)
+        const record = {
+          id: workId, type: 'collage', title: previous?.title || '单张拼贴',
+          createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now(),
+          settings: { boardRatio, backgroundId, frameMode, decorationMode },
+          photos: photoRecords(photos), thumbnail: previous?.thumbnail || null,
+        }
+        await saveWork(record)
+        if (!cancelled) setSaveStatus('已保存到我的作品')
+        if (cancelled) return
+        const thumbnail = await renderBoardPreview({ layout, frameMode, decorationEnabled: decorationMode === 'scrapbook', autoPlacements: autoDecorationPlacements, targetWidth: 420, background })
+        if (!cancelled && thumbnail) await saveWork({ ...record, thumbnail })
+      } catch (error) {
+        if (!cancelled) setSaveStatus(error?.message || '保存失败，请检查浏览器存储空间')
+      }
+    }
+    void save()
+    return () => { cancelled = true }
+  }, [userPhotos, workId, photos, boardRatio, backgroundId, frameMode, decorationMode, layout, autoDecorationPlacements, background])
 
   const chooseFiles = async (event) => {
     const files = [...event.target.files]
     event.target.value = ''
     if (!files.length) return
+
+    if (!workId) {
+      try {
+        if (await countWorks() >= MAX_WORKS) {
+          setNotice(`本机最多保存 ${MAX_WORKS} 份作品，请先到“我的作品”删除一份。`)
+          return
+        }
+      } catch { setNotice('无法访问本机作品库，请检查浏览器设置。'); return }
+    }
 
     setLoading(true)
     // 第一遍只读格式与尺寸；按选择顺序取前 10 张合规照片，其余文件不解码、不占内存。
@@ -151,7 +213,20 @@ export default function V5CollagePrototype() {
       return
     }
 
+    const id = workId || newWorkId()
+    try {
+      const previous = workId ? await loadWork(workId) : null
+      await saveWork({ id, type: 'collage', title: previous?.title || '单张拼贴', createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now(), settings: { boardRatio, backgroundId, frameMode, decorationMode }, photos: photoRecords(loaded), thumbnail: previous?.thumbnail || null })
+    } catch (error) {
+      loaded.forEach(releasePhotoSource)
+      setNotice(error?.message || '保存失败，请检查浏览器存储空间。')
+      setLoading(false)
+      return
+    }
     replacePhotos(loaded)
+    if (!workId) window.history.replaceState(null, '', `#/collage?work=${encodeURIComponent(id)}`)
+    setWorkId(id)
+    setUserPhotos(true)
     const extras = []
     if (summary.unusedValid) extras.push(`另有 ${summary.unusedValid} 张未使用`)
     if (summary.ratioRejected) extras.push(`${summary.ratioRejected} 张比例不符合要求`)
@@ -164,6 +239,17 @@ export default function V5CollagePrototype() {
     const boardRect = boardRef.current?.getBoundingClientRect()
     if (!boardRect) return
     setFocusRequest({ tileId: tile.id, boardPreviewSrc, boardRect: { left: boardRect.left, top: boardRect.top, width: boardRect.width, height: boardRect.height } })
+  }
+
+  const exportWholeBoard = async () => {
+    if (exporting || !layout.length) return
+    setExporting(true)
+    try {
+      const tier = exportTiersFor(boardRatio)[1]
+      const blob = await exportBoardImage({ layout, frameMode, decorationEnabled: decorationMode === 'scrapbook', autoPlacements: autoDecorationPlacements, background, tier })
+      downloadBlob(blob, `albummm-collage-${tier.width}x${tier.height}.${tier.ext}`)
+    } catch { setNotice('导出失败，请重试。') }
+    finally { setExporting(false) }
   }
 
   return (
@@ -180,12 +266,21 @@ export default function V5CollagePrototype() {
         <div className="v5-collage__actions">
           <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={chooseFiles} />
           <button type="button" onClick={() => inputRef.current?.click()}>上传 10 张照片</button>
+          <button type="button" disabled={!layout.length || exporting} onClick={exportWholeBoard}>{exporting ? '正在导出…' : '导出完整作品'}</button>
         </div>
       </header>
 
       <p className="v5-collage__hint">
         当前仅接收 {ALLOWED_FORMATS.map((format) => format.label).join(' / ')}；16:9、9:16 等屏幕比例暂不进入这个模板。
       </p>
+      <div className="v5-collage__frame-toggle" role="group" aria-label="选择作品比例">
+        <span>比例</span>
+        {BOARD_FORMATS.map((format) => <button key={format.id} type="button" className={boardRatio === format.ratio ? 'is-active' : ''} aria-pressed={boardRatio === format.ratio} onClick={() => setBoardRatio(format.ratio)}>{format.label}</button>)}
+      </div>
+      <div className="v5-collage__backgrounds" role="group" aria-label="选择拼贴背景">
+        <span>背景</span>
+        {BACKGROUNDS.map((item) => <button key={item.id} type="button" className={backgroundId === item.id ? 'is-active' : ''} aria-pressed={backgroundId === item.id} onClick={() => setBackgroundId(item.id)}><i style={backgroundStyle(item)} aria-hidden="true" />{item.label}</button>)}
+      </div>
       <div className="v5-collage__frame-toggle" role="group" aria-label="选择照片边框">
         <span>边框</span>
         {Object.values(FRAME_MODES).map((mode) => (
@@ -215,10 +310,11 @@ export default function V5CollagePrototype() {
         ))}
       </div>
       {notice && <p className="v5-collage__notice" role="status">{notice}</p>}
+      {userPhotos && <p className="v5-collage__save-status" role="status">{saveStatus}</p>}
 
       {loading ? <p className="v5-collage__loading">正在准备照片…</p> : (
         <section className="v5-collage__stage" aria-label="十张照片的参考拼贴排布">
-          <div className="v5-collage__board" ref={boardRef}>
+          <div className={`v5-collage__board ${boardRatio < 1 ? 'is-portrait' : ''}`} ref={boardRef} style={{ ...backgroundStyle(background), aspectRatio: boardRatio, '--v5-board-color': background.color }}>
             <BoardDecorations enabled={decorationMode === DECORATION_MODES.scrapbook.id} autoPlacements={autoDecorationPlacements} />
             {layout.map((tile, index) => {
               const photoStyle = {
@@ -263,6 +359,8 @@ export default function V5CollagePrototype() {
           decorationEnabled={decorationMode === DECORATION_MODES.scrapbook.id}
           autoPlacements={autoDecorationPlacements}
           boardPreviewSrc={focusRequest.boardPreviewSrc}
+          background={background}
+          boardRatio={boardRatio}
           onClose={() => setFocusRequest(null)}
         />
       )}

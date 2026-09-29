@@ -1,0 +1,19 @@
+.works-page { width: 100%; max-width: 720px; min-height: 100dvh; margin: 0 auto; padding: calc(24px + env(safe-area-inset-top)) 22px calc(100px + env(safe-area-inset-bottom)); touch-action: pan-y; }
+.works-page__brand { font-size: 13px; font-weight: 600; letter-spacing: .04em; }
+.works-page h1 { margin: clamp(32px, 7vh, 62px) 0 0; font: 400 clamp(32px, 8vw, 42px)/1.2 Georgia, 'Songti SC', serif; }
+.works-page header p { margin: 10px 0 0; color: #77736d; font-size: 13px; }
+.works-page__message { margin-top: 40px; color: #77736d; }
+.works-page__empty { margin: 80px auto; text-align: center; }
+.works-page__empty h2 { font-size: 17px; font-weight: 500; }
+.works-page__empty p { color: #77736d; font-size: 13px; }
+.works-page__empty a { color: #1c1b18; font-size: 13px; }
+.works-page__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 16px; margin-top: 32px; }
+.works-page__card { min-width: 0; }
+.works-page__card a { display: block; color: inherit; text-decoration: none; }
+.works-page__thumb { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 8px; background: #e6e5e0; box-shadow: 0 3px 12px rgba(0,0,0,.1); }
+.works-page__thumb.is-portrait { aspect-ratio: 3 / 4; }
+.works-page__thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.works-page__card strong { display: block; margin-top: 10px; font-size: 14px; font-weight: 600; }
+.works-page__card small { display: block; margin-top: 3px; color: #77736d; font-size: 11px; }
+.works-page__card button { margin-top: 7px; padding: 4px 0; border: 0; background: none; color: #8b5750; font: inherit; font-size: 12px; cursor: pointer; }
+@media (max-width: 420px) { .works-page__grid { gap: 24px 12px; } }

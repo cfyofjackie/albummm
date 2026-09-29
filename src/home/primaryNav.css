@@ -1,0 +1,4 @@
+.primary-nav { position: fixed; z-index: 20; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); height: 52px; padding: 4px; display: grid; grid-template-columns: repeat(2, 52px); gap: 4px; border: 1px solid rgba(45,42,36,.13); border-radius: 999px; background: rgba(248,247,242,.92); box-shadow: 0 12px 32px rgba(27,25,21,.16); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.primary-nav a { display: grid; place-items: center; border-radius: 999px; color: #8c887f; text-decoration: none; transition: background .18s ease, color .18s ease; }
+.primary-nav a.active { color: #f3f1ea; background: #1c1b18; }
+.primary-nav a:focus-visible { outline: 2px solid #1c1b18; outline-offset: 3px; }

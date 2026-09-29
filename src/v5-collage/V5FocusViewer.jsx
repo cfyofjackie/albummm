@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
-import { EXPORT_TIERS, downloadBlob, exportFocusImage } from './focusExport.js'
+import { downloadBlob, exportFocusImage, exportTiersFor } from './focusExport.js'
 import { findOccluders, focusCameraFor, focusFrameFor, focusScaleFor, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 420
@@ -40,11 +40,12 @@ function FocusCard({ tile, index, frameMode, decorationEnabled, className = '', 
   )
 }
 
-export default function V5FocusViewer({ layout, initialTileId, boardRect, frameMode, decorationEnabled, autoPlacements, boardPreviewSrc, onClose }) {
+export default function V5FocusViewer({ layout, initialTileId, boardRect, frameMode, decorationEnabled, autoPlacements, boardPreviewSrc, background, boardRatio, onClose }) {
   const initialTile = useMemo(() => layout.find((tile) => tile.id === initialTileId) || layout[0], [initialTileId, layout])
   const [selectedId, setSelectedId] = useState(initialTile.id)
   const [viewport, setViewport] = useState(viewportSize)
-  const frame = useMemo(() => focusFrameFor(viewport), [viewport.height, viewport.width])
+  const frame = useMemo(() => focusFrameFor(viewport, boardRatio), [viewport.height, viewport.width, boardRatio])
+  const exportTiers = useMemo(() => exportTiersFor(boardRatio), [boardRatio])
   const [camera, setCamera] = useState(openingCamera)
   const [settled, setSettled] = useState(false)
   const [decodedOriginalIds, setDecodedOriginalIds] = useState(() => new Set())
@@ -161,8 +162,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     if (exportingId || !settled) return
     setExportingId(tier.id)
     try {
-      // 与预览共用固定 4:3 成品框和同一份镜头坐标；外围窗口区域从不进入导出。
-      const blob = await exportFocusImage({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, tier })
+      const blob = await exportFocusImage({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, tier, background })
       downloadBlob(blob, `albummm-v5-focus-${tier.width}x${tier.height}.${tier.ext}`)
     } catch (error) {
       console.error('V5 focus export failed', error?.type, error?.target?.currentSrc || error?.target?.src || error)
@@ -178,10 +178,10 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     <section className={`v5-focus ${visible ? 'is-visible' : ''} ${visible && !leaving ? 'is-framed' : ''} ${leaving ? 'is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="高清拼贴查看">
       <div className="v5-focus__viewport">
         <div className="v5-focus__artboard">
-          <div className="v5-focus__frame-backing" style={{ left: frame.left, top: frame.top, width: frame.width, height: frame.height }} aria-hidden="true" />
+          <div className="v5-focus__frame-backing" style={{ left: frame.left, top: frame.top, width: frame.width, height: frame.height, backgroundColor: background.color }} aria-hidden="true" />
           <div
             className="v5-collage__board v5-focus__board"
-            style={{ left: `${boardRect.left}px`, top: `${boardRect.top}px`, width: `${boardRect.width}px`, transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.scale})` }}
+            style={{ left: `${boardRect.left}px`, top: `${boardRect.top}px`, width: `${boardRect.width}px`, aspectRatio: boardRatio, transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.scale})`, backgroundColor: background.color, backgroundImage: background.image ? `url("${background.image}")` : undefined, backgroundSize: 'cover' }}
             onTransitionEnd={finishMotion}
           >
             {boardPreviewSrc
@@ -256,10 +256,10 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
           <div className="v5-focus__frame-mask" style={{ top: frame.top, left: frame.left + frame.width, right: 0, height: frame.height }} aria-hidden="true" />
           <div className="v5-focus__frame-outline" style={{ left: frame.left, top: frame.top, width: frame.width, height: frame.height }} aria-hidden="true" />
         </div>
-        <p className="v5-focus__frame-label" style={{ left: `${frame.left + 12}px`, top: `${frame.top + 12}px` }} aria-hidden="true">导出范围 · 4:3</p>
+        <p className="v5-focus__frame-label" style={{ left: `${frame.left + 12}px`, top: `${frame.top + 12}px` }} aria-hidden="true">导出范围 · {boardRatio > 1 ? '4:3' : '3:4'}</p>
       </div>
       <div className="v5-focus__exports">
-        {EXPORT_TIERS.map((tier) => (
+        {exportTiers.map((tier) => (
           <button
             key={tier.id}
             type="button"
