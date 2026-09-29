@@ -47,7 +47,7 @@ export default function WorksPage() {
                   {thumbnails[work.id] && <img src={thumbnails[work.id]} alt="" />}
                 </span>
                 <strong>{work.title || (work.type === 'story' ? '多页故事' : '单张拼贴')}</strong>
-                <small>{work.type === 'story' ? '多页故事' : work.settings?.boardRatio < 1 ? '3:4 单张拼贴' : '4:3 单张拼贴'} · {dateLabel(work.updatedAt)}</small>
+                <small>{work.type === 'story' ? '多页故事' : work.settings?.boardRatio < 1 ? '3:4 单张拼贴' : '4:3 单张拼贴'} · {dateLabel(work.updatedAt)} · {work.stage === 'sealed' ? '已完成' : '编辑中'}</small>
               </a>
               <button type="button" onClick={() => remove(work)} aria-label={`删除${work.title || '作品'}`}>删除</button>
             </article>

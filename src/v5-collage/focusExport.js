@@ -241,6 +241,32 @@ export async function exportFocusImage({ layout, selectedId, frameMode, decorati
   return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))
 }
 
+// 查看层的高清区域：镜头停稳后把 4:3 画框内的可见画面用原图重绘一次。
+// 快照按 DPR 提分辨率后仍会在最高倍率下发软，这张画布（devicePixelRatio 上限 2）
+// 以临时图层盖在快照上，周围照片一并变清；只存在于查看层，不进入作品库。
+// 选中照片与遮挡者的玻璃化处理仍由 DOM 细节层叠加，这里只画真实层序。
+export async function renderVisibleRegion({ layout, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, background, density = Math.min(window.devicePixelRatio || 1, 2) }) {
+  const width = Math.max(1, Math.round(frame.width * density))
+  const height = Math.max(1, Math.round(frame.height * density))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  const boardRatio = layout[0]?.boardRatio || BOARD_ASPECT
+  await drawBackground(ctx, background, width, height)
+  const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera, { width, height })
+  ctx.save()
+  ctx.beginPath(); ctx.rect(originX, originY, unitX * 100, unitY * 100); ctx.clip()
+  await drawBackground(ctx, background, unitX * 100, unitY * 100)
+  ctx.restore()
+  ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
+  const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc)])))
+  layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index)
+    .forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
+  return canvas
+}
+
 export async function exportBoardImage({ layout, frameMode, decorationEnabled, autoPlacements, background, tier }) {
   const canvas = document.createElement('canvas')
   canvas.width = tier.width
@@ -251,7 +277,9 @@ export async function exportBoardImage({ layout, frameMode, decorationEnabled, a
   const unitX = canvas.width / 100
   const unitY = canvas.height / 100
   ctx.save(); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
-  const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc)])))
+  // 用 1600px 预览图而非原图：导出画布里单张照片最大只占 ~1300px，预览已足够，
+  // 而相机原图（5328×4000）逐张解码绘制在 Safari 上要数分钟且占内存巨大。
+  const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.previewSrc)])))
   layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index)
     .forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, 0, 0, decorationEnabled))
   return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))

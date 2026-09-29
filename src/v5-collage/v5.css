@@ -52,6 +52,10 @@
 .v5-focus.is-framed .v5-focus__frame-backing { opacity: 1; }
 .v5-focus__board { position: absolute; z-index: 1; overflow: visible; transform-origin: top left; transition: transform 420ms var(--focus-ease); }
 .v5-focus__board-preview { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
+/* 周围高清区域：停稳后用原图重绘的 4:3 可见画面，盖在快照上消除周围的发软。
+   淡入替换（不闪）；pointer-events 关闭，点击穿透到下方照片。 */
+.v5-focus__region { position: absolute; z-index: 1; pointer-events: none; opacity: 0; transition: opacity 160ms ease; }
+.v5-focus__region.is-ready { opacity: 1; }
 .v5-focus__photo { cursor: pointer; }
 .v5-focus__photo.is-selected { cursor: default; }
 /* 高清同步层：与整板共用同一组镜头坐标和同一条 transform 过渡（见组件内注释），

@@ -8,6 +8,7 @@ import { BORDER_STYLES, DEFAULT_BORDER, DEFAULT_EDGE, DEFAULT_FORMAT, DEFAULT_TA
 import { backgroundFor, backgroundsForStyle } from '../layout/paperBackgrounds.js'
 import { BACKGROUND_MASTERS, backgroundMasterFor } from '../layout/backgroundMasters.js'
 import { footerFor } from '../layout/pageDecor.js'
+import SealedEnd from '../../home/SealedEnd.jsx'
 import { styleDecorFor } from '../layout/styleDecor.js'
 import '@fontsource/eb-garamond/latin-400.css'
 import '@fontsource/eb-garamond/latin-600.css'
@@ -300,6 +301,8 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   const [workId, setWorkId] = useState(null)
   const [userPhotos, setUserPhotos] = useState(false)
   const [saveStatus, setSaveStatus] = useState('')
+  const [sealing, setSealing] = useState(false)
+  const [sealedPreview, setSealedPreview] = useState(null)
   const photosRef = useRef([])
   const inputRef = useRef(null)
   const replacePhotos = (next) => {
@@ -369,6 +372,23 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
     void save()
     return () => { cancelled = true }
   }, [smart, userPhotos, workId, photos, activeId, seed, previewFormatId, borderId, edgeId, tapeId, backgroundId, showNumbers])
+
+  // 完成流程：确认最新修改已写入作品库后，标记为已完成（stage: 'sealed'）并展示封存页。
+  // 缩略图与自动保存一致（首张照片的预览图）；失败时留在创作页提示，不展示封存页。
+  const sealWork = async () => {
+    if (sealing || !smart || !userPhotos || !workId || !photos.length) return
+    setSealing(true)
+    try {
+      const previous = await loadWork(workId)
+      const record = { id: workId, type: 'story', title: previous?.title || '多页故事', createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now(), stage: 'sealed', settings: { activeId, seed, previewFormatId, borderId, edgeId, tapeId, backgroundId, showNumbers }, photos: photoRecords(photos), thumbnail: previous?.thumbnail || null }
+      await saveWork(record)
+      const thumbnail = await fetch(photos[0].previewSrc).then((result) => result.blob())
+      const finalRecord = thumbnail ? { ...record, thumbnail } : record
+      if (thumbnail) await saveWork(finalRecord)
+      setSealedPreview(URL.createObjectURL(finalRecord.thumbnail))
+    } catch (error) { setSaveStatus(error?.message || '存入失败，请重试') }
+    finally { setSealing(false) }
+  }
 
   const changeStyle = (id) => {
     const next = new URLSearchParams(window.location.search)
@@ -608,6 +628,11 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
               导出 {format.label}
             </button>
           ))}
+          {smart && (
+            <button type="button" disabled={!userPhotos || sealing || !story} onClick={sealWork}>
+              {sealing ? '正在存入…' : '完成并存入我的作品'}
+            </button>
+          )}
         </div>
       </header>
 
@@ -719,6 +744,13 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
       )}
 
       <StyleSwitcher activeId={activeId} onChange={changeStyle} />
+      {sealedPreview && (
+        <SealedEnd
+          previewSrc={sealedPreview}
+          onWorks={() => { window.location.hash = '#/works' }}
+          onAnother={() => { window.location.hash = '#/' }}
+        />
+      )}
     </main>
   )
 }

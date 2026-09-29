@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { makeDemoPhotos } from '../shared/demo.js'
 import { loadPhoto, releasePhotoSource } from '../shared/photo.js'
-import { countWorks, loadWork, MAX_WORKS, newWorkId, photoRecords, restorePhotos, saveWork } from '../shared/works.js'
+import { countWorks, loadWork, MAX_WORKS, mediaBlob, newWorkId, photoRecords, restorePhotos, saveWork } from '../shared/works.js'
 import { ALLOWED_FORMATS, BOARD_FORMATS, BOARD_RATIO, FRAME_MODES, REQUIRED_PHOTO_COUNT, acceptedFormatFor, buildReferenceLayout, partitionUploads } from './layout.js'
 import { buildAutoDecorationPlacements } from './decorations.js'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
+import SealedEnd from '../home/SealedEnd.jsx'
 import V5FocusViewer from './V5FocusViewer.jsx'
 import { downloadBlob, exportBoardImage, exportTiersFor, renderBoardPreview } from './focusExport.js'
 import { BACKGROUNDS, backgroundFor, backgroundStyle } from './backgrounds.js'
@@ -62,6 +63,8 @@ export default function V5CollagePrototype() {
   const [userPhotos, setUserPhotos] = useState(false)
   const [saveStatus, setSaveStatus] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [sealing, setSealing] = useState(false)
+  const [sealedPreview, setSealedPreview] = useState(null)
   const background = backgroundFor(backgroundId)
 
   const replacePhotos = (nextPhotos) => {
@@ -252,6 +255,33 @@ export default function V5CollagePrototype() {
     finally { setExporting(false) }
   }
 
+  // 完成流程：先把最新修改（照片 + 全部设置）写入作品库，成功后生成预览图、
+  // 标记为已完成（stage: 'sealed'）并展示封存页。自动保存只保留制作进度，
+  // 封存才算定稿；失败时留在创作页并提示，不展示封存页。
+  const sealWork = async () => {
+    if (sealing || !userPhotos || !workId || !layout.length) return
+    setSealing(true)
+    try {
+      const previous = await loadWork(workId)
+      const record = {
+        id: workId, type: 'collage', title: previous?.title || '单张拼贴',
+        createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now(), stage: 'sealed',
+        settings: { boardRatio, backgroundId, frameMode, decorationMode },
+        photos: photoRecords(photos), thumbnail: previous?.thumbnail || null,
+      }
+      await saveWork(record)
+      const thumbnail = await renderBoardPreview({ layout, frameMode, decorationEnabled: decorationMode === 'scrapbook', autoPlacements: autoDecorationPlacements, targetWidth: 420, background })
+      const finalRecord = thumbnail ? { ...record, thumbnail } : record
+      if (thumbnail) await saveWork(finalRecord)
+      const blob = mediaBlob(finalRecord.thumbnail)
+      setSealedPreview(blob ? URL.createObjectURL(blob) : null)
+    } catch (error) {
+      setNotice(error?.message || '存入失败，请重试。')
+    } finally {
+      setSealing(false)
+    }
+  }
+
   return (
     <main className="v5-collage">
       <header className="v5-collage__header">
@@ -267,6 +297,7 @@ export default function V5CollagePrototype() {
           <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={chooseFiles} />
           <button type="button" onClick={() => inputRef.current?.click()}>上传 10 张照片</button>
           <button type="button" disabled={!layout.length || exporting} onClick={exportWholeBoard}>{exporting ? '正在导出…' : '导出完整作品'}</button>
+          <button type="button" disabled={!userPhotos || sealing || !layout.length} onClick={sealWork}>{sealing ? '正在存入…' : '完成并存入我的作品'}</button>
         </div>
       </header>
 
@@ -362,6 +393,14 @@ export default function V5CollagePrototype() {
           background={background}
           boardRatio={boardRatio}
           onClose={() => setFocusRequest(null)}
+        />
+      )}
+      {sealedPreview && (
+        <SealedEnd
+          previewSrc={sealedPreview}
+          previewRatio={boardRatio}
+          onWorks={() => { window.location.hash = '#/works' }}
+          onAnother={() => { window.location.hash = '#/' }}
         />
       )}
     </main>

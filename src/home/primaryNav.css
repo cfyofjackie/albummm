@@ -1,4 +1,13 @@
 .primary-nav { position: fixed; z-index: 20; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); height: 52px; padding: 4px; display: grid; grid-template-columns: repeat(2, 52px); gap: 4px; border: 1px solid rgba(45,42,36,.13); border-radius: 999px; background: rgba(248,247,242,.92); box-shadow: 0 12px 32px rgba(27,25,21,.16); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
-.primary-nav a { display: grid; place-items: center; border-radius: 999px; color: #8c887f; text-decoration: none; transition: background .18s ease, color .18s ease; }
-.primary-nav a.active { color: #f3f1ea; background: #1c1b18; }
-.primary-nav a:focus-visible { outline: 2px solid #1c1b18; outline-offset: 3px; }
+.primary-nav button { position: relative; display: grid; place-items: center; border: 0; border-radius: 999px; background: transparent; color: #8c887f; cursor: pointer; transition: color .16s ease; }
+.primary-nav button:focus-visible { outline: 2px solid #1c1b18; outline-offset: 3px; }
+.primary-nav[data-visual="home"] button:first-of-type,
+.primary-nav[data-visual="works"] button:last-of-type { color: #f3f1ea; }
+/* 滑块：由 pager 的 setOffset 按页面进度驱动 translate，落位即当前页底色。 */
+.primary-nav-thumb { position: absolute; top: 4px; bottom: 4px; left: 4px; width: 52px; border-radius: 999px; background: #1c1b18; will-change: transform; pointer-events: none; }
+
+/* 首页/作品页双面板轨道：拖动时跟手（translate3d），面板各自内部滚动。 */
+.primary-viewport { position: fixed; inset: 0; overflow: hidden; }
+.primary-track { width: 200%; height: 100%; display: flex; will-change: transform; }
+.primary-panel { width: 50%; min-width: 0; height: 100%; flex: none; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.primary-panel > * { min-height: 100%; }

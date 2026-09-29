@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
-import { downloadBlob, exportFocusImage, exportTiersFor } from './focusExport.js'
+import { downloadBlob, exportFocusImage, exportTiersFor, renderVisibleRegion } from './focusExport.js'
 import { findOccluders, focusCameraFor, focusFrameFor, focusScaleFor, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 420
@@ -58,6 +58,45 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   // iOS Safari 可能把缩放中的整板快照光栅化得偏软；高清层打开即覆盖选中照片补回清晰度。
   const selectedTile = layout.find((tile) => tile.id === selectedId)
   const occluders = useMemo(() => findOccluders(layout, selectedTile), [layout, selectedTile])
+  // 周围高清区域：停稳后用原图重绘当前可见画面（临时图层，盖上仍偏软的快照）。
+  // 镜头一动就立刻撤掉（内容与快照一致，撤下不闪），停稳后重绘并淡入。
+  const [regionUrl, setRegionUrl] = useState(null)
+  const [regionReady, setRegionReady] = useState(false)
+  const regionBlobRef = useRef(null)
+  const regionSeqRef = useRef(0)
+
+  const clearRegion = () => {
+    regionSeqRef.current += 1
+    if (regionBlobRef.current) { URL.revokeObjectURL(regionBlobRef.current); regionBlobRef.current = null }
+    setRegionReady(false)
+    setRegionUrl(null)
+  }
+
+  useEffect(() => {
+    if (!settled || leaving || !selectedTile) return
+    let active = true
+    const seq = ++regionSeqRef.current
+    // 原图已在打开/切换时并行解码（见上方 decode effect），这里的绘制大多直接命中缓存。
+    renderVisibleRegion({ layout, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, background })
+      .then(async (canvas) => {
+        if (!active || !canvas) return
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+        if (!active || !blob) return
+        const url = URL.createObjectURL(blob)
+        if (!active) { URL.revokeObjectURL(url); return }
+        if (regionBlobRef.current) URL.revokeObjectURL(regionBlobRef.current)
+        regionBlobRef.current = url
+        setRegionReady(false)
+        setRegionUrl(url)
+        if (seq !== regionSeqRef.current) return
+      })
+      .catch(() => {})
+    return () => { active = false }
+  }, [settled, leaving, selectedId, frame.height, frame.width, camera, background])
+  useEffect(() => () => {
+    if (regionBlobRef.current) URL.revokeObjectURL(regionBlobRef.current)
+  }, [])
+
 
   useEffect(() => {
     if (leaving) return
@@ -153,6 +192,9 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     }
     // 新选中照片的高清层立刻按旧镜头坐标出现在快照正上方（几何完全重合），
     // 随后与整板一起飞向新镜头，全程清晰；切换动作点击即开始。
+    // settled 归位 false：移动期间撤下周围高清区域（内容与快照一致，撤下不闪），
+    // 导出按钮在到达前暂不可用；停稳后重绘当前可见区域。
+    setSettled(false)
     setSelectedId(tile.id)
     setCamera((current) => focusCameraFor(tile, boardRect, frame, current.scale))
     settleDetail()
@@ -209,6 +251,16 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
               </figure>
             ))}
           </div>
+          {regionUrl && (
+            <img
+              className={`v5-focus__region ${regionReady ? 'is-ready' : ''}`}
+              src={regionUrl}
+              style={{ left: `${frame.left}px`, top: `${frame.top}px`, width: `${frame.width}px`, height: `${frame.height}px` }}
+              onLoad={() => setRegionReady(true)}
+              alt=""
+              aria-hidden="true"
+            />
+          )}
           {selectedTile && (
             <div
               className="v5-focus__detail"
