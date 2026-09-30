@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
-import { downloadBlob, exportFocusImage, exportTiersFor, renderVisibleRegion } from './focusExport.js'
-import { edgeScaleFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleBreakdown, focusScaleFor, groupSafeScale, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
+import { downloadBlob, exportFocusImage, exportTiersFor, renderFocusScene } from './focusExport.js'
+import { edgeScaleFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleBreakdown, groupSafeScale, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 420
-const CLOSE_MS = 320
+const CLOSE_MS = 420
 
 function viewportSize() {
   return { width: window.innerWidth, height: window.innerHeight }
@@ -19,33 +19,8 @@ function photoStyleFor(tile) {
   }
 }
 
-function settledTileStyle(tile, boardRect, camera) {
-  return {
-    left: `${boardRect.left + camera.x + tile.x / 100 * boardRect.width * camera.scale}px`,
-    top: `${boardRect.top + camera.y + tile.y / 100 * boardRect.height * camera.scale}px`,
-    width: `${tile.width / 100 * boardRect.width * camera.scale}px`,
-    height: `${tile.height / 100 * boardRect.height * camera.scale}px`,
-    transform: `rotate(${tile.rotate}deg)`,
-  }
-}
-
 // 独立照片层与整板共用镜头坐标和 transform 过渡，运动时保持照片位置同步。
 // Safari 可能把这个缩放层低分辨率光栅化，所以停稳后由屏幕像素画布盖上清晰结果。
-
-function FocusCard({ tile, index, frameMode, decorationEnabled, className = '', style, onClick, ariaHidden = false, useOriginal = false }) {
-  return (
-    <figure
-      className={`v5-collage__photo v5-collage__photo--${frameMode} ${className}`}
-      style={style}
-      onClick={onClick}
-      aria-hidden={ariaHidden || undefined}
-    >
-      {frameMode === 'polaroid' && <span className="v5-collage__paper" aria-hidden="true" />}
-      <img style={photoStyleFor(tile)} src={(useOriginal && tile.photo.originalSrc) || tile.photo.previewSrc} alt="" />
-      <CardDecoration index={index} enabled={decorationEnabled} />
-    </figure>
-  )
-}
 
 export default function V5FocusViewer({ layout, initialTileId, boardRect, frameMode, decorationEnabled, autoPlacements, boardPreviewSrc, background, boardRatio, scaleFactor = 1, onFocusInfo, onClose }) {
   const initialTile = useMemo(() => layout.find((tile) => tile.id === initialTileId) || layout[0], [initialTileId, layout])
@@ -55,7 +30,6 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const exportTiers = useMemo(() => exportTiersFor(boardRatio), [boardRatio])
   const [camera, setCamera] = useState(openingCamera)
   const [settled, setSettled] = useState(false)
-  const [decodedOriginalIds, setDecodedOriginalIds] = useState(() => new Set())
   const [visible, setVisible] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [exportingId, setExportingId] = useState(null)
@@ -100,32 +74,18 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     const controller = new AbortController()
     // 让不缩放的选中照片先完成一次绘制，再补周围区域，避免重绘抢掉镜头落定帧。
     const timer = window.setTimeout(() => {
-      renderVisibleRegion({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, background, signal: controller.signal })
+      renderFocusScene({
+        layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, background,
+        width: frame.width * Math.min(window.devicePixelRatio || 1, 2),
+        height: frame.height * Math.min(window.devicePixelRatio || 1, 2),
+        signal: controller.signal, useOriginal: true,
+      })
         .then((canvas) => { if (!controller.signal.aborted && canvas) setRegionCanvas(canvas) })
         .catch((error) => { if (!controller.signal.aborted) console.error('V5 visible region failed', error) })
     }, 100)
     return () => { window.clearTimeout(timer); controller.abort() }
   }, [settled, leaving, selectedId, frame.height, frame.width, camera, background])
 
-
-  useEffect(() => {
-    if (leaving) return
-    let active = true
-    // 打开或切换时先请求选中照片与遮挡者的原图；解码完成后再换源。
-    ;[selectedTile, ...occluders].filter(Boolean).forEach((tile) => {
-      const source = tile.photo.originalSrc
-      if (!source || source === tile.photo.previewSrc || decodedOriginalIds.has(tile.id)) return
-      const image = new Image()
-      image.src = source
-      const ready = () => {
-        if (!active) return
-        setDecodedOriginalIds((ids) => new Set(ids).add(tile.id))
-      }
-      if (image.decode) image.decode().then(ready).catch(() => {})
-      else image.onload = ready
-    })
-    return () => { active = false }
-  }, [selectedTile, occluders, leaving])
 
   // settled 控制静态高清画面与导出按钮；移动中的同步高清层仍立即渲染。
   const settleDetail = () => {
@@ -274,84 +234,6 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
               style={{ left: `${frame.left}px`, top: `${frame.top}px`, width: `${frame.width}px`, height: `${frame.height}px` }}
               aria-hidden="true"
             />
-          )}
-          {selectedTile && (
-            <div
-              className="v5-focus__detail"
-              style={{ left: `${boardRect.left}px`, top: `${boardRect.top}px`, width: `${boardRect.width}px`, height: `${boardRect.height}px`, transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.scale})` }}
-            >
-              <FocusCard
-                tile={selectedTile}
-                index={layout.indexOf(selectedTile)}
-                frameMode={frameMode}
-                decorationEnabled={decorationEnabled}
-                className="v5-focus__hires"
-                style={{ left: `${selectedTile.x}%`, top: `${selectedTile.y}%`, width: `${selectedTile.width}%`, height: `${selectedTile.height}%`, transform: `rotate(${selectedTile.rotate}deg)` }}
-                onClick={closeViewer}
-                useOriginal={decodedOriginalIds.has(selectedTile.id)}
-              />
-              {occluders.map((tile) => {
-                const maskImage = occluderMaskImage(selectedTile, tile)
-                return (
-                  <FocusCard
-                    key={`ghost-${tile.id}`}
-                    tile={tile}
-                    index={layout.indexOf(tile)}
-                    frameMode={frameMode}
-                    decorationEnabled={decorationEnabled}
-                    className="v5-focus__ghost"
-                    style={{
-                      left: `${tile.x}%`, top: `${tile.y}%`, width: `${tile.width}%`, height: `${tile.height}%`,
-                      transform: `rotate(${tile.rotate}deg)`,
-                      clipPath: occluderClipPath(selectedTile, tile),
-                      maskImage,
-                      WebkitMaskImage: maskImage,
-                      maskSize: '100% 100%',
-                      WebkitMaskSize: '100% 100%',
-                    }}
-                    ariaHidden
-                    useOriginal={decodedOriginalIds.has(tile.id)}
-                  />
-                )
-              })}
-            </div>
-          )}
-          {settled && !leaving && selectedTile && (
-            <div className="v5-focus__rest-detail" aria-hidden="true">
-              <FocusCard
-                tile={selectedTile}
-                index={layout.indexOf(selectedTile)}
-                frameMode={frameMode}
-                decorationEnabled={decorationEnabled}
-                className="v5-focus__rest-card"
-                style={settledTileStyle(selectedTile, boardRect, camera)}
-                ariaHidden
-                useOriginal={decodedOriginalIds.has(selectedTile.id)}
-              />
-              {occluders.map((tile) => {
-                const maskImage = occluderMaskImage(selectedTile, tile)
-                return (
-                  <FocusCard
-                    key={`rest-ghost-${tile.id}`}
-                    tile={tile}
-                    index={layout.indexOf(tile)}
-                    frameMode={frameMode}
-                    decorationEnabled={decorationEnabled}
-                    className="v5-focus__rest-card"
-                    style={{
-                      ...settledTileStyle(tile, boardRect, camera),
-                      clipPath: occluderClipPath(selectedTile, tile),
-                      maskImage,
-                      WebkitMaskImage: maskImage,
-                      maskSize: '100% 100%',
-                      WebkitMaskSize: '100% 100%',
-                    }}
-                    ariaHidden
-                    useOriginal={decodedOriginalIds.has(tile.id)}
-                  />
-                )
-              })}
-            </div>
           )}
           <div className="v5-focus__frame-mask" style={{ top: 0, left: 0, right: 0, height: frame.top }} aria-hidden="true" />
           <div className="v5-focus__frame-mask" style={{ top: frame.top + frame.height, left: 0, right: 0, bottom: 0 }} aria-hidden="true" />

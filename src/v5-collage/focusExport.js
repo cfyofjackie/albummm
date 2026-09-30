@@ -210,24 +210,36 @@ function tileOutlinePath(tile, transform) {
 }
 
 export async function exportFocusImage({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, tier = EXPORT_TIERS[1], background }) {
+  // 与放大查看层的屏幕显示共用同一个场景渲染器，所见即所得。
+  const canvas = await renderFocusScene({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, background, width: tier.width, height: tier.height, useOriginal: true })
+  return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))
+}
+
+// 场景渲染器（唯一实现）：背景 + 画布装饰 + 全部照片（z 序）+ 选中照片盖回 +
+// 遮挡者半透明柔边。放大查看层的屏幕显示与导出文件共用这一份绘制，
+// 「所见即所得」由构造保证。照片加载失败时抛错，由调用方决定提示或降级。
+// useOriginal=false 用 1600px 预览图（屏幕显示足够且快），导出走原图。
+export async function renderFocusScene({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, background, width, height, signal, useOriginal = true }) {
   const canvas = document.createElement('canvas')
-  canvas.width = tier.width
-  canvas.height = tier.height
+  canvas.width = Math.max(1, Math.round(width))
+  canvas.height = Math.max(1, Math.round(height))
   const ctx = canvas.getContext('2d')
   ctx.fillStyle = background?.color || '#e6e5e0'
-  ctx.fillRect(0, 0, tier.width, tier.height)
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
   const boardRatio = layout[0]?.boardRatio || BOARD_ASPECT
-  const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera, { width: tier.width, height: tier.height })
+  const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera, { width: canvas.width, height: canvas.height })
   ctx.save()
   ctx.beginPath(); ctx.rect(originX, originY, unitX * 100, unitY * 100); ctx.clip()
   ctx.translate(originX, originY)
   await drawBackground(ctx, background?.focusImage ? { ...background, image: background.focusImage } : background, unitX * 100, unitY * 100)
   ctx.restore()
+  if (signal?.aborted) return null
   ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
-  const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc)])))
+  const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(useOriginal ? (tile.photo.originalSrc || tile.photo.previewSrc) : tile.photo.previewSrc, signal)])))
   // 有照片加载失败就中断导出——宁可报错重试，也不能导出缺照片的白图。
   if (layout.some((tile) => !images.get(tile.id))) throw new Error('部分照片加载失败，请重试')
   layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index).forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
+  if (signal?.aborted) return null
   // 选中照片完整盖回原拼贴，再在相交范围内重画半透明遮挡者。
   const selectedTile = selectedId ? layout.find((tile) => tile.id === selectedId) : null
   if (selectedTile) {
@@ -236,8 +248,8 @@ export async function exportFocusImage({ layout, selectedId, frameMode, decorati
     if (!occluders.length) return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))
     const outline = tileOutlinePath(selectedTile, { originX, originY, unitX, unitY })
     const edgeCanvas = document.createElement('canvas')
-    edgeCanvas.width = tier.width
-    edgeCanvas.height = tier.height
+    edgeCanvas.width = canvas.width
+    edgeCanvas.height = canvas.height
     const edgeCtx = edgeCanvas.getContext('2d')
     occluders.forEach((tile) => {
       ctx.save()
@@ -247,7 +259,7 @@ export async function exportFocusImage({ layout, selectedId, frameMode, decorati
       ctx.restore()
 
       // 只给遮挡者的 alpha 加柔边，不模糊照片像素。
-      edgeCtx.clearRect(0, 0, tier.width, tier.height)
+      edgeCtx.clearRect(0, 0, canvas.width, canvas.height)
       drawTile(edgeCtx, tile, layout.indexOf(tile), frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled)
       const edgeWidth = Math.min(tile.width * unitX, tile.height * unitY) * OCCLUDER_EDGE_FRACTION
       edgeCtx.save()
@@ -264,10 +276,12 @@ export async function exportFocusImage({ layout, selectedId, frameMode, decorati
       ctx.restore()
     })
   }
-  return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))
+  return canvas
 }
 
 // 镜头停稳后按屏幕实际像素重绘周围区域；选中照片由不缩放的独立 DOM 层显示。
+
+
 export function visibleTilesFor(layout, { originX, originY, unitX, unitY }, width, height, selectedId) {
   const view = { left: -originX / unitX, top: -originY / unitY, right: (width - originX) / unitX, bottom: (height - originY) / unitY }
   return layout.map((tile, index) => ({ tile, index }))
@@ -278,37 +292,6 @@ export function visibleTilesFor(layout, { originX, originY, unitX, unitY }, widt
         && bounds.y < view.bottom && bounds.y + bounds.height > view.top
     })
     .sort((a, b) => a.tile.z - b.tile.z || a.index - b.index)
-}
-
-export async function renderVisibleRegion({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, background, signal, density = Math.min(window.devicePixelRatio || 1, 2) }) {
-  if (signal?.aborted) return null
-  const width = Math.max(1, Math.round(frame.width * density))
-  const height = Math.max(1, Math.round(frame.height * density))
-  const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera, { width, height })
-  const visibleTiles = visibleTilesFor(layout, { originX, originY, unitX, unitY }, width, height, selectedId)
-  // 周围照片与背景纹理同时加载，避免串行等待。
-  const imagesPromise = Promise.all(visibleTiles.map(async ({ tile }) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc, signal)]))
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return null
-  const boardRatio = layout[0]?.boardRatio || BOARD_ASPECT
-  ctx.fillStyle = background?.color || '#e6e5e0'
-  ctx.fillRect(0, 0, width, height)
-  ctx.save()
-  ctx.beginPath(); ctx.rect(originX, originY, unitX * 100, unitY * 100); ctx.clip()
-  ctx.translate(originX, originY)
-  await drawBackground(ctx, background?.focusImage ? { ...background, image: background.focusImage } : background, unitX * 100, unitY * 100, signal)
-  ctx.restore()
-  if (signal?.aborted) return null
-  ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
-  const images = new Map(await imagesPromise)
-  if (signal?.aborted) return null
-  // 周围照片加载失败时宁可保持软化的快照，也不把白卡画进高清区域。
-  if (visibleTiles.some(({ tile }) => !images.get(tile.id))) return null
-  visibleTiles.forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
-  return canvas
 }
 
 export async function exportBoardImage({ layout, frameMode, decorationEnabled, autoPlacements, background, tier }) {
