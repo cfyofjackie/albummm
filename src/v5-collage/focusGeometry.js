@@ -8,7 +8,7 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 export const OCCLUDER_ALPHA = 0.3
 export const OCCLUDER_EDGE_FRACTION = 0.03
 const FOCUS_EDGE_BLEED = 2
-const FOCUS_ZOOM_BOOST = 1.2
+const FOCUS_ZOOM_BOOST = 1.08
 
 export function focusFrameFor(viewport, boardRatio = BOARD_RATIO) {
   // 四周留出可见的浅色边距，用户始终能辨认导出范围。
@@ -32,7 +32,7 @@ export function focusScaleFor(tile, boardRect, frame) {
     (frame.height / 2 + FOCUS_EDGE_BLEED) / nearestVerticalEdge,
   )
   const desiredLongEdge = Math.min(frame.width, frame.height) * .78
-  // 在原有居中与边缘安全倍率之上再放大 20%，给真实导出留出更宽的纹理余量。
+  // 比原有居中与边缘安全倍率多 8%；相当于把上一版 20% 增幅缩小 10%。
   return Math.max(clamp(desiredLongEdge / Math.max(photoWidth, photoHeight), 1.35, 3.4), edgeScale) * FOCUS_ZOOM_BOOST
 }
 

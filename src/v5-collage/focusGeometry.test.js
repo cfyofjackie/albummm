@@ -19,8 +19,8 @@ describe('V5 focus camera', () => {
     const frame = focusFrameFor(viewport)
     const scale = focusScaleFor(tile, boardRect, frame)
     const camera = focusCameraFor(tile, boardRect, frame, scale)
-    expect(scale).toBeGreaterThanOrEqual(1.35 * 1.2)
-    expect(scale).toBeLessThanOrEqual(3.4 * 1.2)
+    expect(scale).toBeGreaterThanOrEqual(1.35 * 1.08)
+    expect(scale).toBeLessThanOrEqual(3.4 * 1.08)
     const photoCenterX = (tile.content.x + tile.content.width / 2) / 100 * boardRect.width
     const photoCenterY = (tile.content.y + tile.content.height / 2) / 100 * boardRect.height
     expect(frame.width / frame.height).toBeCloseTo(4 / 3)
@@ -40,7 +40,7 @@ describe('V5 focus camera', () => {
     expect(centerY).toBeCloseTo(900)
   })
 
-  it('adds 20% breathing room beyond the edge-covering zoom while keeping the photo centered', () => {
+  it('adds 8% breathing room beyond the edge-covering zoom while keeping the photo centered', () => {
     const frame = focusFrameFor(viewport)
     const edgeTile = { content: { x: 5, y: 9, width: 20, height: 28 } }
     const centerX = .15 * boardRect.width
@@ -48,7 +48,7 @@ describe('V5 focus camera', () => {
     const scale = focusScaleFor(edgeTile, boardRect, frame)
     const camera = focusCameraFor(edgeTile, boardRect, frame, scale)
     const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera)
-    expect(scale).toBeCloseTo((frame.width / 2 + 2) / centerX * 1.2)
+    expect(scale).toBeCloseTo((frame.width / 2 + 2) / centerX * 1.08)
     expect(boardRect.left + camera.x + centerX * scale).toBeCloseTo(frame.left + frame.width / 2)
     expect(boardRect.top + camera.y + centerY * scale).toBeCloseTo(frame.top + frame.height / 2)
     expect(originX).toBeLessThan(0)
