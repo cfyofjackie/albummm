@@ -92,7 +92,7 @@ export default function FocusDebugPage() {
   return (
     <div className="dev-focus-host">
       <div className="dev-focus-embed" ref={embedRef}>
-        <V5CollagePrototype key={sourceId} focusScaleFactor={factor} onFocusInfo={setInfo} />
+        <V5CollagePrototype key={sourceId} showRatioToggle focusScaleFactor={factor} onFocusInfo={setInfo} />
       </div>
 
       <button type="button" className="dev-focus__toggle" onClick={() => setPanelOpen((open) => !open)}>
