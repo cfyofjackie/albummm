@@ -65,19 +65,24 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   // iOS Safari 可能把缩放中的整板快照光栅化得偏软；高清层打开即覆盖选中照片补回清晰度。
   const selectedTile = layout.find((tile) => tile.id === selectedId)
   const occluders = useMemo(() => findOccluders(layout, selectedTile), [layout, selectedTile])
-  // 开发者调试页（#/dev/focus）可传入 scaleFactor：直接作用于 focusScaleFor 的结果，
-  // 打开取景与视口/比例变化后的重新取景共用这一倍率；预览和导出都从 camera 取值，
-  // 因此始终是同一个镜头结果。正式页面不传，保持默认 1。
-  const scaleForTile = (tile) => focusScaleFor(tile, boardRect, frame) * scaleFactor
+  // 方案 1（整组统一倍率）：全部照片共用 groupSafeScale 一个镜头倍率，
+  // 切换照片只平移不变倍，放大观感完全一致；scaleFactor 是调试页的全局松紧
+  // 系数（默认 1 = 恰好停在整组安全倍率上）。预览和导出都从 camera 取值，
+  // 始终是同一个镜头结果。镜头停稳后周围区域由高清图层补清。
+  const uniformScale = groupSafeScale(layout, boardRect, frame) * scaleFactor
 
   // 开发者调试页的数据通道：选中照片、镜头与画框变化时上报拆解结果。
   // 正式页面不传 onFocusInfo，此 effect 不产生任何行为差异。
   useEffect(() => {
     if (!onFocusInfo || !selectedTile) return
+    const uniformScale = groupSafeScale(layout, boardRect, frame) * scaleFactor
     onFocusInfo({
       photoIndex: layout.indexOf(selectedTile),
       total: layout.length,
-      breakdown: focusScaleBreakdown(selectedTile, boardRect, frame, scaleFactor),
+      breakdown: focusScaleBreakdown(selectedTile, boardRect, frame, uniformScale),
+      groupSafe: groupSafeScale(layout, boardRect, frame),
+      uniformScale,
+      exposedCount: layout.filter((tile) => edgeScaleFor(tile, boardRect, frame) > uniformScale).length,
     })
   }, [onFocusInfo, selectedTile, layout, boardRect, frame, camera, scaleFactor])
   // 镜头停稳后补清周围区域；选中照片由不缩放的独立层补清。
@@ -146,7 +151,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     window.clearTimeout(closeTimerRef.current)
   }, [])
   useEffect(() => {
-    const scale = scaleForTile(initialTile)
+    const scale = uniformScale
     const animationFrame = requestAnimationFrame(() => {
       setVisible(true)
       setCamera(focusCameraFor(initialTile, boardRect, frame, scale))
@@ -162,7 +167,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     }
     if (!visible) return
     const tile = layout.find((item) => item.id === selectedId) || initialTile
-    const scale = scaleForTile(tile)
+    const scale = uniformScale
     setRegionCanvas(null)
     setSettled(false)
     setCamera(focusCameraFor(tile, boardRect, frame, scale))
@@ -201,8 +206,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     setRegionCanvas(null)
     setSettled(false)
     setSelectedId(tile.id)
-    const scale = scaleForTile(tile)
-    setCamera(focusCameraFor(tile, boardRect, frame, scale))
+    setCamera(focusCameraFor(tile, boardRect, frame, uniformScale))
     settleDetail()
   }
 

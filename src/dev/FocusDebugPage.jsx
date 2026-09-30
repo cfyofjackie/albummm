@@ -83,13 +83,12 @@ export default function FocusDebugPage() {
   }
   const resetFactor = () => setFactor(1)
   const copyParams = async () => {
-    const text = `boardRatio=${activeRatioLabel()} photo=${(info?.photoIndex ?? 0) + 1}/${info?.total ?? 10} factor=${factor.toFixed(2)}`
+    const text = `boardRatio=${activeRatioLabel()} photo=${(info?.photoIndex ?? 0) + 1}/${info?.total ?? 10} factor=${factor.toFixed(2)} groupSafe=${info?.groupSafe?.toFixed(2) ?? ''}`
     try { await navigator.clipboard.writeText(text) } catch { /* 剪贴板不可用时忽略 */ }
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1500)
   }
 
-  const belowSafe = Boolean(info?.breakdown && info.breakdown.finalScale < info.breakdown.edgeScale)
   return (
     <div className="dev-focus-host">
       <div className="dev-focus-embed" ref={embedRef}>
@@ -142,6 +141,14 @@ export default function FocusDebugPage() {
             <button type="button" onClick={resetFactor}>恢复默认</button>
             <button type="button" onClick={copyParams}>{copied ? '已复制' : '复制当前参数'}</button>
           </div>
+          <dl>
+            <dt>整组安全倍率</dt>
+            <dd>{info?.groupSafe?.toFixed(2) ?? '…'}</dd>
+            <dt>当前统一倍率</dt>
+            <dd className={info?.exposedCount ? 'is-below-safe' : ''}>{info?.uniformScale?.toFixed(2) ?? '…'}</dd>
+            <dt>露底照片</dt>
+            <dd className={info?.exposedCount ? 'is-below-safe' : ''}>{info ? `${info.exposedCount} / ${info.total}` : '…'}</dd>
+          </dl>
           {info?.breakdown ? (
             <>
               <dl>
@@ -149,14 +156,8 @@ export default function FocusDebugPage() {
                 <dd>{info.photoIndex + 1} / {info.total}</dd>
                 <dt>位置（中心）</dt>
                 <dd>{info.breakdown.centerX.toFixed(1)} × {info.breakdown.centerY.toFixed(1)} px</dd>
-                <dt>基础倍率</dt>
-                <dd>{info.breakdown.baseScale.toFixed(2)}</dd>
-                <dt>边缘安全最低倍率</dt>
+                <dt>这张的安全倍率</dt>
                 <dd>{info.breakdown.edgeScale.toFixed(2)}</dd>
-                <dt className={belowSafe ? 'is-below-safe' : ''}>
-                  最终倍率{belowSafe ? '（低于安全倍率）' : ''}
-                </dt>
-                <dd className={belowSafe ? 'is-below-safe' : ''}>{info.breakdown.finalScale.toFixed(2)}</dd>
                 <dt>导出范围四边</dt>
                 <dd className="dev-focus__edges">
                   {(['left', 'right', 'top', 'bottom']).map((side) => (
@@ -167,7 +168,9 @@ export default function FocusDebugPage() {
                   ))}
                 </dd>
               </dl>
-              {belowSafe && <p className="dev-focus__warn">当前倍率低于画布盖住导出框的最低值，四周会露出画布底色。</p>}
+              {(info?.exposedCount ?? 0) > 0 && (
+                <p className="dev-focus__warn">系数低于 1：有 {info.exposedCount} 张照片的取景会露出画布底色。</p>
+              )}
             </>
           ) : (
             <p className="dev-focus__hint">点画布上的照片打开查看层后，这里显示倍率拆解。</p>
