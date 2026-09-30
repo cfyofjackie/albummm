@@ -47,7 +47,7 @@
 .v5-collage__clip { position: absolute; z-index: 5; top: -12%; right: 9%; width: 17%; height: 38%; overflow: visible; fill: none; stroke: #5c5b58; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.4; transform: rotate(12deg); }
 /* 底色在 is-visible 后才上：查看层挂载的第一帧依赖 rAF（后台/节流下可能延迟很久），
    若挂载即铺满不透明底色，rAF 停摆时用户会看到整屏空白。 */
-.v5-focus { position: fixed; z-index: 30; inset: 0; background: transparent; pointer-events: none; transition: background-color 180ms ease; --focus-ease: cubic-bezier(.4, 0, .2, 1); }
+.v5-focus { position: fixed; z-index: 30; inset: 0; background: transparent; pointer-events: none; transition: background-color 180ms ease; --focus-ease: cubic-bezier(.22, .78, .22, 1); --focus-ms: 420ms; }
 .v5-focus.is-visible { background: #f2f1ed; }
 .v5-focus__viewport { position: absolute; inset: 0; overflow: hidden; pointer-events: auto; }
 .v5-focus__artboard { position: fixed; inset: 0; overflow: hidden; }
@@ -68,7 +68,7 @@
 .v5-focus.is-leaving .v5-focus__board, .v5-focus.is-leaving .v5-focus__detail { transition-duration: 320ms; transition-timing-function: cubic-bezier(.22, .78, .22, 1); }
 /* 高清层打开即挂载（几何与快照重合，挂载不可见），原图解码后换源逐渐变清；
    挂载时的 110ms 淡入只为切换目标照片时柔化衔接。 */
-.v5-focus__hires, .v5-focus__ghost { animation: v5-focus-detail-in 110ms ease-out both; }
+.v5-focus__hires, .v5-focus__ghost { animation: v5-focus-detail-in 220ms ease-out both; }
 @keyframes v5-focus-detail-in { from { opacity: 0; } to { opacity: 1; } }
 .v5-focus__hires { cursor: zoom-out; pointer-events: auto; }
 /* 幽灵层的 alpha 由 SVG 蒙版决定，内部为 30%，边缘逐渐恢复到原不透明度。 */
@@ -87,6 +87,7 @@
 .v5-focus__export { border: 1px solid rgba(255,255,255,.72); border-radius: 999px; padding: 9px 12px; background: rgba(30,30,28,.68); color: #fff; font: 12px/1 "Helvetica Neue", "PingFang SC", Arial, sans-serif; cursor: pointer; transition: background 150ms ease; white-space: nowrap; }
 .v5-focus__export:hover:not(:disabled) { background: rgba(30,30,28,.9); }
 .v5-focus__export:disabled { cursor: wait; opacity: .72; }
+.v5-focus__export-error { position: fixed; z-index: 41; top: calc(120px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); margin: 0; padding: 7px 12px; border-radius: 8px; background: #5a2f28; color: #ffb4a6; font-size: 12px; }
 .v5-focus__hint { position: fixed; z-index: 7; bottom: calc(18px + env(safe-area-inset-bottom)); left: 50%; margin: 0; padding: 8px 12px; border-radius: 999px; background: rgba(30,30,28,.68); color: #fff; font-size: 12px; transform: translateX(-50%); opacity: 0; pointer-events: none; transition: opacity 200ms ease 160ms; white-space: nowrap; }
 .v5-focus.is-visible .v5-focus__hint { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .v5-focus__board, .v5-focus__detail, .v5-focus__frame-backing, .v5-focus__frame-mask, .v5-focus__frame-outline, .v5-focus__close, .v5-focus__export, .v5-focus__hint, .v5-focus__frame-label { transition-duration: 1ms; } .v5-focus__hires, .v5-focus__ghost, .v5-focus__region, .v5-focus__rest-detail { animation-duration: 1ms; } }

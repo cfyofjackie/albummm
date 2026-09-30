@@ -3,7 +3,7 @@ import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
 import { downloadBlob, exportFocusImage, exportTiersFor, renderVisibleRegion } from './focusExport.js'
 import { edgeScaleFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleBreakdown, focusScaleFor, groupSafeScale, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
 
-const TRANSITION_MS = 560
+const TRANSITION_MS = 420
 const CLOSE_MS = 320
 
 function viewportSize() {
@@ -59,6 +59,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const [visible, setVisible] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [exportingId, setExportingId] = useState(null)
+  const [exportError, setExportError] = useState(false)
   const settleTimerRef = useRef(null)
   const closeTimerRef = useRef(null)
   const frameMountedRef = useRef(false)
@@ -218,6 +219,9 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
       downloadBlob(blob, `albummm-v5-focus-${tier.width}x${tier.height}.${tier.ext}`)
     } catch (error) {
       console.error('V5 focus export failed', error?.type, error?.target?.currentSrc || error?.target?.src || error)
+      // 失败必须可见：照片加载失败等原因会被静默吞掉，用户只会觉得「点了没反应」
+      setExportError(true)
+      window.setTimeout(() => setExportError(false), 2500)
     } finally {
       setExportingId(null)
     }
@@ -357,6 +361,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
         </div>
         <p className="v5-focus__frame-label" style={{ left: `${frame.left + 12}px`, top: `${frame.top + 12}px` }} aria-hidden="true">导出范围 · {boardRatio > 1 ? '4:3' : '3:4'}</p>
       </div>
+      {exportError && <p className="v5-focus__export-error" role="alert">导出失败，请重试</p>}
       <div className="v5-focus__exports">
         {exportTiers.map((tier) => (
           <button
