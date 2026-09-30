@@ -1,5 +1,4 @@
 import { OCCLUDER_ALPHA, OCCLUDER_EDGE_FRACTION, exportTransformFor, findOccluders } from './focusGeometry.js'
-import { rotatedBounds } from './decorations.js'
 
 const BOARD_ASPECT = 4 / 3
 
@@ -30,6 +29,7 @@ const PATHS = {
   flowerStem: 'M50 54v48m0-21c-13-1-21-8-25-18m25 27c13-1 21-8 25-18',
   flowerHead: 'M50 56c-16 4-27-10-17-20-10-10 2-24 17-14 4-16 20-16 24 0 15-10 27 4 17 14 10 10-1 24-17 20Z',
   camera: 'M13 29h94v48H13Z M39 29l8-11h26l8 11M13 43h20m54 0h20M60 44v18m-9-9h18',
+  clip: 'M16 4C8 4 4 10 4 18v34c0 16 24 16 24 0V22c0-9-14-9-14 0v28c0 4 6 4 6 0V25',
 }
 
 function loadImage(source, signal) {
@@ -121,7 +121,44 @@ function drawAutoDecoration(ctx, placement, backgroundColor) {
   ctx.restore()
 }
 
-function drawBoardDecorations(ctx, enabled, placements, boardRatio, backgroundColor) {
+// 手账文字的 DOM 字号用 cqw（拼贴链上没有容器查询，回退为视口宽）加 clamp；
+// canvas 里按同一公式换算成「占画板宽度的百分比」，boardDisplayWidth 是画板在
+// 页面上的 CSS 宽度——快照与放大层传入真实板宽，保证与拼贴页 DOM 渲染一致。
+function handwriteFontSize(boardDisplayWidth) {
+  const fontPx = Math.min(18, Math.max(10, window.innerWidth * .018))
+  return fontPx / (boardDisplayWidth || Math.min(620, window.innerWidth)) * 100
+}
+
+function drawHandwrite(ctx, boardDisplayWidth) {
+  // 与 .v5-collage__handwrite--top 对齐：top 7% left 43%，rotate(-4deg) 绕文本盒中心。
+  const fontSize = handwriteFontSize(boardDisplayWidth)
+  ctx.save()
+  ctx.font = `700 ${fontSize}px "Segoe Print", "Comic Sans MS", cursive`
+  ctx.textBaseline = 'middle'
+  const textWidth = ctx.measureText('little things').width
+  ctx.translate(43 + textWidth / 2, 7 + fontSize / 2)
+  ctx.rotate(-4 * Math.PI / 180)
+  ctx.fillText('little things', -textWidth / 2, 0)
+  ctx.restore()
+}
+
+function drawMiniNote(ctx, boardDisplayWidth) {
+  // 与 .v5-collage__mini-note 对齐：字号 clamp(13px, 2.7cqw, 27px)，bottom 8% left 4%，
+  // rotate(14deg) 绕盒中心，字体继承 body 的 Helvetica/PingFang 栈。
+  const fontPx = Math.min(27, Math.max(13, window.innerWidth * .027))
+  const fontSize = fontPx / (boardDisplayWidth || Math.min(620, window.innerWidth)) * 100
+  ctx.save()
+  ctx.font = `${fontSize}px "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei", sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const textWidth = ctx.measureText('✦').width
+  ctx.translate(4 + textWidth / 2, 92 - fontSize * .58)
+  ctx.rotate(14 * Math.PI / 180)
+  ctx.fillText('✦', 0, 0)
+  ctx.restore()
+}
+
+function drawBoardDecorations(ctx, enabled, placements, boardRatio, backgroundColor, boardDisplayWidth) {
   if (!enabled) return
   ctx.save()
   ctx.strokeStyle = '#252522'
@@ -130,19 +167,67 @@ function drawBoardDecorations(ctx, enabled, placements, boardRatio, backgroundCo
   ctx.lineJoin = 'round'
   drawPathBox(ctx, PATHS.spark, { x: 5, y: 5, width: 4.2, height: 4.2 * boardRatio, viewWidth: 42, viewHeight: 42, rotate: -12, lineWidth: 2.2 })
   drawPathBox(ctx, PATHS.heart, { x: 91.5, y: 8, width: 3.5, height: 3.5 * boardRatio, viewWidth: 42, viewHeight: 42, rotate: 12, lineWidth: 2.2 })
-  drawPathBox(ctx, PATHS.loop, { x: 79, y: 87.07, width: 17, height: 6.93, viewWidth: 180, viewHeight: 78, rotate: -7, lineWidth: 1.6 })
-  ctx.save(); ctx.font = '700 2px "Segoe Print", cursive'; ctx.translate(43, 7); ctx.rotate(-4 * Math.PI / 180); ctx.fillText('little things', 0, 0); ctx.restore()
-  ctx.font = '3px sans-serif'; ctx.fillText('✦', 4, 92)
+  // loop 的 CSS 高度由 viewBox 比例（180:78）从宽度推出；右 4%、底 6% 不变。
+  const loopHeight = 17 * (78 / 180) * boardRatio
+  drawPathBox(ctx, PATHS.loop, { x: 79, y: 94 - loopHeight, width: 17, height: loopHeight, viewWidth: 180, viewHeight: 78, rotate: -7, lineWidth: 1.6 })
+  drawHandwrite(ctx, boardDisplayWidth)
+  drawMiniNote(ctx, boardDisplayWidth)
   placements.forEach((placement) => drawAutoDecoration(ctx, placement, backgroundColor))
   ctx.restore()
 }
 
+// 卡片装饰（washi 胶带、回形针）的 canvas 绘制与 .v5-collage__washi / .v5-collage__clip
+// 的 CSS 几何逐项对齐：拼贴页 DOM、整板快照、放大高清层与导出图四处所见一致。
+// drawTile 已把原点平移到卡片中心并按卡片旋转，这里全部坐标相对卡片中心。
 function drawCardDecoration(ctx, index, width, height) {
   if (index === 0 || index === 6) {
-    ctx.save(); ctx.translate(width * .04, -height * .53); ctx.rotate(index === 0 ? -.07 : .09); ctx.fillStyle = 'rgba(213, 202, 142, .88)'; ctx.fillRect(0, 0, width * .48, height * .1); ctx.restore()
+    // washi--0: top -3% left 28% rotate(-4deg)；washi--6: top -2% right 12% rotate(5deg)
+    const top = index === 0 ? -.03 : -.02
+    const left = index === 0 ? .28 : 1 - .12 - .48
+    const tapeWidth = width * .48
+    const tapeHeight = height * .1
+    const rotate = index === 0 ? -4 : 5
+    ctx.save()
+    ctx.translate((left - .5 + .24) * width, (top - .5 + .05) * height)
+    ctx.rotate(rotate * Math.PI / 180)
+    const halfWidth = tapeWidth / 2
+    const halfHeight = tapeHeight / 2
+    // 与 clip-path: polygon(0 9%, 100% 0, 97% 94%, 2% 100%) 相同的撕边四角
+    const tape = new Path2D()
+    tape.moveTo(-halfWidth, -halfHeight + tapeHeight * .09)
+    tape.lineTo(halfWidth, -halfHeight)
+    tape.lineTo(halfWidth - tapeWidth * .03, halfHeight - tapeHeight * .06)
+    tape.lineTo(-halfWidth + tapeWidth * .02, halfHeight)
+    tape.closePath()
+    // 与 linear-gradient(105deg, rgba(230,224,184,.88), rgba(194,183,128,.82)) 同走向
+    const angle = 105 * Math.PI / 180
+    const directionX = Math.sin(angle)
+    const directionY = -Math.cos(angle)
+    const gradientLength = tapeWidth * Math.abs(directionX) + tapeHeight * Math.abs(directionY)
+    const gradient = ctx.createLinearGradient(-directionX * gradientLength / 2, -directionY * gradientLength / 2, directionX * gradientLength / 2, directionY * gradientLength / 2)
+    gradient.addColorStop(0, 'rgba(230, 224, 184, .88)')
+    gradient.addColorStop(1, 'rgba(194, 183, 128, .82)')
+    ctx.fillStyle = gradient
+    ctx.fill(tape)
+    // 与 box-shadow: inset 0 0 0 1px rgba(255,255,255,.3) 近似的亮边
+    ctx.strokeStyle = 'rgba(255, 255, 255, .3)'
+    ctx.lineWidth = Math.max(1, tapeWidth * .006)
+    ctx.stroke(tape)
+    ctx.restore()
   }
   if (index === 1) {
-    ctx.save(); ctx.translate(width * .26, -height * .58); ctx.rotate(.2); ctx.strokeStyle = '#5c5b58'; ctx.lineWidth = .22; ctx.beginPath(); ctx.roundRect(-1.2, 0, 2.4, height * .42, 1.1); ctx.stroke(); ctx.restore()
+    // clip: top -12% right 9% width 17% height 38% rotate(12deg)，viewBox 32×74 描边 2.4
+    ctx.save()
+    ctx.strokeStyle = '#5c5b58'
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    drawPathBox(ctx, PATHS.clip, {
+      x: (1 - .09 - .17 - .5) * width,
+      y: (-.12 - .5) * height,
+      width: width * .17, height: height * .38,
+      viewWidth: 32, viewHeight: 74, rotate: 12, lineWidth: 2.4,
+    })
+    ctx.restore()
   }
 }
 
@@ -163,7 +248,7 @@ function drawTile(ctx, tile, index, frameMode, image, unitX, unitY, originX, ori
 }
 
 // 镜头移动时只缩放这一张已排好的预览图，避免 Safari 同时重绘十张旋转照片。
-// 独立高清层仍在镜头停稳后从原图渲染。
+// 选中照片由同步高清 DOM 层全程补清，整板快照按 groupSafeScale 预留清晰度。
 export async function renderBoardPreview({ layout, frameMode, decorationEnabled, autoPlacements, width, targetWidth, background }) {
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.previewSrc)])))
   if (images.size !== layout.length || [...images.values()].some((image) => !image)) return null
@@ -184,7 +269,7 @@ export async function renderBoardPreview({ layout, frameMode, decorationEnabled,
   await drawBackground(ctx, background, canvas.width, canvas.height)
   const unitX = canvas.width / 100
   const unitY = canvas.height / 100
-  ctx.save(); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
+  ctx.save(); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0', width); ctx.restore()
   layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index)
     .forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, 0, 0, decorationEnabled))
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85))
@@ -234,7 +319,7 @@ export async function renderFocusScene({ layout, selectedId, frameMode, decorati
   await drawBackground(ctx, background?.focusImage ? { ...background, image: background.focusImage } : background, unitX * 100, unitY * 100)
   ctx.restore()
   if (signal?.aborted) return null
-  ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
+  ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0', boardRect.width); ctx.restore()
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(useOriginal ? (tile.photo.originalSrc || tile.photo.previewSrc) : tile.photo.previewSrc, signal)])))
   // 有照片加载失败就中断导出——宁可报错重试，也不能导出缺照片的白图。
   if (layout.some((tile) => !images.get(tile.id))) throw new Error('部分照片加载失败，请重试')
@@ -245,7 +330,7 @@ export async function renderFocusScene({ layout, selectedId, frameMode, decorati
   if (selectedTile) {
     drawTile(ctx, selectedTile, layout.indexOf(selectedTile), frameMode, images.get(selectedTile.id), unitX, unitY, originX, originY, decorationEnabled)
     const occluders = findOccluders(layout, selectedTile)
-    if (!occluders.length) return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))
+    if (!occluders.length) return canvas
     const outline = tileOutlinePath(selectedTile, { originX, originY, unitX, unitY })
     const edgeCanvas = document.createElement('canvas')
     edgeCanvas.width = canvas.width
@@ -279,22 +364,7 @@ export async function renderFocusScene({ layout, selectedId, frameMode, decorati
   return canvas
 }
 
-// 镜头停稳后按屏幕实际像素重绘周围区域；选中照片由不缩放的独立 DOM 层显示。
-
-
-export function visibleTilesFor(layout, { originX, originY, unitX, unitY }, width, height, selectedId) {
-  const view = { left: -originX / unitX, top: -originY / unitY, right: (width - originX) / unitX, bottom: (height - originY) / unitY }
-  return layout.map((tile, index) => ({ tile, index }))
-    .filter(({ tile }) => {
-      if (tile.id === selectedId) return false // The independent detail layer draws this photo at full resolution.
-      const bounds = rotatedBounds(tile)
-      return bounds.x < view.right && bounds.x + bounds.width > view.left
-        && bounds.y < view.bottom && bounds.y + bounds.height > view.top
-    })
-    .sort((a, b) => a.tile.z - b.tile.z || a.index - b.index)
-}
-
-export async function exportBoardImage({ layout, frameMode, decorationEnabled, autoPlacements, background, tier }) {
+export async function exportBoardImage({ layout, frameMode, decorationEnabled, autoPlacements, background, tier, boardDisplayWidth }) {
   const canvas = document.createElement('canvas')
   canvas.width = tier.width
   canvas.height = tier.height
@@ -303,7 +373,7 @@ export async function exportBoardImage({ layout, frameMode, decorationEnabled, a
   await drawBackground(ctx, background, canvas.width, canvas.height)
   const unitX = canvas.width / 100
   const unitY = canvas.height / 100
-  ctx.save(); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
+  ctx.save(); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0', boardDisplayWidth); ctx.restore()
   // 用 1600px 预览图而非原图：导出画布里单张照片最大只占 ~1300px，预览已足够，
   // 而相机原图（5328×4000）逐张解码绘制在 Safari 上要数分钟且占内存巨大。
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.previewSrc)])))

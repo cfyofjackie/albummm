@@ -250,7 +250,7 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
     setExporting(true)
     try {
       const tier = exportTiersFor(boardRatio)[1]
-      const blob = await exportBoardImage({ layout, frameMode, decorationEnabled: decorationMode === 'scrapbook', autoPlacements: autoDecorationPlacements, background, tier })
+      const blob = await exportBoardImage({ layout, frameMode, decorationEnabled: decorationMode === 'scrapbook', autoPlacements: autoDecorationPlacements, background, tier, boardDisplayWidth: boardRef.current?.clientWidth })
       downloadBlob(blob, `albummm-collage-${tier.width}x${tier.height}.${tier.ext}`)
     } catch { setNotice('导出失败，请重试。') }
     finally { setExporting(false) }

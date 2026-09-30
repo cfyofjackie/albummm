@@ -55,17 +55,18 @@
 .v5-focus.is-framed .v5-focus__frame-backing { opacity: 1; }
 .v5-focus__board { position: absolute; z-index: 1; overflow: visible; transform-origin: top left; transition: transform var(--focus-ms) var(--focus-ease); }
 .v5-focus__board-preview { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
-/* 停稳后补清周围区域；启程时立即卸载。 */
-.v5-focus__region { position: absolute; z-index: 2; pointer-events: none; animation: v5-focus-region-in 220ms ease-out both; }
-@keyframes v5-focus-region-in { from { opacity: 0; } to { opacity: 1; } }
 .v5-focus__photo { cursor: pointer; }
 .v5-focus__photo.is-selected { cursor: default; }
 /* 高清同步层：与整板共用同一组镜头坐标和同一条 transform 过渡（见组件内注释），
    放大 / 切换 / 返回都与整板逐帧同轨迹，动作即时开始，不走先淡出再移动的交接等待。 */
+.v5-focus__detail { position: absolute; z-index: 2; pointer-events: none; transform-origin: top left; transition: transform var(--focus-ms) var(--focus-ease); }
 /* 高清层打开即挂载（几何与快照重合，挂载不可见），原图解码后换源逐渐变清；
    挂载时的 110ms 淡入只为切换目标照片时柔化衔接。 */
+.v5-focus__hires, .v5-focus__ghost { animation: v5-focus-detail-in 110ms ease-out both; }
 @keyframes v5-focus-detail-in { from { opacity: 0; } to { opacity: 1; } }
+.v5-focus__hires { cursor: zoom-out; pointer-events: auto; }
 /* 幽灵层的 alpha 由 SVG 蒙版决定，内部为 30%，边缘逐渐恢复到原不透明度。 */
+.v5-focus__ghost { pointer-events: none; }
 .v5-focus__frame-mask { position: absolute; z-index: 4; background: #f2f1ed; opacity: 0; pointer-events: none; transition: opacity 90ms ease; }
 .v5-focus.is-framed .v5-focus__frame-mask { opacity: 1; pointer-events: auto; }
 .v5-focus__frame-outline { position: absolute; z-index: 5; box-shadow: inset 0 0 0 1px rgba(32, 32, 29, .16); opacity: 0; pointer-events: none; transition: opacity 90ms ease; }
@@ -83,7 +84,7 @@
 .v5-focus__export-error { position: fixed; z-index: 41; top: calc(120px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); margin: 0; padding: 7px 12px; border-radius: 8px; background: #5a2f28; color: #ffb4a6; font-size: 12px; }
 .v5-focus__hint { position: fixed; z-index: 7; bottom: calc(18px + env(safe-area-inset-bottom)); left: 50%; margin: 0; padding: 8px 12px; border-radius: 999px; background: rgba(30,30,28,.68); color: #fff; font-size: 12px; transform: translateX(-50%); opacity: 0; pointer-events: none; transition: opacity 200ms ease 160ms; white-space: nowrap; }
 .v5-focus.is-visible .v5-focus__hint { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .v5-focus__board, .v5-focus__region, .v5-focus__frame-backing, .v5-focus__frame-mask, .v5-focus__frame-outline, .v5-focus__close, .v5-focus__export, .v5-focus__hint, .v5-focus__frame-label { transition-duration: 1ms; animation-duration: 1ms; } }
+@media (prefers-reduced-motion: reduce) { .v5-focus__board, .v5-focus__detail, .v5-focus__frame-backing, .v5-focus__frame-mask, .v5-focus__frame-outline, .v5-focus__close, .v5-focus__export, .v5-focus__hint, .v5-focus__frame-label { transition-duration: 1ms; } .v5-focus__hires, .v5-focus__ghost { animation-duration: 1ms; } }
 /* 手机竖屏：标题与选项紧凑收拢，作品尽早进入视线；画布按可用宽度等比铺满。 */
 @media (max-width: 640px) {
   .v5-collage { padding: 16px 14px calc(30px + env(safe-area-inset-bottom)); }

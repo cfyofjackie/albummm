@@ -1,7 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
-import { downloadBlob, exportFocusImage, exportTiersFor, renderFocusScene } from './focusExport.js'
-import { edgeScaleFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleBreakdown, groupSafeScale, openingCamera } from './focusGeometry.js'
+import { downloadBlob, exportFocusImage, exportTiersFor } from './focusExport.js'
+import { edgeScaleFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleBreakdown, groupSafeScale, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 420
 const CLOSE_MS = 420
@@ -19,8 +19,28 @@ function photoStyleFor(tile) {
   }
 }
 
-// 独立照片层与整板共用镜头坐标和 transform 过渡，运动时保持照片位置同步。
-// Safari 可能把这个缩放层低分辨率光栅化，所以停稳后由屏幕像素画布盖上清晰结果。
+// 高清层在查看层打开时立即挂载（不等镜头停稳）；它不按视口像素定位，而是放进
+// 与整板共用同一组镜头坐标、同一条 transform 过渡的同步层里，按拼贴百分比定位。
+// 几何与整板快照里的同一张照片逐像素重合，挂载不可见。先渲染预览图，原图解码
+// 完成后换源，照片在动画过程中就逐渐变清。镜头无论放大、切换还是返回，它都与
+// 整板逐帧同轨迹（纯 transform 合成动画），关闭时即时启程。全程没有「停稳后
+// 换一层」的动作——那会造成清晰↔模糊的可见跳变，也会让 DOM 装饰与 canvas 重绘
+// 的几何差异反复横跳。
+
+function FocusCard({ tile, index, frameMode, decorationEnabled, className = '', style, onClick, ariaHidden = false, useOriginal = false }) {
+  return (
+    <figure
+      className={`v5-collage__photo v5-collage__photo--${frameMode} ${className}`}
+      style={style}
+      onClick={onClick}
+      aria-hidden={ariaHidden || undefined}
+    >
+      {frameMode === 'polaroid' && <span className="v5-collage__paper" aria-hidden="true" />}
+      <img style={photoStyleFor(tile)} src={(useOriginal && tile.photo.originalSrc) || tile.photo.previewSrc} alt="" />
+      <CardDecoration index={index} enabled={decorationEnabled} />
+    </figure>
+  )
+}
 
 export default function V5FocusViewer({ layout, initialTileId, boardRect, frameMode, decorationEnabled, autoPlacements, boardPreviewSrc, background, boardRatio, scaleFactor = 1, onFocusInfo, onClose }) {
   const initialTile = useMemo(() => layout.find((tile) => tile.id === initialTileId) || layout[0], [initialTileId, layout])
@@ -30,6 +50,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   const exportTiers = useMemo(() => exportTiersFor(boardRatio), [boardRatio])
   const [camera, setCamera] = useState(openingCamera)
   const [settled, setSettled] = useState(false)
+  const [decodedOriginalIds, setDecodedOriginalIds] = useState(() => new Set())
   const [visible, setVisible] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const [exportingId, setExportingId] = useState(null)
@@ -43,7 +64,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   // 方案 1（整组统一倍率）：全部照片共用 groupSafeScale 一个镜头倍率，
   // 切换照片只平移不变倍，放大观感完全一致；scaleFactor 是调试页的全局松紧
   // 系数（默认 1 = 恰好停在整组安全倍率上）。预览和导出都从 camera 取值，
-  // 始终是同一个镜头结果。镜头停稳后周围区域由高清图层补清。
+  // 始终是同一个镜头结果。选中照片与遮挡者由同步高清层全程补清。
   const uniformScale = groupSafeScale(layout, boardRect, frame) * scaleFactor
 
   // 开发者调试页的数据通道：选中照片、镜头与画框变化时上报拆解结果。
@@ -60,34 +81,29 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
       exposedCount: layout.filter((tile) => edgeScaleFor(tile, boardRect, frame) > uniformScale).length,
     })
   }, [onFocusInfo, selectedTile, layout, boardRect, frame, camera, scaleFactor])
-  // 镜头停稳后补清周围区域；选中照片由不缩放的独立层补清。
-  const [regionCanvas, setRegionCanvas] = useState(null)
-  const regionDisplayRef = useRef(null)
-
-  useLayoutEffect(() => {
-    if (!regionCanvas || !regionDisplayRef.current) return
-    regionDisplayRef.current.getContext('2d')?.drawImage(regionCanvas, 0, 0)
-  }, [regionCanvas])
 
   useEffect(() => {
-    if (!settled || leaving || !selectedTile) return
-    const controller = new AbortController()
-    // 让不缩放的选中照片先完成一次绘制，再补周围区域，避免重绘抢掉镜头落定帧。
-    const timer = window.setTimeout(() => {
-      renderFocusScene({
-        layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, background,
-        width: frame.width * Math.min(window.devicePixelRatio || 1, 2),
-        height: frame.height * Math.min(window.devicePixelRatio || 1, 2),
-        signal: controller.signal, useOriginal: true,
-      })
-        .then((canvas) => { if (!controller.signal.aborted && canvas) setRegionCanvas(canvas) })
-        .catch((error) => { if (!controller.signal.aborted) console.error('V5 visible region failed', error) })
-    }, 100)
-    return () => { window.clearTimeout(timer); controller.abort() }
-  }, [settled, leaving, selectedId, frame.height, frame.width, camera, background])
+    if (leaving) return
+    let active = true
+    // 原图的解码和高清层的换源都在打开/切换的那一刻开始，与镜头动画并行；
+    // 解码完成后换源，照片在动画过程中就逐渐变清。decode() 离主线程执行，
+    // 不会像整板重绘那样抢动画的主线程。
+    ;[selectedTile, ...occluders].filter(Boolean).forEach((tile) => {
+      const source = tile.photo.originalSrc
+      if (!source || source === tile.photo.previewSrc || decodedOriginalIds.has(tile.id)) return
+      const image = new Image()
+      image.src = source
+      const ready = () => {
+        if (!active) return
+        setDecodedOriginalIds((ids) => new Set(ids).add(tile.id))
+      }
+      if (image.decode) image.decode().then(ready).catch(() => {})
+      else image.onload = ready
+    })
+    return () => { active = false }
+  }, [selectedTile, occluders, leaving, decodedOriginalIds])
 
-
-  // settled 控制静态高清画面与导出按钮；移动中的同步高清层仍立即渲染。
+  // settled 只服务导出：镜头停稳前不开放导出按钮。高清层本身不等停稳。
   const settleDetail = () => {
     window.clearTimeout(settleTimerRef.current)
     // transitionend 对齐真正停下的那一帧；计时器只处理未派发事件的浏览器。
@@ -129,7 +145,6 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     if (!visible) return
     const tile = layout.find((item) => item.id === selectedId) || initialTile
     const scale = uniformScale
-    setRegionCanvas(null)
     setSettled(false)
     setCamera(focusCameraFor(tile, boardRect, frame, scale))
     settleDetail()
@@ -140,7 +155,6 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     // 高清层在同步层里与整板同轨迹飞回，无需先淡出交接：点击下一帧即启程，
     // 全程保持原生清晰度，动画结束后随查看层一起卸载。
     window.clearTimeout(settleTimerRef.current)
-    setRegionCanvas(null)
     setLeaving(true)
     setVisible(false)
     setCamera(openingCamera())
@@ -162,9 +176,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     }
     // 新选中照片的高清层立刻按旧镜头坐标出现在快照正上方（几何完全重合），
     // 随后与整板一起飞向新镜头，全程清晰；切换动作点击即开始。
-    // settled 归位 false：移动期间撤下周围高清区域（内容与快照一致，撤下不闪），
-    // 导出按钮在到达前暂不可用；停稳后重绘当前可见区域。
-    setRegionCanvas(null)
+    // settled 归位 false：导出按钮在到达前暂不可用。
     setSettled(false)
     setSelectedId(tile.id)
     setCamera(focusCameraFor(tile, boardRect, frame, uniformScale))
@@ -189,7 +201,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
 
   // 画框（外框线 + 遮带）固定在视口上，与镜头动画零耦合：随查看层打开即显示。
   // 若等镜头停稳才显示，停稳后画框才浮现，看起来就像突然被裁切进取景框。
-  // 移动用高清层打开即挂载；停稳后再挂不缩放的清晰层并开放导出。
+  // 高清细节层同样打开即挂载；settled 只控制导出按钮。
   return (
     <section className={`v5-focus ${visible ? 'is-visible' : ''} ${visible && !leaving ? 'is-framed' : ''} ${leaving ? 'is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="高清拼贴查看">
       <div className="v5-focus__viewport">
@@ -225,15 +237,46 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
               </figure>
             ))}
           </div>
-          {regionCanvas && !leaving && settled && (
-            <canvas
-              ref={regionDisplayRef}
-              className="v5-focus__region"
-              width={regionCanvas.width}
-              height={regionCanvas.height}
-              style={{ left: `${frame.left}px`, top: `${frame.top}px`, width: `${frame.width}px`, height: `${frame.height}px` }}
-              aria-hidden="true"
-            />
+          {selectedTile && (
+            <div
+              className="v5-focus__detail"
+              style={{ left: `${boardRect.left}px`, top: `${boardRect.top}px`, width: `${boardRect.width}px`, height: `${boardRect.height}px`, transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.scale})` }}
+            >
+              <FocusCard
+                tile={selectedTile}
+                index={layout.indexOf(selectedTile)}
+                frameMode={frameMode}
+                decorationEnabled={decorationEnabled}
+                className="v5-focus__hires"
+                style={{ left: `${selectedTile.x}%`, top: `${selectedTile.y}%`, width: `${selectedTile.width}%`, height: `${selectedTile.height}%`, transform: `rotate(${selectedTile.rotate}deg)` }}
+                onClick={closeViewer}
+                useOriginal={decodedOriginalIds.has(selectedTile.id)}
+              />
+              {occluders.map((tile) => {
+                const maskImage = occluderMaskImage(selectedTile, tile)
+                return (
+                  <FocusCard
+                    key={`ghost-${tile.id}`}
+                    tile={tile}
+                    index={layout.indexOf(tile)}
+                    frameMode={frameMode}
+                    decorationEnabled={decorationEnabled}
+                    className="v5-focus__ghost"
+                    style={{
+                      left: `${tile.x}%`, top: `${tile.y}%`, width: `${tile.width}%`, height: `${tile.height}%`,
+                      transform: `rotate(${tile.rotate}deg)`,
+                      clipPath: occluderClipPath(selectedTile, tile),
+                      maskImage,
+                      WebkitMaskImage: maskImage,
+                      maskSize: '100% 100%',
+                      WebkitMaskSize: '100% 100%',
+                    }}
+                    ariaHidden
+                    useOriginal={decodedOriginalIds.has(tile.id)}
+                  />
+                )
+              })}
+            </div>
           )}
           <div className="v5-focus__frame-mask" style={{ top: 0, left: 0, right: 0, height: frame.top }} aria-hidden="true" />
           <div className="v5-focus__frame-mask" style={{ top: frame.top + frame.height, left: 0, right: 0, bottom: 0 }} aria-hidden="true" />
