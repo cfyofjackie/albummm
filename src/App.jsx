@@ -22,6 +22,11 @@ const PROTOTYPES = {
 
 const ROUTES = { story: 'carousel-smart', collage: 'v5-reference-layout', works: 'works' }
 
+// 开发者调试页只在 dev 构建注册（正式构建连模块都不打包）：#/dev/focus 调放大倍率。
+const DEV = import.meta.env.DEV
+const FocusDebugPage = DEV ? lazy(() => import('./dev/FocusDebugPage.jsx')) : null
+if (DEV) ROUTES['dev/focus'] = 'dev-focus'
+
 // hash 一旦出现就以它为准（首页链接写成 #/，这样才能从带 ?prototype= 的页面回到首页）；
 // 没有 hash 时才回退读取旧参数。
 function currentRoute() {
@@ -264,6 +269,13 @@ export default function App() {
     event.stopPropagation()
   }
 
+  if (route === 'dev-focus' && FocusDebugPage) {
+    return (
+      <Suspense fallback={<p className="app-loading">正在载入…</p>}>
+        <FocusDebugPage />
+      </Suspense>
+    )
+  }
   const Page = route === 'works' ? WorksPage : PROTOTYPES[route]
   return (
     <div

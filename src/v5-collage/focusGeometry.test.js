@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OCCLUDER_ALPHA, exportTransformFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleFor, occluderClipPath, occluderClipPoints, openingCamera } from './focusGeometry.js'
+import { OCCLUDER_ALPHA, exportTransformFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleBreakdown, focusScaleFor, occluderClipPath, occluderClipPoints, openingCamera } from './focusGeometry.js'
 
 const boardRect = { left: 40, top: 300, width: 880, height: 660 }
 const viewport = { width: 960, height: 760 }
@@ -19,8 +19,8 @@ describe('V5 focus camera', () => {
     const frame = focusFrameFor(viewport)
     const scale = focusScaleFor(tile, boardRect, frame)
     const camera = focusCameraFor(tile, boardRect, frame, scale)
-    expect(scale).toBeGreaterThanOrEqual(1.35 * 1.08)
-    expect(scale).toBeLessThanOrEqual(3.4 * 1.08)
+    expect(scale).toBeGreaterThanOrEqual(1.35)
+    expect(scale).toBeLessThanOrEqual(3.4)
     const photoCenterX = (tile.content.x + tile.content.width / 2) / 100 * boardRect.width
     const photoCenterY = (tile.content.y + tile.content.height / 2) / 100 * boardRect.height
     expect(frame.width / frame.height).toBeCloseTo(4 / 3)
@@ -40,7 +40,7 @@ describe('V5 focus camera', () => {
     expect(centerY).toBeCloseTo(900)
   })
 
-  it('adds 8% breathing room beyond the edge-covering zoom while keeping the photo centered', () => {
+  it('at boost 1.00 covers the export frame exactly to the nearest edge while keeping the photo centered', () => {
     const frame = focusFrameFor(viewport)
     const edgeTile = { content: { x: 5, y: 9, width: 20, height: 28 } }
     const centerX = .15 * boardRect.width
@@ -48,13 +48,38 @@ describe('V5 focus camera', () => {
     const scale = focusScaleFor(edgeTile, boardRect, frame)
     const camera = focusCameraFor(edgeTile, boardRect, frame, scale)
     const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera)
-    expect(scale).toBeCloseTo((frame.width / 2 + 2) / centerX * 1.08)
+    expect(scale).toBeCloseTo((frame.width / 2 + 2) / centerX)
     expect(boardRect.left + camera.x + centerX * scale).toBeCloseTo(frame.left + frame.width / 2)
     expect(boardRect.top + camera.y + centerY * scale).toBeCloseTo(frame.top + frame.height / 2)
     expect(originX).toBeLessThan(0)
     expect(originY).toBeLessThan(0)
     expect(originX + unitX * 100).toBeGreaterThan(2400)
     expect(originY + unitY * 100).toBeGreaterThan(1800)
+  })
+
+  it('exposes the scale breakdown used by the developer debug page', () => {
+    const frame = focusFrameFor(viewport)
+    const centerTile = { content: { x: 40, y: 40, width: 20, height: 26 } }
+    const breakdown = focusScaleBreakdown(centerTile, boardRect, frame, 1)
+    expect(breakdown.boost).toBe(1)
+    expect(breakdown.finalScale).toBeCloseTo(breakdown.baseScale)
+    // 画布中心的照片离四边都远，任何一边都不应露出画布
+    expect(breakdown.edges).toEqual({ left: false, right: false, top: false, bottom: false })
+    // 系数直接作用于最终倍率
+    const boosted = focusScaleBreakdown(centerTile, boardRect, frame, 1.25)
+    expect(boosted.finalScale).toBeCloseTo(breakdown.finalScale * 1.25)
+  })
+
+  it('flags exposed canvas edges when the final scale drops below the edge-safe minimum', () => {
+    const frame = focusFrameFor(viewport)
+    const edgeTile = { content: { x: 5, y: 9, width: 20, height: 28 } }
+    const safe = focusScaleBreakdown(edgeTile, boardRect, frame, 1)
+    // 停在安全倍率：四边都不露
+    expect(Object.values(safe.edges).some(Boolean)).toBe(false)
+    // 人为缩到安全倍率的一半：最近的一边必然露出画布
+    const shrunk = focusScaleBreakdown(edgeTile, boardRect, frame, 0.5)
+    expect(shrunk.finalScale).toBeLessThan(safe.edgeScale)
+    expect([shrunk.edges.left, shrunk.edges.right, shrunk.edges.top, shrunk.edges.bottom].some(Boolean)).toBe(true)
   })
 
   it('also covers a portrait export for a photo near the bottom edge', () => {

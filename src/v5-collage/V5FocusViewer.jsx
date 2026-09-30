@@ -47,7 +47,7 @@ function FocusCard({ tile, index, frameMode, decorationEnabled, className = '', 
   )
 }
 
-export default function V5FocusViewer({ layout, initialTileId, boardRect, frameMode, decorationEnabled, autoPlacements, boardPreviewSrc, background, boardRatio, onClose }) {
+export default function V5FocusViewer({ layout, initialTileId, boardRect, frameMode, decorationEnabled, autoPlacements, boardPreviewSrc, background, boardRatio, scaleFactor = 1, onClose }) {
   const initialTile = useMemo(() => layout.find((tile) => tile.id === initialTileId) || layout[0], [initialTileId, layout])
   const [selectedId, setSelectedId] = useState(initialTile.id)
   const [viewport, setViewport] = useState(viewportSize)
@@ -65,6 +65,10 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   // iOS Safari 可能把缩放中的整板快照光栅化得偏软；高清层打开即覆盖选中照片补回清晰度。
   const selectedTile = layout.find((tile) => tile.id === selectedId)
   const occluders = useMemo(() => findOccluders(layout, selectedTile), [layout, selectedTile])
+  // 开发者调试页（#/dev/focus）可传入 scaleFactor：直接作用于 focusScaleFor 的结果，
+  // 打开取景与视口/比例变化后的重新取景共用这一倍率；预览和导出都从 camera 取值，
+  // 因此始终是同一个镜头结果。正式页面不传，保持默认 1。
+  const scaleForTile = (tile) => focusScaleFor(tile, boardRect, frame) * scaleFactor
   // 镜头停稳后补清周围区域；选中照片由不缩放的独立层补清。
   const [regionCanvas, setRegionCanvas] = useState(null)
   const regionDisplayRef = useRef(null)
@@ -131,7 +135,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     window.clearTimeout(closeTimerRef.current)
   }, [])
   useEffect(() => {
-    const scale = focusScaleFor(initialTile, boardRect, frame)
+    const scale = scaleForTile(initialTile)
     const animationFrame = requestAnimationFrame(() => {
       setVisible(true)
       setCamera(focusCameraFor(initialTile, boardRect, frame, scale))
@@ -147,12 +151,12 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     }
     if (!visible) return
     const tile = layout.find((item) => item.id === selectedId) || initialTile
-    const scale = focusScaleFor(tile, boardRect, frame)
+    const scale = scaleForTile(tile)
     setRegionCanvas(null)
     setSettled(false)
     setCamera(focusCameraFor(tile, boardRect, frame, scale))
     settleDetail()
-  }, [frame.height, frame.width, frame.left, frame.top])
+  }, [frame.height, frame.width, frame.left, frame.top, scaleFactor])
 
   const closeViewer = () => {
     if (leaving) return
@@ -186,7 +190,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     setRegionCanvas(null)
     setSettled(false)
     setSelectedId(tile.id)
-    const scale = focusScaleFor(tile, boardRect, frame)
+    const scale = scaleForTile(tile)
     setCamera(focusCameraFor(tile, boardRect, frame, scale))
     settleDetail()
   }

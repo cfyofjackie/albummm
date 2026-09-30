@@ -8,7 +8,7 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 export const OCCLUDER_ALPHA = 0.3
 export const OCCLUDER_EDGE_FRACTION = 0.03
 const FOCUS_EDGE_BLEED = 2
-const FOCUS_ZOOM_BOOST = 1.08
+const FOCUS_ZOOM_BOOST = 1.00
 
 export function focusFrameFor(viewport, boardRatio = BOARD_RATIO) {
   // 四周留出可见的浅色边距，用户始终能辨认导出范围。
@@ -18,7 +18,11 @@ export function focusFrameFor(viewport, boardRatio = BOARD_RATIO) {
   return { left: (viewport.width - width) / 2, top: (viewport.height - height) / 2, width, height }
 }
 
-export function focusScaleFor(tile, boardRect, frame) {
+// 镜头倍率的三段拆解，供 focusScaleFor 与开发者调试页（#/dev/focus）共用：
+// baseScale —— 以被选照片长边占导出框短边 78% 为目标，限幅 1.35–3.4；
+// edgeScale —— 画布盖住整个导出框的最低倍率（由最近的边距决定，多留 2px 防露底）；
+// finalScale —— 两者取大后乘以 boost；edges 为四边是否仍会露出画布（true = 露出）。
+export function focusScaleBreakdown(tile, boardRect, frame, boost = FOCUS_ZOOM_BOOST) {
   const photoWidth = tile.content.width / 100 * boardRect.width
   const photoHeight = tile.content.height / 100 * boardRect.height
   const centerX = (tile.content.x + tile.content.width / 2) / 100 * boardRect.width
@@ -27,13 +31,31 @@ export function focusScaleFor(tile, boardRect, frame) {
   // 画布至少要放大多少才能盖住整个导出框。多留 2px 防止边缘抗锯齿露底。
   const nearestHorizontalEdge = Math.min(centerX, boardRect.width - centerX)
   const nearestVerticalEdge = Math.min(centerY, boardRect.height - centerY)
+  const baseScale = clamp(Math.min(frame.width, frame.height) * .78 / Math.max(photoWidth, photoHeight), 1.35, 3.4)
   const edgeScale = Math.max(
     (frame.width / 2 + FOCUS_EDGE_BLEED) / nearestHorizontalEdge,
     (frame.height / 2 + FOCUS_EDGE_BLEED) / nearestVerticalEdge,
   )
-  const desiredLongEdge = Math.min(frame.width, frame.height) * .78
-  // 比原有居中与边缘安全倍率多 8%；相当于把上一版 20% 增幅缩小 10%。
-  return Math.max(clamp(desiredLongEdge / Math.max(photoWidth, photoHeight), 1.35, 3.4), edgeScale) * FOCUS_ZOOM_BOOST
+  const finalScale = Math.max(baseScale, edgeScale) * boost
+  const covered = (distance, span) => finalScale * distance >= span / 2 + FOCUS_EDGE_BLEED
+  return {
+    baseScale,
+    edgeScale,
+    finalScale,
+    boost,
+    centerX,
+    centerY,
+    edges: {
+      left: !covered(centerX, frame.width),
+      right: !covered(boardRect.width - centerX, frame.width),
+      top: !covered(centerY, frame.height),
+      bottom: !covered(boardRect.height - centerY, frame.height),
+    },
+  }
+}
+
+export function focusScaleFor(tile, boardRect, frame) {
+  return focusScaleBreakdown(tile, boardRect, frame, FOCUS_ZOOM_BOOST).finalScale
 }
 
 export function focusCameraFor(tile, boardRect, frame, scale) {
