@@ -39,6 +39,37 @@ describe('V5 focus camera', () => {
     expect(centerX).toBeCloseTo(1200)
     expect(centerY).toBeCloseTo(900)
   })
+
+  it('zooms an edge photo just enough to cover the export frame while keeping it centered', () => {
+    const frame = focusFrameFor(viewport)
+    const edgeTile = { content: { x: 5, y: 9, width: 20, height: 28 } }
+    const centerX = .15 * boardRect.width
+    const centerY = .23 * boardRect.height
+    const scale = focusScaleFor(edgeTile, boardRect, frame)
+    const camera = focusCameraFor(edgeTile, boardRect, frame, scale)
+    const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera)
+    expect(scale).toBeCloseTo((frame.width / 2 + 2) / centerX)
+    expect(boardRect.left + camera.x + centerX * scale).toBeCloseTo(frame.left + frame.width / 2)
+    expect(boardRect.top + camera.y + centerY * scale).toBeCloseTo(frame.top + frame.height / 2)
+    expect(originX).toBeLessThan(0)
+    expect(originY).toBeLessThan(0)
+    expect(originX + unitX * 100).toBeGreaterThan(2400)
+    expect(originY + unitY * 100).toBeGreaterThan(1800)
+  })
+
+  it('also covers a portrait export for a photo near the bottom edge', () => {
+    const portraitBoard = { left: 300, top: 80, width: 600, height: 800 }
+    const frame = focusFrameFor({ width: 1200, height: 900 }, 3 / 4)
+    const edgeTile = { content: { x: 62, y: 78, width: 20, height: 16 } }
+    const scale = focusScaleFor(edgeTile, portraitBoard, frame)
+    const camera = focusCameraFor(edgeTile, portraitBoard, frame, scale)
+    const output = { width: 1800, height: 2400 }
+    const { originX, originY, unitX, unitY } = exportTransformFor(portraitBoard, frame, camera, output)
+    expect(originX).toBeLessThan(0)
+    expect(originY).toBeLessThan(0)
+    expect(originX + unitX * 100).toBeGreaterThan(output.width)
+    expect(originY + unitY * 100).toBeGreaterThan(output.height)
+  })
 })
 
 describe('occluder clip path（幽灵层只露出遮挡者与选中照片相交的部分）', () => {

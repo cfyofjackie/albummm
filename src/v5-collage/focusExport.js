@@ -1,4 +1,5 @@
 import { OCCLUDER_ALPHA, OCCLUDER_EDGE_FRACTION, exportTransformFor, findOccluders } from './focusGeometry.js'
+import { rotatedBounds } from './decorations.js'
 
 const BOARD_ASPECT = 4 / 3
 
@@ -31,21 +32,36 @@ const PATHS = {
   camera: 'M13 29h94v48H13Z M39 29l8-11h26l8 11M13 43h20m54 0h20M60 44v18m-9-9h18',
 }
 
-function loadImage(source) {
+function loadImage(source, signal) {
   return new Promise((resolve) => {
+    if (signal?.aborted) { resolve(null); return }
     const image = new Image()
-    image.onload = () => resolve(image)
-    image.onerror = () => resolve(null)
+    let finished = false
+    const finish = (value) => {
+      if (finished) return
+      finished = true
+      signal?.removeEventListener('abort', abort)
+      resolve(value)
+    }
+    const abort = () => {
+      image.onload = null
+      image.onerror = null
+      image.src = ''
+      finish(null)
+    }
+    signal?.addEventListener('abort', abort, { once: true })
+    image.onload = () => finish(image)
+    image.onerror = () => finish(null)
     image.src = source
   })
 }
 
-async function drawBackground(ctx, background, width, height) {
+async function drawBackground(ctx, background, width, height, signal) {
   ctx.fillStyle = background?.color || '#e6e5e0'
   ctx.fillRect(0, 0, width, height)
   if (!background?.image) return
-  const image = await loadImage(background.image)
-  if (!image) return
+  const image = await loadImage(background.image, signal)
+  if (!image || signal?.aborted) return
   const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight)
   const drawWidth = image.naturalWidth * scale
   const drawHeight = image.naturalHeight * scale
@@ -142,10 +158,10 @@ function drawTile(ctx, tile, index, frameMode, image, unitX, unitY, originX, ori
 export async function renderBoardPreview({ layout, frameMode, decorationEnabled, autoPlacements, width, targetWidth, background }) {
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.previewSrc)])))
   if (images.size !== layout.length || [...images.values()].some((image) => !image)) return null
-  // 放大动画期间屏幕上只有这张快照：分辨率要按最坏情况给足——最高 3.4 倍镜头
-  // 倍率 × 至多 2 的 devicePixelRatio（Retina 屏实际看到的物理像素密度），否则
-  // 动画全程都是被拉大的糊图。宽度设 4096 上限约束内存（4096×3072 仍在 iOS
-  // 画布面积上限内）；超出部分由常驻高清细节层补回（选中照片全程清晰）。
+  // 放大动画期间用这张快照保持整板同步。以 3.4 倍为清晰度预算，
+  // 边缘照片为覆盖导出框可能需要更高倍率；停稳后由可见区域画布补清晰度。
+  // 宽度设 4096 上限约束内存（4096×3072 仍在 iOS 画布面积上限内）；
+  // 选中照片则由常驻高清细节层全程补回。
   // 内容是照片，用 JPEG 编码更快、体积更小。
   const density = Math.min(window.devicePixelRatio || 1, 2)
   const canvas = document.createElement('canvas')
@@ -196,13 +212,12 @@ export async function exportFocusImage({ layout, selectedId, frameMode, decorati
   ctx.save()
   ctx.beginPath(); ctx.rect(originX, originY, unitX * 100, unitY * 100); ctx.clip()
   ctx.translate(originX, originY)
-  await drawBackground(ctx, background, unitX * 100, unitY * 100)
+  await drawBackground(ctx, background?.focusImage ? { ...background, image: background.focusImage } : background, unitX * 100, unitY * 100)
   ctx.restore()
   ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc)])))
   layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index).forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
-  // 先把选中照片完整盖回原拼贴，再在相交范围内重画遮挡者。
-  // 仅在原拼贴上增加半透明遮挡者，无法显露原本被盖住的内容。
+  // 选中照片完整盖回原拼贴，再在相交范围内重画半透明遮挡者。
   const selectedTile = selectedId ? layout.find((tile) => tile.id === selectedId) : null
   if (selectedTile) {
     drawTile(ctx, selectedTile, layout.indexOf(selectedTile), frameMode, images.get(selectedTile.id), unitX, unitY, originX, originY, decorationEnabled)
@@ -220,7 +235,7 @@ export async function exportFocusImage({ layout, selectedId, frameMode, decorati
       drawTile(ctx, tile, layout.indexOf(tile), frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled)
       ctx.restore()
 
-      // 只给遮挡者的 alpha 加柔边，不模糊照片像素。边缘仍接近原本的不透明度。
+      // 只给遮挡者的 alpha 加柔边，不模糊照片像素。
       edgeCtx.clearRect(0, 0, tier.width, tier.height)
       drawTile(edgeCtx, tile, layout.indexOf(tile), frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled)
       const edgeWidth = Math.min(tile.width * unitX, tile.height * unitY) * OCCLUDER_EDGE_FRACTION
@@ -241,29 +256,45 @@ export async function exportFocusImage({ layout, selectedId, frameMode, decorati
   return new Promise((resolve) => canvas.toBlob(resolve, tier.mime, tier.quality))
 }
 
-// 查看层的高清区域：镜头停稳后把 4:3 画框内的可见画面用原图重绘一次。
-// 快照按 DPR 提分辨率后仍会在最高倍率下发软，这张画布（devicePixelRatio 上限 2）
-// 以临时图层盖在快照上，周围照片一并变清；只存在于查看层，不进入作品库。
-// 选中照片与遮挡者的玻璃化处理仍由 DOM 细节层叠加，这里只画真实层序。
-export async function renderVisibleRegion({ layout, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, background, density = Math.min(window.devicePixelRatio || 1, 2) }) {
+// 镜头停稳后按屏幕实际像素重绘周围区域；选中照片由不缩放的独立 DOM 层显示。
+export function visibleTilesFor(layout, { originX, originY, unitX, unitY }, width, height, selectedId) {
+  const view = { left: -originX / unitX, top: -originY / unitY, right: (width - originX) / unitX, bottom: (height - originY) / unitY }
+  return layout.map((tile, index) => ({ tile, index }))
+    .filter(({ tile }) => {
+      if (tile.id === selectedId) return false // The independent detail layer draws this photo at full resolution.
+      const bounds = rotatedBounds(tile)
+      return bounds.x < view.right && bounds.x + bounds.width > view.left
+        && bounds.y < view.bottom && bounds.y + bounds.height > view.top
+    })
+    .sort((a, b) => a.tile.z - b.tile.z || a.index - b.index)
+}
+
+export async function renderVisibleRegion({ layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, background, signal, density = Math.min(window.devicePixelRatio || 1, 2) }) {
+  if (signal?.aborted) return null
   const width = Math.max(1, Math.round(frame.width * density))
   const height = Math.max(1, Math.round(frame.height * density))
+  const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera, { width, height })
+  const visibleTiles = visibleTilesFor(layout, { originX, originY, unitX, unitY }, width, height, selectedId)
+  // 周围照片与背景纹理同时加载，避免串行等待。
+  const imagesPromise = Promise.all(visibleTiles.map(async ({ tile }) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc, signal)]))
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
   const boardRatio = layout[0]?.boardRatio || BOARD_ASPECT
-  await drawBackground(ctx, background, width, height)
-  const { originX, originY, unitX, unitY } = exportTransformFor(boardRect, frame, camera, { width, height })
+  ctx.fillStyle = background?.color || '#e6e5e0'
+  ctx.fillRect(0, 0, width, height)
   ctx.save()
   ctx.beginPath(); ctx.rect(originX, originY, unitX * 100, unitY * 100); ctx.clip()
-  await drawBackground(ctx, background, unitX * 100, unitY * 100)
+  ctx.translate(originX, originY)
+  await drawBackground(ctx, background?.focusImage ? { ...background, image: background.focusImage } : background, unitX * 100, unitY * 100, signal)
   ctx.restore()
+  if (signal?.aborted) return null
   ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
-  const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc)])))
-  layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index)
-    .forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
+  const images = new Map(await imagesPromise)
+  if (signal?.aborted) return null
+  visibleTiles.forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
   return canvas
 }
 

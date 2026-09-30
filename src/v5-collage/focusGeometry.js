@@ -7,6 +7,7 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
 // 预览（DOM）与导出（canvas）共用这一个数值。
 export const OCCLUDER_ALPHA = 0.3
 export const OCCLUDER_EDGE_FRACTION = 0.03
+const FOCUS_EDGE_BLEED = 2
 
 export function focusFrameFor(viewport, boardRatio = BOARD_RATIO) {
   // 四周留出可见的浅色边距，用户始终能辨认导出范围。
@@ -19,9 +20,18 @@ export function focusFrameFor(viewport, boardRatio = BOARD_RATIO) {
 export function focusScaleFor(tile, boardRect, frame) {
   const photoWidth = tile.content.width / 100 * boardRect.width
   const photoHeight = tile.content.height / 100 * boardRect.height
-  // 比上一版再提高约 24%，让被选照片成为明确主体，只留下少量周边关系。
+  const centerX = (tile.content.x + tile.content.width / 2) / 100 * boardRect.width
+  const centerY = (tile.content.y + tile.content.height / 2) / 100 * boardRect.height
+  // 镜头始终把照片中心放在导出框中心。因此四边距中最短的一边，决定了
+  // 画布至少要放大多少才能盖住整个导出框。多留 2px 防止边缘抗锯齿露底。
+  const nearestHorizontalEdge = Math.min(centerX, boardRect.width - centerX)
+  const nearestVerticalEdge = Math.min(centerY, boardRect.height - centerY)
+  const edgeScale = Math.max(
+    (frame.width / 2 + FOCUS_EDGE_BLEED) / nearestHorizontalEdge,
+    (frame.height / 2 + FOCUS_EDGE_BLEED) / nearestVerticalEdge,
+  )
   const desiredLongEdge = Math.min(frame.width, frame.height) * .78
-  return clamp(desiredLongEdge / Math.max(photoWidth, photoHeight), 1.35, 3.4)
+  return Math.max(clamp(desiredLongEdge / Math.max(photoWidth, photoHeight), 1.35, 3.4), edgeScale)
 }
 
 export function focusCameraFor(tile, boardRect, frame, scale) {
