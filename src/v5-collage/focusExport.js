@@ -81,17 +81,27 @@ function strokePath(ctx, path) {
   ctx.stroke(new Path2D(path))
 }
 
-function drawPathBox(ctx, path, { x, y, width, height, viewWidth, viewHeight, rotate = 0, fill = false, lineWidth = 2.2 }) {
+// 与 DOM SVG 的 preserveAspectRatio="xMidYMid meet" 同语义：等比缩放适配摆放框、
+// 居中放置。自动装饰/回形针的摆放框长宽比随画板比例变化，与 viewBox 不一致，
+// 若对 x/y 独立缩放，线稿会被拉长——「放大后小猫涂鸦被拉长、缩小又恢复」的根因。
+function withPathBoxTransform(ctx, { x, y, width, height, viewWidth, viewHeight, rotate = 0 }, draw) {
+  const scale = Math.min(width / viewWidth, height / viewHeight)
   ctx.save()
   ctx.translate(x + width / 2, y + height / 2)
   ctx.rotate(rotate * Math.PI / 180)
-  ctx.scale(width / viewWidth, height / viewHeight)
+  ctx.scale(scale, scale)
   ctx.translate(-viewWidth / 2, -viewHeight / 2)
-  ctx.lineWidth = lineWidth
-  const shape = new Path2D(path)
-  if (fill) ctx.fill(shape)
-  ctx.stroke(shape)
+  draw()
   ctx.restore()
+}
+
+function drawPathBox(ctx, path, { x, y, width, height, viewWidth, viewHeight, rotate = 0, fill = false, lineWidth = 2.2 }) {
+  withPathBoxTransform(ctx, { x, y, width, height, viewWidth, viewHeight, rotate }, () => {
+    ctx.lineWidth = lineWidth
+    const shape = new Path2D(path)
+    if (fill) ctx.fill(shape)
+    ctx.stroke(shape)
+  })
 }
 
 function drawAutoDecoration(ctx, placement, backgroundColor) {
@@ -104,19 +114,22 @@ function drawAutoDecoration(ctx, placement, backgroundColor) {
   if (id === 'flower') {
     drawPathBox(ctx, PATHS.flowerStem, { x, y, width, height, viewWidth: 100, viewHeight: 110, rotate, lineWidth: 3.2 })
     drawPathBox(ctx, PATHS.flowerHead, { x, y, width, height, viewWidth: 100, viewHeight: 110, rotate, fill: true, lineWidth: 3.2 })
-    ctx.save()
-    ctx.translate(x + width / 2, y + height / 2)
-    ctx.rotate(rotate * Math.PI / 180)
-    ctx.scale(width / 100, height / 110)
-    ctx.beginPath(); ctx.arc(50, 40, 7, 0, Math.PI * 2); ctx.stroke()
-    ctx.restore()
+    // 花芯圆与 DOM 的 <circle cx=50 cy=40> 同一变换：不能在中心坐标系里直接画
+    // (50,40)，那会落到框右下角（老实现的位置错误，放大后可见）。
+    withPathBoxTransform(ctx, { x, y, width, height, viewWidth: 100, viewHeight: 110, rotate }, () => {
+      ctx.lineWidth = 3.2
+      ctx.beginPath(); ctx.arc(50, 40, 7, 0, Math.PI * 2); ctx.stroke()
+    })
   } else if (id === 'cat') {
     drawPathBox(ctx, PATHS.cat, { x, y, width, height, viewWidth: 120, viewHeight: 100, rotate, fill: true, lineWidth: 3.2 })
   } else if (id === 'dog') {
     drawPathBox(ctx, PATHS.dog, { x, y, width, height, viewWidth: 120, viewHeight: 100, rotate, fill: true, lineWidth: 3.2 })
   } else {
     drawPathBox(ctx, PATHS.camera, { x, y, width, height, viewWidth: 120, viewHeight: 90, rotate, fill: true, lineWidth: 3.2 })
-    ctx.save(); ctx.translate(x + width / 2, y + height / 2); ctx.rotate(rotate * Math.PI / 180); ctx.scale(width / 120, height / 90); ctx.beginPath(); ctx.arc(60, 53, 17, 0, Math.PI * 2); ctx.stroke(); ctx.restore()
+    withPathBoxTransform(ctx, { x, y, width, height, viewWidth: 120, viewHeight: 90, rotate }, () => {
+      ctx.lineWidth = 3.2
+      ctx.beginPath(); ctx.arc(60, 53, 17, 0, Math.PI * 2); ctx.stroke()
+    })
   }
   ctx.restore()
 }
@@ -248,21 +261,20 @@ function drawTile(ctx, tile, index, frameMode, image, unitX, unitY, originX, ori
 }
 
 // 镜头移动时只缩放这一张已排好的预览图，避免 Safari 同时重绘十张旋转照片。
-// 选中照片由同步高清 DOM 层全程补清，整板快照按 groupSafeScale 预留清晰度。
-export async function renderBoardPreview({ layout, frameMode, decorationEnabled, autoPlacements, width, targetWidth, background }) {
+// 选中照片由同步高清 DOM 层全程补清，整板快照按实际最大镜头倍率预留清晰度。
+export async function renderBoardPreview({ layout, frameMode, decorationEnabled, autoPlacements, width, targetWidth, targetScale = 3.4, background }) {
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.previewSrc)])))
   if (images.size !== layout.length || [...images.values()].some((image) => !image)) return null
-  // 放大动画期间用这张快照保持整板同步。以 3.4 倍为清晰度预算，
-  // 边缘照片为覆盖导出框可能需要更高倍率；停稳后由可见区域画布补清晰度。
-  // 宽度设 4096 上限约束内存（4096×3072 仍在 iOS 画布面积上限内）；
-  // 选中照片则由常驻高清细节层全程补回。
+  // 分辨率预算 = 板宽 × 实际最大镜头倍率 × 设备 DPR：整组统一倍率（~3 倍）叠加
+  // 3x 屏后需要板宽 ~9 倍的像素，老的 3.4×min(DPR,2) 只有 ~6.8，放大态整板只显示
+  // 到设备分辨率的 ~75%——「放大预览糊、导出清楚」的根因。上限仍是 iOS 画布
+  // 16M 像素面积（竖版同样约束，避免 Safari 在超大快照上耗尽内存）。
   // 内容是照片，用 JPEG 编码更快、体积更小。
-  const density = Math.min(window.devicePixelRatio || 1, 2)
+  const density = window.devicePixelRatio || 1
   const canvas = document.createElement('canvas')
   const boardRatio = layout[0]?.boardRatio || BOARD_ASPECT
-  // 竖版同样限制画布总像素，避免 Safari 在 4096×5461 快照上耗尽内存。
   const maxWidth = Math.min(4096, Math.floor(Math.sqrt(16_000_000 * boardRatio)))
-  canvas.width = targetWidth || Math.min(maxWidth, Math.max(1, Math.round(width * 3.4 * density)))
+  canvas.width = targetWidth || Math.min(maxWidth, Math.max(1, Math.round(width * targetScale * density)))
   canvas.height = Math.max(1, Math.round(canvas.width / boardRatio))
   const ctx = canvas.getContext('2d')
   if (!ctx) return null

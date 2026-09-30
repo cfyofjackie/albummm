@@ -8,6 +8,7 @@ import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
 import SealedEnd from '../home/SealedEnd.jsx'
 import V5FocusViewer from './V5FocusViewer.jsx'
 import { downloadBlob, exportBoardImage, exportTiersFor, renderBoardPreview } from './focusExport.js'
+import { focusFrameFor, groupSafeScale } from './focusGeometry.js'
 import { BACKGROUNDS, backgroundFor, backgroundStyle } from './backgrounds.js'
 import './v5.css'
 
@@ -122,9 +123,16 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
     let cancelled = false
     let previewUrl = null
     const render = () => {
+      // 快照分辨率预算随镜头：按整组统一倍率（与 V5FocusViewer 同一取值）预留像素，
+      // 保证放大到顶时快照仍以设备原生密度显示（iPhone 3x 屏尤其关键）。
+      // 必须在 render 时（DOM 已提交、画板已挂载）读板宽——布局刚凑齐的那次渲染
+      // 里 boardRef 还是 null，走 960 兜底会把倍率算小，快照整段发糊。
+      const boardWidth = boardRef.current?.clientWidth || 960
+      const boardRect = { left: 0, top: 0, width: boardWidth, height: boardWidth / boardRatio }
+      const maxScale = groupSafeScale(layout, boardRect, focusFrameFor({ width: window.innerWidth, height: window.innerHeight }, boardRatio))
       renderBoardPreview({
         layout, frameMode, decorationEnabled: decorationMode === DECORATION_MODES.scrapbook.id,
-        autoPlacements: autoDecorationPlacements, width: boardRef.current?.clientWidth || 960, background,
+        autoPlacements: autoDecorationPlacements, width: boardWidth, targetScale: maxScale, background,
       }).then(async (blob) => {
         if (cancelled || !blob) return
         previewUrl = URL.createObjectURL(blob)
@@ -158,7 +166,7 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
       boardPreviewImageRef.current = null
       if (previewUrl) URL.revokeObjectURL(previewUrl)
     }
-  }, [layout, frameMode, decorationMode, autoDecorationPlacements, background])
+  }, [layout, frameMode, decorationMode, autoDecorationPlacements, background, boardRatio])
 
   useEffect(() => {
     if (!userPhotos || !workId || photos.length !== REQUIRED_PHOTO_COUNT) return
