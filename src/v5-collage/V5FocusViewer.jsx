@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
 import { downloadBlob, exportFocusImage, exportTiersFor, renderVisibleRegion } from './focusExport.js'
-import { findOccluders, focusCameraFor, focusFrameFor, focusScaleBreakdown, focusScaleFor, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
+import { edgeScaleFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleBreakdown, focusScaleFor, groupSafeScale, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 560
 const CLOSE_MS = 320
