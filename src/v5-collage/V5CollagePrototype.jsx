@@ -169,7 +169,7 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
         const previous = await loadWork(workId)
         const record = {
           id: workId, type: 'collage', title: previous?.title || '单张拼贴',
-          createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now(),
+          createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now(), stage: previous?.stage,
           settings: { boardRatio, backgroundId, frameMode, decorationMode },
           photos: photoRecords(photos), thumbnail: previous?.thumbnail || null,
         }

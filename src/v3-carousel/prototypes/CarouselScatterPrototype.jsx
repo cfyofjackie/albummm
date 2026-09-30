@@ -361,7 +361,7 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
     const save = async () => {
       try {
         const previous = await loadWork(workId)
-        const record = { id: workId, type: 'story', title: previous?.title || '多页故事', createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now(), settings: { activeId, seed, previewFormatId, borderId, edgeId, tapeId, backgroundId, showNumbers }, photos: photoRecords(photos), thumbnail: previous?.thumbnail || null }
+        const record = { id: workId, type: 'story', title: previous?.title || '多页故事', createdAt: previous?.createdAt || Date.now(), updatedAt: Date.now(), stage: previous?.stage, settings: { activeId, seed, previewFormatId, borderId, edgeId, tapeId, backgroundId, showNumbers }, photos: photoRecords(photos), thumbnail: previous?.thumbnail || null }
         await saveWork(record)
         if (!cancelled) setSaveStatus('已保存到我的作品')
         if (cancelled) return

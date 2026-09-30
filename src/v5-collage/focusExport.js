@@ -50,8 +50,17 @@ function loadImage(source, signal) {
       finish(null)
     }
     signal?.addEventListener('abort', abort, { once: true })
+    // 非 abort 的瞬时失败（内存压力下的解码/加载抖动）自动重试一次；
+    // 仍失败才返回 null，由调用方决定中断还是降级。
     image.onload = () => finish(image)
-    image.onerror = () => finish(null)
+    image.onerror = () => {
+      if (!signal?.aborted && !image.dataset.retried) {
+        image.dataset.retried = '1'
+        window.setTimeout(() => { image.src = source }, 250)
+        return
+      }
+      finish(null)
+    }
     image.src = source
   })
 }
@@ -216,6 +225,8 @@ export async function exportFocusImage({ layout, selectedId, frameMode, decorati
   ctx.restore()
   ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
   const images = new Map(await Promise.all(layout.map(async (tile) => [tile.id, await loadImage(tile.photo.originalSrc || tile.photo.previewSrc)])))
+  // 有照片加载失败就中断导出——宁可报错重试，也不能导出缺照片的白图。
+  if (layout.some((tile) => !images.get(tile.id))) throw new Error('部分照片加载失败，请重试')
   layout.map((tile, index) => ({ tile, index })).sort((a, b) => a.tile.z - b.tile.z || a.index - b.index).forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
   // 选中照片完整盖回原拼贴，再在相交范围内重画半透明遮挡者。
   const selectedTile = selectedId ? layout.find((tile) => tile.id === selectedId) : null
@@ -294,6 +305,8 @@ export async function renderVisibleRegion({ layout, selectedId, frameMode, decor
   ctx.save(); ctx.translate(originX, originY); ctx.scale(unitX, unitY); drawBoardDecorations(ctx, decorationEnabled, autoPlacements, boardRatio, background?.color || '#e6e5e0'); ctx.restore()
   const images = new Map(await imagesPromise)
   if (signal?.aborted) return null
+  // 周围照片加载失败时宁可保持软化的快照，也不把白卡画进高清区域。
+  if (visibleTiles.some(({ tile }) => !images.get(tile.id))) return null
   visibleTiles.forEach(({ tile, index }) => drawTile(ctx, tile, index, frameMode, images.get(tile.id), unitX, unitY, originX, originY, decorationEnabled))
   return canvas
 }
