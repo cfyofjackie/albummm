@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
 import { downloadBlob, exportFocusImage, exportTiersFor, renderVisibleRegion } from './focusExport.js'
-import { findOccluders, focusCameraFor, focusFrameFor, focusScaleFor, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
+import { findOccluders, focusCameraFor, focusFrameFor, focusScaleBreakdown, focusScaleFor, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 560
 const CLOSE_MS = 320
@@ -47,7 +47,7 @@ function FocusCard({ tile, index, frameMode, decorationEnabled, className = '', 
   )
 }
 
-export default function V5FocusViewer({ layout, initialTileId, boardRect, frameMode, decorationEnabled, autoPlacements, boardPreviewSrc, background, boardRatio, scaleFactor = 1, onClose }) {
+export default function V5FocusViewer({ layout, initialTileId, boardRect, frameMode, decorationEnabled, autoPlacements, boardPreviewSrc, background, boardRatio, scaleFactor = 1, onFocusInfo, onClose }) {
   const initialTile = useMemo(() => layout.find((tile) => tile.id === initialTileId) || layout[0], [initialTileId, layout])
   const [selectedId, setSelectedId] = useState(initialTile.id)
   const [viewport, setViewport] = useState(viewportSize)
@@ -69,6 +69,17 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
   // 打开取景与视口/比例变化后的重新取景共用这一倍率；预览和导出都从 camera 取值，
   // 因此始终是同一个镜头结果。正式页面不传，保持默认 1。
   const scaleForTile = (tile) => focusScaleFor(tile, boardRect, frame) * scaleFactor
+
+  // 开发者调试页的数据通道：选中照片、镜头与画框变化时上报拆解结果。
+  // 正式页面不传 onFocusInfo，此 effect 不产生任何行为差异。
+  useEffect(() => {
+    if (!onFocusInfo || !selectedTile) return
+    onFocusInfo({
+      photoIndex: layout.indexOf(selectedTile),
+      total: layout.length,
+      breakdown: focusScaleBreakdown(selectedTile, boardRect, frame, scaleFactor),
+    })
+  }, [onFocusInfo, selectedTile, layout, boardRect, frame, camera, scaleFactor])
   // 镜头停稳后补清周围区域；选中照片由不缩放的独立层补清。
   const [regionCanvas, setRegionCanvas] = useState(null)
   const regionDisplayRef = useRef(null)

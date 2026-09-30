@@ -45,7 +45,7 @@ function uploadKindFor(file, size) {
   return 'valid'
 }
 
-export default function V5CollagePrototype() {
+export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo = undefined } = {}) {
   const inputRef = useRef(null)
   const boardRef = useRef(null)
   const boardPreviewImageRef = useRef(null)
@@ -392,6 +392,8 @@ export default function V5CollagePrototype() {
           boardPreviewSrc={focusRequest.boardPreviewSrc}
           background={background}
           boardRatio={boardRatio}
+          scaleFactor={focusScaleFactor}
+          onFocusInfo={onFocusInfo}
           onClose={() => setFocusRequest(null)}
         />
       )}
