@@ -9,5 +9,7 @@
 /* 首页/作品页双面板轨道：拖动时跟手（translate3d），面板各自内部滚动。 */
 .primary-viewport { position: fixed; inset: 0; overflow: hidden; }
 .primary-track { width: 200%; height: 100%; display: flex; will-change: transform; }
-.primary-panel { width: 50%; min-width: 0; height: 100%; flex: none; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+/* touch-action: pan-y 是横向丝滑的关键——告知浏览器纵向滚动归它、横向拖动归
+   pager，否则浏览器随时用 pointercancel 抢占横向手势，拖动会发涩甚至中断。 */
+.primary-panel { width: 50%; min-width: 0; height: 100%; flex: none; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
 .primary-panel > * { min-height: 100%; }

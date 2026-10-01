@@ -199,7 +199,9 @@ export default function App() {
 
   const onPointerDown = (event) => {
     if (!primary || !event.isPrimary || event.button !== 0) return
-    if (event.target instanceof Element && event.target.closest('.primary-nav, button, input, textarea, select')) return
+    // 按钮不排除（film 同款）：首页模板卡、作品卡都是按钮/链接，从其上起手
+    // 也能拖动；未捕获的轻点照常触发 click，捕获后的拖动由 swallowClick 兜底。
+    if (event.target instanceof Element && event.target.closest('.primary-nav, input, textarea, select, [contenteditable]')) return
     if (event.pointerType === 'mouse' && event.target.closest('a, img')) event.preventDefault()
     const resumeTarget = settleTargetRef.current
     swipeRef.current = {
