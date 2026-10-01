@@ -5,8 +5,9 @@
 
 // 这两张是用户为 V3 背景实验挑出的参考。它们不参与照片内容，也不跟着
 // 某一张用户照片裁切；每一页各自以完整输出分辨率渲染，只用页序控制取景位置。
-import inkWaveReference from '../../../reference/background/the-cleveland-museum-of-art-uNPsv1S6BhM-unsplash.jpg'
-import veilFlowReference from '../../../reference/background/pexels-diva-34062837.jpg'
+// 图件从 reference/ 复制进 src/（reference/ 是本地素材库，不进仓库与部署）。
+import inkWaveReference from '../assets/the-cleveland-museum-of-art-uNPsv1S6BhM-unsplash.jpg'
+import veilFlowReference from '../assets/pexels-diva-34062837.jpg'
 
 const grain = encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='200' height='200' filter='url(#g)' opacity='.055'/></svg>")
 

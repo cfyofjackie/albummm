@@ -5,3 +5,14 @@ dist/
 learning/
 check/
 .DS_Store
+
+# 设计参考素材库（本地保留，不进仓库与部署；背景实验用的两张已复制进 src/v3-carousel/assets/）
+reference/
+
+# 已归档的历史版本（本地保留，不进仓库与部署；2026-10 下线，需要时从 git 历史或本地文件恢复）
+/src/v2-collage/
+/src/v4-gallery/
+/src/v3-carousel/prototypes/CarouselMastersPrototype.jsx
+/src/v3-carousel/prototypes/CarouselRhythmPrototype.jsx
+/src/v3-carousel/prototypes/CarouselScalePrototype.jsx
+/src/v3-carousel/prototypes/CarouselScalePrototype.css
