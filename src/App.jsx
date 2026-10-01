@@ -4,12 +4,11 @@ import PrimaryNav from './home/PrimaryNav.jsx'
 import WorksPage from './home/WorksPage.jsx'
 
 // 应用缝隙：这个文件只决定「当前显示哪个页面」。
-// 正式入口是两条 hash 路由（#/story 多页故事、#/collage 单张拼贴），地址稳定可分享；
-// V1 电子相册书经旧链接 ?prototype=v1-book 保留。V2 拼贴实验、V3 对照原型
-//（masters/rhythm/scale/scatter 独立入口）与 V4 画廊已于 2026-10 归档：
-// 文件仍在本地（gitignore，见 .gitignore），但不再进仓库与部署。
+// 正式入口是两条 hash 路由（#/story 多页故事、#/collage 单张拼贴），地址稳定可分享。
+// V1 电子相册书与 V2 拼贴实验、V3 对照原型（masters/rhythm/scale/scatter 独立
+// 入口）、V4 画廊均已归档（2026-10）：文件仍在本地（gitignore），不再进仓库与部署，
+// 旧链接回落首页。见 docs/versions.md 与 .gitignore。
 const PROTOTYPES = {
-  'v1-book': lazy(() => import('./v1-book/V1BookApp.jsx')),
   'carousel-smart': lazy(() => import('./v3-carousel/prototypes/CarouselSmartPrototype.jsx')),
   'v5-reference-layout': lazy(() => import('./v5-collage/V5CollagePrototype.jsx')),
 }

@@ -19,8 +19,8 @@ export default defineConfig(({ command }) => ({
     },
   },
   test: {
-    // 已归档的历史版本（v2-collage / v4-gallery，gitignore、不进部署）
+    // 已归档的历史版本（v1-book / v2-collage / v4-gallery，gitignore、不进部署）
     // 不再维护测试：v4 的 3 个测试文件早已失败，留着会一直把 npm test 染红。
-    exclude: ['**/node_modules/**', '**/dist/**', 'src/v2-collage/**', 'src/v4-gallery/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', 'src/v1-book/**', 'src/v2-collage/**', 'src/v4-gallery/**'],
   },
 }))
