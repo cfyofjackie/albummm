@@ -1,10 +1,21 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
-import { downloadBlob, exportFocusImage, exportTiersFor } from './focusExport.js'
+import { downloadBlob, exportFocusImage, exportTiersFor, renderFocusScene } from './focusExport.js'
 import { edgeScaleFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleBreakdown, groupSafeScale, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
 
 const TRANSITION_MS = 420
 const CLOSE_MS = 420
+
+// Safari(WebKit) 的合成层在 transform scale 动画后无法按最终倍率重排光栅
+//（will-change 重建也无效），整层纹理拉伸导致放大画面发糊；Chromium 无此问题。
+// 停稳后用场景渲染器按设备像素输出位图、1:1 盖回取景框（位图不经缩放，必然清晰）。
+// 仅 WebKit 启用；加 ?webkit=1 可在 Chromium 上强制启用以便调试对比。
+const IS_WEBKIT = typeof navigator !== 'undefined'
+  && /safari/i.test(navigator.userAgent)
+  && !/chrom(e|ium)|crios|edg|android|fxios/i.test(navigator.userAgent)
+const FORCE_WEBKIT = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).has('webkit')
+const USE_SETTLED_CANVAS = IS_WEBKIT || FORCE_WEBKIT
 
 function viewportSize() {
   return { width: window.innerWidth, height: window.innerHeight }
@@ -126,6 +137,40 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
       layers.forEach((el) => { el.style.willChange = '' })
     }
   }, [settled])
+
+  // Safari 停稳补清：停稳后用 renderFocusScene（与导出同一渲染器）把当前取景
+  // 按设备像素绘成位图，绘成前保持 transform 层现状（可能偏软），绘成后 1:1
+  // 盖上——位图不经缩放，任何内核下都清晰。任一原图加载失败就保持现状，
+  // 绝不因补清失败挡住查看。镜头再次移动（settled=false）立即撤下位图。
+  const [settledCanvas, setSettledCanvas] = useState(null)
+  const settledDisplayRef = useRef(null)
+  useLayoutEffect(() => {
+    if (settledCanvas && settledDisplayRef.current) {
+      settledDisplayRef.current.getContext('2d')?.drawImage(settledCanvas, 0, 0)
+    }
+  }, [settledCanvas])
+  useEffect(() => {
+    if (!USE_SETTLED_CANVAS || !settled || leaving || !selectedTile) {
+      setSettledCanvas(null)
+      return undefined
+    }
+    const controller = new AbortController()
+    const dpr = Math.min(window.devicePixelRatio || 1, 3)
+    // 等 transition 的最后一帧落地再开始解码绘制，不与动画收尾抢主线程。
+    const timer = window.setTimeout(() => {
+      renderFocusScene({
+        layout, selectedId, frameMode, decorationEnabled, autoPlacements, boardRect, frame, camera, background,
+        width: frame.width * dpr, height: frame.height * dpr, signal: controller.signal, useOriginal: true,
+      })
+        .then((canvas) => { if (!controller.signal.aborted && canvas) setSettledCanvas(canvas) })
+        .catch(() => {})
+    }, 80)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+      setSettledCanvas(null)
+    }
+  }, [USE_SETTLED_CANVAS, settled, leaving, selectedId, selectedTile, camera, background, layout, boardRect, frame, frameMode, decorationEnabled, autoPlacements])
 
   // settled 只服务导出：镜头停稳前不开放导出按钮。高清层本身不等停稳。
   const settleDetail = () => {
@@ -303,6 +348,16 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
                 )
               })}
             </div>
+          )}
+          {USE_SETTLED_CANVAS && settledCanvas && !leaving && (
+            <canvas
+              ref={settledDisplayRef}
+              className="v5-focus__settled"
+              width={settledCanvas.width}
+              height={settledCanvas.height}
+              style={{ left: `${frame.left}px`, top: `${frame.top}px`, width: `${frame.width}px`, height: `${frame.height}px` }}
+              aria-hidden="true"
+            />
           )}
           <div className="v5-focus__frame-mask" style={{ top: 0, left: 0, right: 0, height: frame.top }} aria-hidden="true" />
           <div className="v5-focus__frame-mask" style={{ top: frame.top + frame.height, left: 0, right: 0, bottom: 0 }} aria-hidden="true" />

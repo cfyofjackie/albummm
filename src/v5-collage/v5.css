@@ -55,6 +55,10 @@
 .v5-focus.is-framed .v5-focus__frame-backing { opacity: 1; }
 .v5-focus__board { position: absolute; z-index: 1; overflow: visible; transform-origin: top left; transition: transform var(--focus-ms) var(--focus-ease); }
 .v5-focus__board-preview { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
+/* Safari 停稳补清：WebKit 对 transform scale 合成层不按最终倍率重排光栅（发糊），
+   停稳后用设备像素的场景位图 1:1 盖回取景框。位图不经缩放必清晰；pointer-events
+   none 不挡点击与光标。仅 WebKit 挂载（?webkit=1 可强制）。 */
+.v5-focus__settled { position: absolute; z-index: 3; pointer-events: none; }
 .v5-focus__photo { cursor: pointer; }
 .v5-focus__photo.is-selected { cursor: default; }
 /* 高清同步层：与整板共用同一组镜头坐标和同一条 transform 过渡（见组件内注释），
