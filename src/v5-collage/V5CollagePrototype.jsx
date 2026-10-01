@@ -123,6 +123,11 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
 
   useEffect(() => () => { photosRef.current.forEach(releasePhotoSource) }, [])
 
+  // 封存预览是 blob URL：换新与卸载时都要释放，反复「完成 → 更新作品」不再累积
+  useEffect(() => () => {
+    if (sealedPreview) URL.revokeObjectURL(sealedPreview)
+  }, [sealedPreview])
+
   const layout = useMemo(
     () => (photos.length === REQUIRED_PHOTO_COUNT ? buildReferenceLayout(photos, frameMode, boardRatio) : []),
     [photos, frameMode, boardRatio],

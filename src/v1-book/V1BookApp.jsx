@@ -5,6 +5,7 @@ import {
   RECOMMENDED,
   isAcceptedFile,
   loadPhoto,
+  releasePhotoSource,
 } from '../shared/photo.js'
 import { planPages } from './lib/plan.js'
 import { pickCoverColor } from './lib/palette.js'
@@ -38,6 +39,11 @@ export default function V1BookApp() {
   const [screen, setScreen] = useState('editor')
   const inputRef = useRef(null)
   const demoRanRef = useRef(false) // StrictMode 下 effect 跑两次，演示只生成一次
+  // V1 只渲染 previewSrc，从不使用 loadPhoto 建的原图 blob URL；
+  // 记住最新照片列表，删照片/做新书/离开页面时把 URL 还掉（V3/V5 同款清理）。
+  const photosRef = useRef([])
+  photosRef.current = photos
+  useEffect(() => () => { photosRef.current.forEach(releasePhotoSource) }, [])
 
   // 启动时把书库读回来：有书就直接落在封面墙（第二次打开就是书架）。
   // 演示 / 验证钩子（?demo=…&go=…）自己决定落在哪，这里让路。
@@ -84,6 +90,8 @@ export default function V1BookApp() {
   )
 
   const removePhoto = (id) => {
+    const target = photos.find((p) => p.id === id)
+    if (target) releasePhotoSource(target)
     setPhotos((prev) => prev.filter((p) => p.id !== id))
   }
 
@@ -174,6 +182,7 @@ export default function V1BookApp() {
           setScreen('closed')
         }}
         onNew={() => {
+          photosRef.current.forEach(releasePhotoSource)
           setPhotos([])
           setTitle('')
           setCurrentId(null)

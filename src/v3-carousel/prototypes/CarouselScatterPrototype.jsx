@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { toBlob } from 'html-to-image'
 import { makeDemoPhotos } from '../../shared/demo.js'
 import { loadPhoto, releasePhotoSource } from '../../shared/photo.js'
-import { countWorks, loadWork, MAX_WORKS, newWorkId, photoRecords, restorePhotos, saveWork } from '../../shared/works.js'
+import { countWorks, loadWork, MAX_WORKS, mediaBlob, newWorkId, photoRecords, restorePhotos, saveWork } from '../../shared/works.js'
 import { BORDER_STYLES, DEFAULT_BORDER, DEFAULT_EDGE, DEFAULT_FORMAT, DEFAULT_TAPE, EDGE_STYLES, PAGE_FORMATS, TAPE_STYLES, clamp, matInsets, materialOf, placeFrame, planSmartStory, rngFrom, STYLE_LAYOUTS, tapeOffset, tornContours } from '../layout/carouselPlacement.js'
 import { backgroundFor, backgroundsForStyle } from '../layout/paperBackgrounds.js'
 import { BACKGROUND_MASTERS, backgroundMasterFor } from '../layout/backgroundMasters.js'
@@ -358,6 +358,11 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
   }, [])
   useEffect(() => () => photosRef.current.forEach(releasePhotoSource), [])
 
+  // 封存预览是 blob URL：换新与卸载时都要释放，反复「存入 → 更新」不再累积
+  useEffect(() => () => {
+    if (sealedPreview) URL.revokeObjectURL(sealedPreview)
+  }, [sealedPreview])
+
   useEffect(() => {
     if (!smart || !userPhotos || !workId || !photos.length) return
     let cancelled = false
@@ -389,7 +394,10 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
       const thumbnail = await fetch(photos[0].previewSrc).then((result) => result.blob())
       const finalRecord = thumbnail ? { ...record, thumbnail } : record
       if (thumbnail) await saveWork(finalRecord)
-      setSealedPreview(URL.createObjectURL(finalRecord.thumbnail))
+      // 与 V5 同款：thumbnail 可能是 WebKit 字节兜底形态，用 mediaBlob 归一成 Blob；
+      // 没有缩略图时不建 URL（旧实现对 null 调 createObjectURL 会直接抛错）
+      const previewBlob = mediaBlob(finalRecord.thumbnail)
+      setSealedPreview(previewBlob ? URL.createObjectURL(previewBlob) : null)
     } catch (error) { setSaveStatus(error?.message || '存入失败，请重试') }
     finally { setSealing(false) }
   }
