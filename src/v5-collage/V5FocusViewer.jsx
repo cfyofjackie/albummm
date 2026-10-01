@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { BoardDecorations, CardDecoration } from './V5Decorations.jsx'
 import { downloadBlob, exportFocusImage, exportTiersFor } from './focusExport.js'
 import { edgeScaleFor, findOccluders, focusCameraFor, focusFrameFor, focusScaleBreakdown, groupSafeScale, occluderClipPath, occluderMaskImage, openingCamera } from './focusGeometry.js'
@@ -102,6 +102,30 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
     })
     return () => { active = false }
   }, [selectedTile, occluders, leaving, decodedOriginalIds])
+
+  // WebKit(Safari) 的合成层在 transform scale 动画结束后常保留动画起点的低倍率
+  // 光栅化，整层纹理被拉伸显示导致发糊（Chromium 会按最终倍率重排，无此问题）。
+  // 停稳后给整板层与高清层挂一帧 will-change 再摘掉，强制合成层按停稳后的实际
+  // 倍率重建光栅。对 Chromium 无可感知影响；后台节流下 rAF 不执行也安全——
+  // 挂着 will-change 时的重建光栅本身就是清晰版本。
+  const boardLayerRef = useRef(null)
+  const detailLayerRef = useRef(null)
+  useLayoutEffect(() => {
+    if (!settled) return undefined
+    const layers = [boardLayerRef.current, detailLayerRef.current].filter(Boolean)
+    layers.forEach((el) => { el.style.willChange = 'transform' })
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        layers.forEach((el) => { el.style.willChange = '' })
+      })
+    })
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+      layers.forEach((el) => { el.style.willChange = '' })
+    }
+  }, [settled])
 
   // settled 只服务导出：镜头停稳前不开放导出按钮。高清层本身不等停稳。
   const settleDetail = () => {
@@ -208,6 +232,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
         <div className="v5-focus__artboard">
           <div className="v5-focus__frame-backing" style={{ left: frame.left, top: frame.top, width: frame.width, height: frame.height, backgroundColor: background.color }} aria-hidden="true" />
           <div
+            ref={boardLayerRef}
             className="v5-collage__board v5-focus__board"
             style={{ left: `${boardRect.left}px`, top: `${boardRect.top}px`, width: `${boardRect.width}px`, aspectRatio: boardRatio, transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.scale})`, backgroundColor: background.color, backgroundImage: background.image ? `url("${background.image}")` : undefined, backgroundSize: 'cover' }}
             onTransitionEnd={finishMotion}
@@ -239,6 +264,7 @@ export default function V5FocusViewer({ layout, initialTileId, boardRect, frameM
           </div>
           {selectedTile && (
             <div
+              ref={detailLayerRef}
               className="v5-focus__detail"
               style={{ left: `${boardRect.left}px`, top: `${boardRect.top}px`, width: `${boardRect.width}px`, height: `${boardRect.height}px`, transform: `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.scale})` }}
             >
