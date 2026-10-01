@@ -123,13 +123,27 @@ export function deleteWork(id) {
 }
 
 export function photoRecords(photos) {
-  return photos.map(({ id, name, width, height, orientation, file }) => ({ id, name, width, height, orientation, file }))
+  return photos.map(({ id, name, width, height, orientation, file, previewSrc }) => ({
+    id, name, width, height, orientation, file,
+    // 预览图一并持久化：重新打开作品免去整轮原图解码与 JPEG 重编码（打开慢的主因）
+    preview: previewSrc,
+  }))
 }
 
 export async function restorePhotos(records, loadPhoto) {
   return Promise.all(records.map(async (record) => {
     const file = mediaBlob(record.file)
     if (!file) throw new Error('作品缺少照片文件')
+    if (record.preview) {
+      // 快路径：预览图已随作品保存，直接复用，完全不碰原图解码。
+      // 尺寸/方向当初按 EXIF 解码后存过，这里原样复用即可。
+      return {
+        id: record.id, name: record.name, width: record.width, height: record.height,
+        orientation: record.orientation, file,
+        previewSrc: record.preview,
+        originalSrc: URL.createObjectURL(file),
+      }
+    }
     const photo = await loadPhoto(file)
     return { ...photo, id: record.id, name: record.name }
   }))

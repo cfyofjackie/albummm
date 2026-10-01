@@ -41,7 +41,12 @@ function drawNumber(canvas, i, [w, h]) {
 }
 
 export async function makeDemoPhotos(count) {
-  const files = await Promise.all(
+  // 直接产出照片对象：演示图无 EXIF、尺寸已知，跳过 loadPhoto 的
+  // toBlob→createImageBitmap→toDataURL 双重编解码——那会让每次打开
+  // 故事/拼贴页都白等数秒（这正是「多页故事打开慢」的主因）。
+  // 原图 blob 仍保留（供放大查看），预览图一次小尺寸编码直接产出。
+  const { classify } = await import('./photo.js')
+  return Promise.all(
     DEMO_DIMS.slice(0, count).map(
       ([w, h], i) =>
         new Promise((resolve) => {
@@ -49,14 +54,28 @@ export async function makeDemoPhotos(count) {
           canvas.width = w
           canvas.height = h
           drawNumber(canvas, i, [w, h])
+          const scale = Math.min(1, 1600 / Math.max(w, h))
+          const preview = document.createElement('canvas')
+          preview.width = Math.round(w * scale)
+          preview.height = Math.round(h * scale)
+          preview.getContext('2d').drawImage(canvas, 0, 0, preview.width, preview.height)
           canvas.toBlob(
-            (blob) => resolve(new File([blob], `demo-${i + 1}.jpg`, { type: 'image/jpeg' })),
+            (blob) => {
+              resolve({
+                id: `demo-${i + 1}`,
+                name: `demo-${i + 1}.jpg`,
+                width: w,
+                height: h,
+                orientation: classify(w, h),
+                file: new File([blob], `demo-${i + 1}.jpg`, { type: 'image/jpeg' }),
+                previewSrc: preview.toDataURL('image/jpeg', 0.85),
+                originalSrc: URL.createObjectURL(blob),
+              })
+            },
             'image/jpeg',
             0.9,
           )
         }),
     ),
   )
-  const { loadPhoto } = await import('./photo.js')
-  return Promise.all(files.map(loadPhoto))
 }

@@ -328,6 +328,10 @@ export default function CarouselScatterPrototype({ rhythm = false, smart = false
         if (!work || work.type !== 'story') { setSaveStatus('找不到这份作品，请从“我的作品”重新打开。'); setLoading(false); return }
         const restored = await restorePhotos(work.photos, loadPhoto)
         if (!live) { restored.forEach(releasePhotoSource); return }
+        // 旧作品记录没有持久化预览图：恢复完成后静默回写一次，下次打开走快路径
+        if (work.photos.some((photo) => !photo.preview)) {
+          saveWork({ ...work, photos: photoRecords(restored) }).catch(() => {})
+        }
         replacePhotos(restored)
         setActiveId(work.settings?.activeId || 'gallery')
         setSeed(work.settings?.seed ?? 4128)

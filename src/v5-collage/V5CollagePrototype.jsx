@@ -88,6 +88,10 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
         if (!work || work.type !== 'collage') { setNotice('找不到这份作品，请从“我的作品”重新打开。'); setLoading(false); return }
         const restored = await restorePhotos(work.photos, loadPhoto)
         if (!active) { restored.forEach(releasePhotoSource); return }
+        // 旧作品记录没有持久化预览图：恢复完成后静默回写一次，下次打开走快路径
+        if (work.photos.some((photo) => !photo.preview)) {
+          saveWork({ ...work, photos: photoRecords(restored) }).catch(() => {})
+        }
         replacePhotos(restored)
         setBoardRatio(work.settings?.boardRatio || PORTRAIT_BOARD_RATIO)
         setBackgroundId(work.settings?.backgroundId || 'warm')
@@ -309,23 +313,25 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
             <span>单张拼贴</span>
           </p>
           <h1>十张照片，一种排布。</h1>
-          <span>{sealedView ? '已存入我的作品 · 点照片可放大查看高清。' : '边框与手帐涂鸦可以独立切换，随时点开单张看高清。'}</span>
+          {/* 加载中不渲染任何模式-specific 控件：sealed 作品恢复完成前，
+              不能先闪出编辑态再切换成展示态。 */}
+          {!loading && <span>{sealedView ? '已存入我的作品 · 点照片可放大查看高清。' : '边框与手帐涂鸦可以独立切换，随时点开单张看高清。'}</span>}
         </div>
         <div className="v5-collage__actions">
           <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={chooseFiles} />
-          {!sealedView && <button type="button" onClick={() => inputRef.current?.click()}>上传 10 张照片</button>}
+          {!loading && !sealedView && <button type="button" onClick={() => inputRef.current?.click()}>上传 10 张照片</button>}
           <button type="button" disabled={!layout.length || exporting} onClick={exportWholeBoard}>{exporting ? '正在导出…' : '导出完整作品'}</button>
-          {sealedView ? (
+          {!loading && (sealedView ? (
             <button type="button" onClick={() => setSealedView(false)}>继续编辑</button>
           ) : (
             <button type="button" disabled={!userPhotos || sealing || !layout.length} onClick={sealWork}>
               {sealing ? '正在存入…' : workStage === 'sealed' ? '更新作品' : '完成并存入我的作品'}
             </button>
-          )}
+          ))}
         </div>
       </header>
 
-      {!sealedView && (
+      {!loading && !sealedView && (
         <p className="v5-collage__hint">
           当前仅接收 {ALLOWED_FORMATS.map((format) => format.label).join(' / ')}；16:9、9:16 等屏幕比例暂不进入这个模板。
         </p>
@@ -336,7 +342,7 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
           {BOARD_FORMATS.map((format) => <button key={format.id} type="button" className={boardRatio === format.ratio ? 'is-active' : ''} aria-pressed={boardRatio === format.ratio} onClick={() => setBoardRatio(format.ratio)}>{format.label}</button>)}
         </div>
       )}
-      {!sealedView && (
+      {!loading && !sealedView && (
         <>
           <div className="v5-collage__backgrounds" role="group" aria-label="选择拼贴背景">
             <span>背景</span>
