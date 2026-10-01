@@ -67,6 +67,10 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
   const [exporting, setExporting] = useState(false)
   const [sealing, setSealing] = useState(false)
   const [sealedPreview, setSealedPreview] = useState(null)
+  // 已封存作品从「我的作品」打开时进入展示态：画板照常、制作控件收起，
+  // 只留导出与「继续编辑」。draft 与点了继续编辑的 sealed 作品都是编辑态。
+  const [sealedView, setSealedView] = useState(false)
+  const [workStage, setWorkStage] = useState(null)
   const background = backgroundFor(backgroundId)
 
   const replacePhotos = (nextPhotos) => {
@@ -90,6 +94,10 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
         setFrameMode(work.settings?.frameMode || FRAME_MODES.none.id)
         setDecorationMode(work.settings?.decorationMode || DECORATION_MODES.none.id)
         setWorkId(work.id)
+        if (work.stage === 'sealed') {
+          setWorkStage('sealed')
+          setSealedView(true)
+        }
         setUserPhotos(true)
         setLoading(false)
       }).catch(() => { if (active) { setNotice('读取作品失败，请返回“我的作品”重试。'); setLoading(false) } })
@@ -279,6 +287,7 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
         photos: photoRecords(photos), thumbnail: previous?.thumbnail || null,
       }
       await saveWork(record)
+      setWorkStage('sealed')
       const thumbnail = await renderBoardPreview({ layout, frameMode, decorationEnabled: decorationMode === 'scrapbook', autoPlacements: autoDecorationPlacements, targetWidth: 420, background })
       const finalRecord = thumbnail ? { ...record, thumbnail } : record
       if (thumbnail) await saveWork(finalRecord)
@@ -300,57 +309,69 @@ export default function V5CollagePrototype({ focusScaleFactor = 1, onFocusInfo =
             <span>单张拼贴</span>
           </p>
           <h1>十张照片，一种排布。</h1>
-          <span>边框与手帐涂鸦可以独立切换，随时点开单张看高清。</span>
+          <span>{sealedView ? '已存入我的作品 · 点照片可放大查看高清。' : '边框与手帐涂鸦可以独立切换，随时点开单张看高清。'}</span>
         </div>
         <div className="v5-collage__actions">
           <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={chooseFiles} />
-          <button type="button" onClick={() => inputRef.current?.click()}>上传 10 张照片</button>
+          {!sealedView && <button type="button" onClick={() => inputRef.current?.click()}>上传 10 张照片</button>}
           <button type="button" disabled={!layout.length || exporting} onClick={exportWholeBoard}>{exporting ? '正在导出…' : '导出完整作品'}</button>
-          <button type="button" disabled={!userPhotos || sealing || !layout.length} onClick={sealWork}>{sealing ? '正在存入…' : '完成并存入我的作品'}</button>
+          {sealedView ? (
+            <button type="button" onClick={() => setSealedView(false)}>继续编辑</button>
+          ) : (
+            <button type="button" disabled={!userPhotos || sealing || !layout.length} onClick={sealWork}>
+              {sealing ? '正在存入…' : workStage === 'sealed' ? '更新作品' : '完成并存入我的作品'}
+            </button>
+          )}
         </div>
       </header>
 
-      <p className="v5-collage__hint">
-        当前仅接收 {ALLOWED_FORMATS.map((format) => format.label).join(' / ')}；16:9、9:16 等屏幕比例暂不进入这个模板。
-      </p>
+      {!sealedView && (
+        <p className="v5-collage__hint">
+          当前仅接收 {ALLOWED_FORMATS.map((format) => format.label).join(' / ')}；16:9、9:16 等屏幕比例暂不进入这个模板。
+        </p>
+      )}
       {showRatioToggle && (
         <div className="v5-collage__frame-toggle" role="group" aria-label="选择作品比例">
           <span>比例</span>
           {BOARD_FORMATS.map((format) => <button key={format.id} type="button" className={boardRatio === format.ratio ? 'is-active' : ''} aria-pressed={boardRatio === format.ratio} onClick={() => setBoardRatio(format.ratio)}>{format.label}</button>)}
         </div>
       )}
-      <div className="v5-collage__backgrounds" role="group" aria-label="选择拼贴背景">
-        <span>背景</span>
-        {BACKGROUNDS.map((item) => <button key={item.id} type="button" className={backgroundId === item.id ? 'is-active' : ''} aria-pressed={backgroundId === item.id} onClick={() => setBackgroundId(item.id)}><i style={backgroundStyle(item)} aria-hidden="true" />{item.label}</button>)}
-      </div>
-      <div className="v5-collage__frame-toggle" role="group" aria-label="选择照片边框">
-        <span>边框</span>
-        {Object.values(FRAME_MODES).map((mode) => (
-          <button
-            key={mode.id}
-            type="button"
-            className={frameMode === mode.id ? 'is-active' : ''}
-            aria-pressed={frameMode === mode.id}
-            onClick={() => setFrameMode(mode.id)}
-          >
-            {mode.label}
-          </button>
-        ))}
-      </div>
-      <div className="v5-collage__frame-toggle" role="group" aria-label="选择拼贴装饰">
-        <span>装饰</span>
-        {Object.values(DECORATION_MODES).map((mode) => (
-          <button
-            key={mode.id}
-            type="button"
-            className={decorationMode === mode.id ? 'is-active' : ''}
-            aria-pressed={decorationMode === mode.id}
-            onClick={() => setDecorationMode(mode.id)}
-          >
-            {mode.label}
-          </button>
-        ))}
-      </div>
+      {!sealedView && (
+        <>
+          <div className="v5-collage__backgrounds" role="group" aria-label="选择拼贴背景">
+            <span>背景</span>
+            {BACKGROUNDS.map((item) => <button key={item.id} type="button" className={backgroundId === item.id ? 'is-active' : ''} aria-pressed={backgroundId === item.id} onClick={() => setBackgroundId(item.id)}><i style={backgroundStyle(item)} aria-hidden="true" />{item.label}</button>)}
+          </div>
+          <div className="v5-collage__frame-toggle" role="group" aria-label="选择照片边框">
+            <span>边框</span>
+            {Object.values(FRAME_MODES).map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                className={frameMode === mode.id ? 'is-active' : ''}
+                aria-pressed={frameMode === mode.id}
+                onClick={() => setFrameMode(mode.id)}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+          <div className="v5-collage__frame-toggle" role="group" aria-label="选择拼贴装饰">
+            <span>装饰</span>
+            {Object.values(DECORATION_MODES).map((mode) => (
+              <button
+                key={mode.id}
+                type="button"
+                className={decorationMode === mode.id ? 'is-active' : ''}
+                aria-pressed={decorationMode === mode.id}
+                onClick={() => setDecorationMode(mode.id)}
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       {notice && <p className="v5-collage__notice" role="status">{notice}</p>}
       {userPhotos && <p className="v5-collage__save-status" role="status">{saveStatus}</p>}
 
